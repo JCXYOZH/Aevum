@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `apps/community/web/assets/qrcode.png`：社区 QQ 群二维码入库。
+
+### Fixed
+
+- 二维码显示：容器改为按原图比例撑高，不再押成 132×132；图片缺失时才回落占位框。
+
 ## [0.1.0] - 2026-11-08
 
 ### Added
