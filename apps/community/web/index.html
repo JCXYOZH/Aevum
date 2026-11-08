@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aevum · 社区共建的社区平台</title>
+<meta name="description" content="Aevum 是一个社区共建的社区平台：工具、文档、成员协作收在同一块地方。代码以 MPL-2.0 开源。">
+<meta name="theme-color" content="#EDEDE9">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23EDEDE9'/%3E%3Ctext x='32' y='47' font-family='Georgia,serif' font-size='44' text-anchor='middle' fill='%231A1C1B'%3EA%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --paper:#EDEDE9;
+  --paper-2:#E5E5E0;
+  --ink:#1A1C1B;
+  --ink-2:#4A4E4B;
+  --muted:#757874;
+  --line:#C8C8C1;
+  --accent:#1E5C55;
+  --serif:"Iowan Old Style","Palatino Linotype","Songti SC","Source Han Serif SC","Noto Serif CJK SC","STSong",Georgia,serif;
+  --sans:"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei","Hiragino Sans GB","Source Han Sans SC","Noto Sans CJK SC",sans-serif;
+  --mono:"JetBrains Mono","Cascadia Mono","Consolas","SFMono-Regular",Menlo,monospace;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+
+html{ -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+@media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+a{ color:inherit; text-decoration-thickness:1px; text-underline-offset:.22em; }
+a:hover{ color:var(--accent); }
+:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+
+.wrap{ width:100%; max-width:1120px; margin:0 auto; padding:0 20px; }
+
+/* ===== 顶栏 ===== */
+.bar{
+  position:sticky; top:0; z-index:10;
+  background:var(--paper);
+  border-bottom:1px solid var(--line);
+}
+.bar-inner{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:16px; min-height:58px; padding:8px 20px;
+  max-width:1120px; margin:0 auto;
+}
+.bar-mark{
+  font-family:var(--serif); font-size:15px; letter-spacing:.22em;
+  text-decoration:none; text-transform:uppercase;
+}
+.bar-nav{ display:flex; gap:18px; font-size:14px; color:var(--ink-2); }
+.bar-nav a{ text-decoration:none; padding:6px 0; border-bottom:1px solid transparent; }
+.bar-nav a:hover{ border-bottom-color:var(--accent); }
+
+/* ===== 首屏 ===== */
+.hero{ padding:56px 0 64px; }
+.hero-grid{ display:grid; gap:40px; }
+
+.wordmark{
+  font-family:var(--serif);
+  font-size:clamp(58px,15vw,124px);
+  line-height:.9;
+  letter-spacing:-.02em;
+  margin:0 0 22px;
+  font-weight:400;
+}
+.hero-lead{
+  margin:0 0 28px;
+  max-width:32ch;
+  font-size:17px;
+  line-height:1.85;
+  color:var(--ink-2);
+}
+.hero-motto{
+  margin:0;
+  padding-left:16px;
+  border-left:2px solid var(--accent);
+  font-family:var(--serif);
+  font-size:19px;
+  line-height:1.7;
+  color:var(--ink);
+}
+
+/* 登记卡 */
+.reg{
+  border:1px solid var(--line);
+  background:var(--paper-2);
+  padding:4px 18px 18px;
+  align-self:start;
+}
+.reg-head{
+  display:flex; align-items:baseline; justify-content:space-between;
+  gap:12px; padding:14px 0 12px;
+  border-bottom:1px solid var(--line);
+}
+.reg-title{ font-size:13px; color:var(--ink-2); }
+.reg-no{ font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:.06em; }
+.reg-list{ margin:0; padding:0; }
+.reg-row{
+  display:grid; grid-template-columns:74px 1fr;
+  gap:10px; padding:11px 0;
+  border-bottom:1px solid var(--line);
+  font-size:13.5px;
+}
+.reg-row:last-child{ border-bottom:0; }
+.reg-key{ color:var(--muted); font-size:12.5px; }
+.reg-val{ min-width:0; word-break:break-word; }
+.reg-val.mono{ font-family:var(--mono); font-size:12.5px; line-height:1.6; }
+
+/* ===== 通用区块 ===== */
+.section{ padding:52px 0; border-top:1px solid var(--line); }
+.sec-head{ display:flex; flex-direction:column; gap:10px; margin-bottom:34px; }
+.sec-title{
+  font-family:var(--serif); font-weight:400;
+  font-size:clamp(26px,5vw,34px); line-height:1.3;
+  margin:0;
+}
+.sec-note{ margin:0; max-width:46ch; font-size:15px; color:var(--ink-2); }
+
+/* ===== 模块 ===== */
+.mod-list{ display:flex; flex-direction:column; }
+.mod{
+  display:grid; gap:8px;
+  padding:22px 0;
+  border-top:1px solid var(--line);
+}
+.mod:last-child{ border-bottom:1px solid var(--line); }
+.mod-name{
+  font-family:var(--serif); font-weight:400; font-size:22px;
+  margin:0; letter-spacing:.01em;
+  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+}
+.mod-tag{ font-family:var(--sans); font-size:12px; color:var(--muted); letter-spacing:.08em; }
+.mod-path{ font-family:var(--mono); font-size:12.5px; color:var(--muted); margin:0; }
+.mod-desc{ margin:2px 0 0; font-size:15px; color:var(--ink-2); max-width:62ch; }
+.mod-state{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink-2); }
+
+.st-dot{ width:7px; height:7px; border-radius:50%; background:var(--line); flex:none; }
+.st-dot.on{ background:var(--accent); }
+
+/* ===== 现状：数字 ===== */
+.stats{
+  display:grid; grid-template-columns:repeat(2,1fr);
+  gap:1px; background:var(--line);
+  border:1px solid var(--line);
+  margin-bottom:36px;
+}
+.stat{ background:var(--paper); padding:16px 14px 14px; }
+.stat-num{
+  font-family:var(--serif); font-size:34px; line-height:1.1;
+  font-variant-numeric:tabular-nums;
+  display:block; margin-bottom:6px;
+}
+.stat-label{ font-size:12.5px; color:var(--muted); line-height:1.5; }
+
+/* ===== 现状：进度轴 ===== */
+.trace{ list-style:none; margin:0; padding:0; }
+.trace > li{
+  display:grid; grid-template-columns:52px 20px 1fr;
+  gap:0 12px;
+  padding-bottom:26px;
+}
+.trace > li:last-child{ padding-bottom:0; }
+.t-date{
+  font-family:var(--mono); font-size:12px; color:var(--muted);
+  padding-top:3px; letter-spacing:.02em;
+}
+.t-ax{ position:relative; display:flex; flex-direction:column; align-items:center; }
+.t-ax::before{ content:""; width:1px; height:100%; background:var(--line); }
+.trace > li:last-child .t-ax::before{ height:22px; }
+.t-dot{
+  position:absolute; top:5px; left:50%;
+  width:7px; height:7px; margin-left:-3.5px;
+  border-radius:50%; background:var(--ink); z-index:1;
+}
+.trace > li.is-now .t-dot{ width:9px; height:9px; margin-left:-4.5px; background:var(--accent); }
+.t-body h3{ margin:0 0 4px; font-size:16px; font-weight:500; letter-spacing:.01em; }
+.t-body p{ margin:0; font-size:14px; color:var(--ink-2); line-height:1.75; max-width:56ch; }
+.t-now{
+  display:inline-block; margin-left:8px;
+  font-family:var(--mono); font-size:11px; color:var(--accent);
+  border:1px solid var(--accent); padding:0 5px; border-radius:2px;
+  vertical-align:2px;
+}
+
+/* ===== 加入 ===== */
+.join-grid{ display:grid; gap:28px; }
+.qr{
+  margin:0; width:132px; flex:none;
+  display:flex; flex-direction:column; gap:10px;
+}
+.qr-frame{
+  width:132px; height:132px;
+  border:1px solid var(--line);
+  display:flex; align-items:center; justify-content:center;
+  background:var(--paper-2);
+  position:relative;
+  overflow:hidden;
+}
+.qr-frame img{ width:100%; height:100%; object-fit:contain; display:block; }
+.qr-empty{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; text-align:center; color:var(--muted);
+  border:1px dashed var(--line); width:100%; height:100%;
+  font-size:12px; line-height:1.6;
+}
+.qr-empty .mono{ font-family:var(--mono); font-size:11px; }
+.qr-cap{ font-size:12.5px; color:var(--muted); margin:0; }
+
+.join-text p{ margin:0 0 16px; font-size:15px; line-height:1.85; color:var(--ink-2); max-width:52ch; }
+.join-text p:last-of-type{ margin-bottom:22px; }
+
+.mail{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding-top:18px; border-top:1px solid var(--line);
+}
+.mail-addr{
+  font-family:var(--mono); font-size:14px; color:var(--ink);
+  text-decoration:none; border-bottom:1px solid var(--line); padding-bottom:2px;
+}
+.mail-addr:hover{ border-bottom-color:var(--accent); }
+.copy{
+  font:inherit; font-size:12.5px; color:var(--ink-2);
+  background:none; border:1px solid var(--line);
+  padding:6px 12px; min-height:34px; cursor:pointer;
+  transition:color .15s, border-color .15s;
+}
+.copy:hover{ color:var(--accent); border-color:var(--accent); }
+
+/* ===== 页脚 ===== */
+.foot{
+  border-top:1px solid var(--line);
+  padding:26px 0 44px;
+  font-size:12.5px; color:var(--muted);
+}
+.foot-line{ display:flex; flex-wrap:wrap; gap:8px 14px; align-items:baseline; }
+.foot .sep{ color:var(--line); }
+
+@media (min-width:768px){
+  .wrap{ padding:0 40px; }
+  .bar-inner{ padding:10px 40px; }
+  .hero{ padding:82px 0 88px; }
+  .hero-grid{ grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr); gap:56px; align-items:start; }
+  .reg{ margin-top:8px; }
+  .section{ padding:72px 0; }
+  .mod{ grid-template-columns:158px minmax(0,1fr) 92px; align-items:start; gap:0 28px; padding:26px 0; }
+  .mod-state{ justify-content:flex-end; padding-top:4px; }
+  .stats{ grid-template-columns:repeat(4,1fr); }
+  .stat{ padding:20px 18px 18px; }
+  .trace > li{ grid-template-columns:66px 20px 1fr; gap:0 16px; }
+  .join-grid{ grid-template-columns:132px minmax(0,1fr); gap:44px; align-items:start; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main" style="position:absolute;left:-9999px;top:0;background:var(--paper);padding:10px 14px;border:1px solid var(--line);z-index:20">跳到正文</a>
+
+<header class="bar">
+  <div class="bar-inner">
+    <a class="bar-mark" href="#top">Aevum</a>
+    <nav class="bar-nav" aria-label="页面导航">
+      <a href="#modules">模块</a>
+      <a href="#status">现状</a>
+      <a href="#join">加入</a>
+      <a href="https://gitcode.com/AevumArk/Aevum" target="_blank" rel="noopener">仓库 ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ===== 首屏 ===== -->
+  <section class="hero" id="top">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <h1 class="wordmark">Aevum</h1>
+          <p class="hero-lead">社区共建的社区平台。手上的工具、写下的文档、成员之间的协作，都收在同一块地方；代码以 MPL-2.0 开源，谁都可以取用、修改、再发布。</p>
+          <p class="hero-motto">创造高于消费，心法高于功能，自由高于归属。</p>
+        </div>
+
+        <aside class="reg" aria-label="项目登记信息">
+          <div class="reg-head">
+            <span class="reg-title">登记</span>
+            <span class="reg-no">AEVUM / 001</span>
+          </div>
+          <dl class="reg-list">
+            <div class="reg-row">
+              <dt class="reg-key">仓库</dt>
+              <dd class="reg-val mono">gitcode.com<br>AevumArk/Aevum</dd>
+            </div>
+            <div class="reg-row">
+              <dt class="reg-key">许可</dt>
+              <dd class="reg-val">Mozilla Public License 2.0</dd>
+            </div>
+            <div class="reg-row">
+              <dt class="reg-key">当前</dt>
+              <dd class="reg-val">骨架 + 静态站</dd>
+            </div>
+            <div class="reg-row">
+              <dt class="reg-key">更新</dt>
+              <dd class="reg-val mono">2026-11-08</dd>
+            </div>
+            <div class="reg-row">
+              <dt class="reg-key">联络</dt>
+              <dd class="reg-val mono">open@mrhua.cn</dd>
+            </div>
+          </dl>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 模块 ===== -->
+  <section class="section" id="modules">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">三个方向，一套仓库</h2>
+        <p class="sec-note">平台是社区的主产品；下面三个模块是社区自己的技术方向。它们共用同一套目录、文档与部署骨架，各自推进，互不阻塞。</p>
+      </div>
+
+      <div class="mod-list">
+        <article class="mod">
+          <h3 class="mod-name">fortuna <span class="mod-tag">内核</span></h3>
+          <div>
+            <p class="mod-path">src/fortuna</p>
+            <p class="mod-desc">从实模式起步的 x86 引导、内核入口、内存管理、调度、文件系统、网络与沙箱。用 C 写，引导程序和链接脚本都自己动手。</p>
+          </div>
+          <p class="mod-state"><span class="st-dot"></span>骨架</p>
+        </article>
+
+        <article class="mod">
+          <h3 class="mod-name">libertas <span class="mod-tag">安全</span></h3>
+          <div>
+            <p class="mod-path">src/libertas</p>
+            <p class="mod-desc">扫描器、蜜罐、取证、SIEM、逆向与响应。工具打成镜像按需调度，先是本机上的能力，再谈平台化的调度。</p>
+          </div>
+          <p class="mod-state"><span class="st-dot"></span>骨架</p>
+        </article>
+
+        <article class="mod">
+          <h3 class="mod-name">memoria <span class="mod-tag">记忆</span></h3>
+          <div>
+            <p class="mod-path">src/memoria</p>
+            <p class="mod-desc">记忆层、知识库、检索、训练与量化。目标是把平台上的讨论与工具产出，沉淀成可检索的长期记忆。</p>
+          </div>
+          <p class="mod-state"><span class="st-dot"></span>骨架</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 现状 ===== -->
+  <section class="section" id="status">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">截至 2026-11-08</h2>
+        <p class="sec-note">仓库里此刻是结构与文档，不是能跑的系统。下面四个数字直接从当前克隆里数出来，不四舍五入、不修饰。</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span class="stat-num">816</span><span class="stat-label">仓库文件</span></div>
+        <div class="stat"><span class="stat-num">806</span><span class="stat-label">空占位文件</span></div>
+        <div class="stat"><span class="stat-num">533</span><span class="stat-label">src/ 下的文件，一行代码都没有</span></div>
+        <div class="stat"><span class="stat-num">1</span><span class="stat-label">能打开的页面，就是你正在看的这个</span></div>
+      </div>
+
+      <ol class="trace">
+        <li>
+          <span class="t-date">09-16</span>
+          <span class="t-ax"><span class="t-dot"></span></span>
+          <div class="t-body">
+            <h3>立项</h3>
+            <p>三个模块定名，工作目录定在 D:\Aevum，主体用 C/C++。</p>
+          </div>
+        </li>
+        <li>
+          <span class="t-date">09-17</span>
+          <span class="t-ax"><span class="t-dot"></span></span>
+          <div class="t-body">
+            <h3>fortuna 第一屏</h3>
+            <p>引导程序在 QEMU 里打出第一行字；实模式到保护模式再到分页的链路走通。</p>
+          </div>
+        </li>
+        <li>
+          <span class="t-date">11-08</span>
+          <span class="t-ax"><span class="t-dot"></span></span>
+          <div class="t-body">
+            <h3>骨架入库</h3>
+            <p>816 个文件的结构与文档占位进仓库，LICENSE 定为 MPL-2.0，行为准则归位到 CODE_OF_CONDUCT.md。</p>
+          </div>
+        </li>
+        <li class="is-now">
+          <span class="t-date">11-08</span>
+          <span class="t-ax"><span class="t-dot"></span></span>
+          <div class="t-body">
+            <h3>静态站<span class="t-now">进行中</span></h3>
+            <p>本页上线。前端只到静态页，后端 API 架构待定，桌面端打包排在后面。</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ===== 加入 ===== -->
+  <section class="section" id="join">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">扫码进群，或者写信</h2>
+      </div>
+
+      <div class="join-grid">
+        <figure class="qr">
+          <div class="qr-frame">
+            <img src="assets/qrcode.png" alt="社区二维码" width="132" height="132"
+                 onerror="this.style.display='none';this.parentElement.querySelector('.qr-empty').style.display='flex';">
+            <div class="qr-empty" style="display:none">
+              <span>二维码待放入</span>
+              <span class="mono">assets/qrcode.png</span>
+            </div>
+          </div>
+          <figcaption class="qr-cap">把二维码图片放进 assets/ 目录，刷新即显示，不用改代码。</figcaption>
+        </figure>
+
+        <div class="join-text">
+          <p>群里发的是进度、卡点和求助，不是公告板。代码、文档、路线图都在仓库里，进度以仓库为准。</p>
+          <p>行为准则对仓库、讨论区、群聊和线下活动同样适用；举报渠道与处理流程写在 CODE_OF_CONDUCT.md。</p>
+          <p>想先看东西再说话：PROGRESS.md 是现在做到哪一步，ROADMAP.md 是接下来打算做什么，CONTRIBUTING.md 是一次提交该怎么交。</p>
+
+          <div class="mail">
+            <a class="mail-addr" href="mailto:open@mrhua.cn">open@mrhua.cn</a>
+            <button class="copy" type="button" data-copy="open@mrhua.cn">复制邮箱</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-line">
+      <span>Aevum</span><span class="sep">/</span>
+      <span>代码以 MPL-2.0 开源</span><span class="sep">/</span>
+      <span><a href="https://gitcode.com/AevumArk/Aevum" target="_blank" rel="noopener">GitCode 仓库</a></span><span class="sep">/</span>
+      <span>维护邮箱 open@mrhua.cn</span><span class="sep">/</span>
+      <span>2026</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('[data-copy]').forEach(function(btn){
+  var origin = btn.textContent;
+  btn.addEventListener('click', function(){
+    var text = btn.getAttribute('data-copy');
+    var done = function(){ btn.textContent = '已复制'; setTimeout(function(){ btn.textContent = origin; }, 1600); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function(){ btn.textContent = text; });
+    } else {
+      btn.textContent = text;
+    }
+  });
+});
+</script>
+</body>
+</html>
