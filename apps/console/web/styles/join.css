@@ -1,0 +1,82 @@
+/* ============================================================
+   join.css —— 「扫码进群」区块（样式归属：本文件）
+   左边二维码，右边说明；二维码放在白底细框里，暗色页面不必换反色。
+   ============================================================ */
+
+.join__grid {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  gap: clamp(20px, 4vw, 44px);
+  align-items: start;
+  margin-top: clamp(24px, 4vh, 36px);
+}
+
+.qr {
+  margin: 0;
+}
+
+.qr img {
+  width: 176px;
+  height: auto;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  background: #ffffff;
+  border-radius: var(--r-cell);
+}
+
+.qr figcaption {
+  margin: var(--sp-3) 0 0;
+  max-width: 18em;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.join__text p {
+  margin: 0 0 var(--sp-3);
+  max-width: 44em;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+
+.join__mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.join__mail {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--rule);
+}
+
+.join__mail a {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 2px;
+}
+
+.join__mail a:hover {
+  color: var(--plum);
+  border-bottom-color: var(--plum);
+}
+
+.join__mail a:focus-visible {
+  outline: 2px solid var(--plum);
+  outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .join__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qr img {
+    width: 148px;
+  }
+}

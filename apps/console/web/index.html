@@ -11,6 +11,8 @@
 <link rel="stylesheet" href="styles/essence.css">
 <link rel="stylesheet" href="styles/terminal.css">
 <link rel="stylesheet" href="styles/progress.css">
+<link rel="stylesheet" href="styles/modules.css">
+<link rel="stylesheet" href="styles/join.css">
 <link rel="stylesheet" href="styles/layout.css">
 </head>
 <body>
@@ -31,6 +33,39 @@
       <span class="essence__halo essence__halo--alt"></span>
       <span class="essence__core"></span>
     </div>
+  </section>
+
+  <section class="about" id="about">
+    <header class="section-head">
+      <h2>这是什么</h2>
+      <p>社区共建的项目，代码以 MPL-2.0 开源。三个方向共用一个仓库，各自推进、互不阻塞；这个页面本身是它的显示层——内核只产生状态与错误码，显示全部在这里。</p>
+    </header>
+
+    <ul class="mods">
+      <li>
+        <span class="mods__name">fortuna <i class="mods__tag">内核</i></span>
+        <div>
+          <p class="mods__path">src/fortuna</p>
+          <p class="mods__desc">从实模式起步的 x86 引导、内核入口、内存、调度与文件系统，用 C 写，引导程序与链接脚本自己动手。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">libertas <i class="mods__tag">安全</i></span>
+        <div>
+          <p class="mods__path">src/libertas</p>
+          <p class="mods__desc">扫描、蜜罐、取证、响应；工具打成镜像按需运行，先做本机能力，再谈平台化的调度。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">memoria <i class="mods__tag">记忆</i></span>
+        <div>
+          <p class="mods__path">src/memoria</p>
+          <p class="mods__desc">记忆层、知识与检索；把讨论和工具产出沉淀成可检索的长期记忆。</p>
+        </div>
+      </li>
+    </ul>
+
+    <p class="motto">创造高于消费，心法高于功能，自由高于归属。</p>
   </section>
 
   <section class="live" id="live">
@@ -144,6 +179,60 @@
       </li>
 
     </ol>
+
+    <h3 class="trace-head">几个节点</h3>
+    <ol class="trace">
+      <li>
+        <span class="trace__date">09-16</span>
+        <div>
+          <p class="trace__title">立项</p>
+          <p class="trace__desc">三个模块定名，主体用 C/C++，目录先按职责分开。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">09-17</span>
+        <div>
+          <p class="trace__title">fortuna 第一屏</p>
+          <p class="trace__desc">引导程序在 QEMU 里打出第一行字；实模式到保护模式再到分页的链路走通。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">11-08</span>
+        <div>
+          <p class="trace__title">骨架入库</p>
+          <p class="trace__desc">结构与文档占位进仓库，LICENSE 定为 MPL-2.0，行为准则归位。</p>
+        </div>
+      </li>
+      <li class="trace__now">
+        <span class="trace__date">11-09</span>
+        <div>
+          <p class="trace__title">内核实况上线 <i class="trace__badge">现在</i></p>
+          <p class="trace__desc">内核在服务器上无头运行，帧经桥接推到这块页面上；仍没有登录与存储。</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="join" id="join">
+    <header class="section-head">
+      <h2>扫码进群，或者写信</h2>
+      <p>群里发的是进度、卡点和求助，不是公告板；代码、文档、路线图都在仓库里，进度以仓库为准。</p>
+    </header>
+
+    <div class="join__grid">
+      <figure class="qr">
+        <img src="assets/qrcode.png" alt="Aevum 社区 QQ 群二维码" width="176" height="165" loading="lazy">
+        <figcaption>扫码进 QQ 群；屏幕扫不动就放大这一块，或者直接写信。</figcaption>
+      </figure>
+
+      <div class="join__text">
+        <p>行为准则对仓库、讨论区、群聊和线下活动同样适用；举报渠道与处理流程写在 <span class="join__mono">CODE_OF_CONDUCT.md</span>。</p>
+        <p>想先看东西再说话：<span class="join__mono">PROGRESS.md</span> 是做到哪一步，<span class="join__mono">ROADMAP.md</span> 是接下来打算做什么，<span class="join__mono">CONTRIBUTING.md</span> 是一次提交该怎么交。</p>
+        <p class="join__mail">
+          <a href="mailto:open@mrhua.cn">open@mrhua.cn</a>
+        </p>
+      </div>
+    </div>
   </section>
 
   <footer class="foot">

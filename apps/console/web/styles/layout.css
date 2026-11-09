@@ -78,7 +78,9 @@
 
 /* ---------- 区块 ---------- */
 .live,
-.progress {
+.progress,
+.about,
+.join {
   padding: clamp(48px, 8vh, 88px) 0;
   border-top: 1px solid var(--rule);
 }

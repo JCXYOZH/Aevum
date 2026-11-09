@@ -1,0 +1,72 @@
+/* ============================================================
+   modules.css —— 「这是什么」区块（样式归属：本文件）
+   三个方向一行一条，靠细线分隔，不套卡片。
+   ============================================================ */
+
+.mods {
+  list-style: none;
+  margin: clamp(24px, 4vh, 36px) 0 0;
+  padding: 0;
+}
+
+.mods li {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  gap: var(--sp-4);
+  padding: clamp(16px, 2.4vh, 22px) 0;
+  border-top: 1px solid var(--rule);
+}
+
+.mods li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+.mods__name {
+  font-family: var(--font-serif);
+  font-size: clamp(16px, 1.8vw, 19px);
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.mods__tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  vertical-align: 2px;
+}
+
+.mods__path {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.mods__desc {
+  margin: 4px 0 0;
+  max-width: 42em;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+
+.motto {
+  margin: clamp(24px, 4vh, 36px) 0 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--plum);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .mods li {
+    grid-template-columns: 1fr;
+    gap: var(--sp-1);
+  }
+}

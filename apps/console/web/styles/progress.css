@@ -143,6 +143,74 @@
   background: var(--rule);
 }
 
+/* ---------- 节点时间线 ---------- */
+.trace-head {
+  margin: clamp(36px, 6vh, 56px) 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.trace {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+}
+
+.trace li {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--rule);
+}
+
+.trace li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+.trace__date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  padding-top: 3px;
+}
+
+.trace__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.trace__desc {
+  margin: 4px 0 0;
+  max-width: 46em;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--ink-soft);
+}
+
+.trace__now .trace__title {
+  color: var(--plum);
+}
+
+.trace__badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--plum);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 400;
+  color: var(--plum);
+  vertical-align: 1px;
+}
+
 /* ---------- 窄屏：两列数字，阶段编号上移 ---------- */
 @media (max-width: 720px) {
   .numbers {
@@ -165,5 +233,10 @@
 
   .phase__id {
     padding-top: 0;
+  }
+
+  .trace li {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 }
