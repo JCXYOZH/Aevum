@@ -60,13 +60,15 @@ fi
 #   Debian 系 → qemu-system-i386
 #   RHEL 系   → qemu-kvm 包只提供 qemu-kvm（就是 qemu-system-x86_64），没有 i386 别名
 # 三个都是同一套 CLI，引导 32 位镜像没有区别，取先找到的那个。
+# RHEL 9 / Alibaba Cloud Linux 3 上 qemu-kvm 可能只装在 /usr/libexec/ 下、没有
+# /usr/bin 符号链接，所以最后再兜一次绝对路径。
 QEMU_BIN=""
-for cand in qemu-system-i386 qemu-system-x86_64 qemu-kvm; do
+for cand in qemu-system-i386 qemu-system-x86_64 qemu-kvm /usr/libexec/qemu-kvm; do
     if QEMU_BIN="$(command -v "$cand" 2>/dev/null)"; then
         break
     fi
 done
-[ -n "$QEMU_BIN" ] || die "找不到 QEMU，试过 qemu-system-i386 / qemu-system-x86_64 / qemu-kvm。
+[ -n "$QEMU_BIN" ] || die "找不到 QEMU，试过 qemu-system-i386 / qemu-system-x86_64 / qemu-kvm / /usr/libexec/qemu-kvm。
     Debian 系：apt install -y qemu-system-x86
     RHEL 系：  dnf install -y qemu-kvm"
 log "QEMU：$QEMU_BIN"
