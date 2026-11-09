@@ -35,24 +35,51 @@ log "仓库根目录：$APP_ROOT"
 log "域名：$DOMAIN"
 
 # ---------------------------------------------------------------- 1 依赖
+# 两套发行版的包名不同，必须分开写：
+#   Debian/Ubuntu : qemu-system-x86 / iproute2 / python3-venv
+#   RHEL 系       : qemu-kvm        / iproute  / python3-pip（Alibaba Cloud Linux 3、
+#                   AlmaLinux、Rocky、CentOS Stream 都走这支）
 log "安装系统依赖"
+PKG_FAMILY=""
 if command -v apt-get >/dev/null 2>&1; then
+    PKG_FAMILY="deb"
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y >/dev/null
-    apt-get install -y nginx qemu-system-x86 python3 python3-venv iproute2 >/dev/null
+    apt-get install -y nginx qemu-system-x86 python3 python3-venv iproute2 curl >/dev/null
 elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y nginx qemu-system-x86 python3 python3-pip iproute2 >/dev/null
+    PKG_FAMILY="rpm"
+    dnf install -y nginx qemu-kvm python3 python3-pip iproute curl >/dev/null
+elif command -v yum >/dev/null 2>&1; then
+    PKG_FAMILY="rpm"
+    yum install -y nginx qemu-kvm python3 python3-pip iproute curl >/dev/null
 else
-    die "只支持 apt 或 dnf 的系统，请手动装 nginx / qemu-system-x86 / python3"
+    die "只支持 apt / dnf / yum 的系统，请手动装 nginx、qemu、python3 后重跑"
 fi
 
-QEMU_BIN="$(command -v qemu-system-i386 || true)"
-[ -n "$QEMU_BIN" ] || die "找不到 qemu-system-i386，检查 qemu-system-x86 是否装好"
+# QEMU 的可执行文件名各家不一样，不能只认 qemu-system-i386：
+#   Debian 系 → qemu-system-i386
+#   RHEL 系   → qemu-kvm 包只提供 qemu-kvm（就是 qemu-system-x86_64），没有 i386 别名
+# 三个都是同一套 CLI，引导 32 位镜像没有区别，取先找到的那个。
+QEMU_BIN=""
+for cand in qemu-system-i386 qemu-system-x86_64 qemu-kvm; do
+    if QEMU_BIN="$(command -v "$cand" 2>/dev/null)"; then
+        break
+    fi
+done
+[ -n "$QEMU_BIN" ] || die "找不到 QEMU，试过 qemu-system-i386 / qemu-system-x86_64 / qemu-kvm。
+    Debian 系：apt install -y qemu-system-x86
+    RHEL 系：  dnf install -y qemu-kvm"
+log "QEMU：$QEMU_BIN"
 
 # ---------------------------------------------------------------- 2 Python
 log "准备 Python 环境（$APP_ROOT/.venv）"
 if [ ! -x "$APP_ROOT/.venv/bin/python" ]; then
-    python3 -m venv "$APP_ROOT/.venv"
+    python3 -m venv "$APP_ROOT/.venv" \
+        || die "python3 -m venv 失败：Debian 系装 python3-venv，RHEL 系装 python3-pip"
+fi
+if [ ! -x "$APP_ROOT/.venv/bin/pip" ]; then
+    "$APP_ROOT/.venv/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 \
+        || die "venv 里没有 pip：RHEL 系先 dnf install -y python3-pip 再重跑"
 fi
 "$APP_ROOT/.venv/bin/pip" install --quiet --upgrade pip
 "$APP_ROOT/.venv/bin/pip" install --quiet websockets
@@ -97,12 +124,15 @@ sleep 1
 if [ "$WITH_TLS" = "yes" ]; then
     log "申请证书"
     if ! command -v certbot >/dev/null 2>&1; then
-        if command -v apt-get >/dev/null 2>&1; then
+        if [ "$PKG_FAMILY" = "deb" ]; then
             apt-get install -y certbot python3-certbot-nginx >/dev/null
         else
-            dnf install -y certbot python3-certbot-nginx >/dev/null
+            # RHEL 系的 certbot 在 EPEL 里，基础源没有
+            dnf install -y certbot python3-certbot-nginx >/dev/null \
+                || die "certbot 装不上：先 dnf install -y epel-release 再重跑，或先去掉 --tls"
         fi
     fi
+    command -v certbot >/dev/null 2>&1 || die "certbot 不可用，先装 epel-release 再重跑"
     certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
         -m "admin@${DOMAIN#*.}" --redirect
 fi

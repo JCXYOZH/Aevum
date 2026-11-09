@@ -49,7 +49,21 @@ sudo DOMAIN=console.mrhua.cn bash apps/console/deploy/install.sh --tls
 `/etc/nginx/conf.d/aevum-console.conf`，然后自己跑一轮校验（服务在线、两个端口只绑
 回环、页面返回 200）。失败会打印 `journalctl` 的排查入口。
 
-域名冲突：443 上已经有旧首页时，别改 `server_name` 去覆盖它，用一个子域名。
+支持两套包名的发行版，脚本自动分开：
+
+| | Debian / Ubuntu | RHEL 系（Alibaba Cloud Linux 3 · AlmaLinux · Rocky · CentOS Stream） |
+| --- | --- | --- |
+| QEMU 包 | `qemu-system-x86` | `qemu-kvm` |
+| QEMU 可执行 | `qemu-system-i386` | `qemu-kvm`（即 `qemu-system-x86_64`，没有 i386 别名） |
+| 路由工具包 | `iproute2` | `iproute` |
+| Python 环境 | `python3-venv` | `python3-pip` |
+| certbot | 基础源里就有 | 在 EPEL，需先 `dnf install -y epel-release` |
+
+三个 QEMU 可执行名都能引导 32 位镜像，脚本按 `qemu-system-i386 → qemu-system-x86_64 →
+qemu-kvm` 顺序取第一个存在的，找到哪个就把哪个路径写进 systemd 单元。
+
+域名冲突：443 上已经有旧首页时，要么换一个子域名，要么先把旧站点的 server 块停用；
+两个 `server_name` 相同会让 https 随机落在其中一个上。
 
 ## 端口
 
