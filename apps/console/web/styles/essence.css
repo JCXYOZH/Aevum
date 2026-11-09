@@ -1,0 +1,140 @@
+/* ============================================================
+   essence.css —— 彩色灵体组件（样式归属：本文件）
+   形态语言沿用 MrHua 的灵体：不规则圆角持续变形、多色径向渐变、
+   外层光晕、缓慢浮沉。这里拆成 base / halo / core 三层，便于
+   单独调速与单独换色。
+   ============================================================ */
+
+.essence {
+  position: relative;
+  width: clamp(112px, 16vw, 200px);
+  aspect-ratio: 1 / 1;
+  align-self: flex-start;
+  margin: clamp(16px, 3vh, 32px) 0 0;
+  isolation: isolate;
+  animation: essence-float 9s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 锚定形态：脱离文档流，但留在 .hero 里面。
+   用 absolute 而不是 fixed —— 它是页面内容的一部分，滚动时跟着版面走，
+   滚回来还在原处；位置由 core/wander.js 逐帧写入（相对 hero 的坐标）。 */
+.essence--anchored {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  animation: none;
+  will-change: transform;
+}
+
+/* 外层光晕：两层错位，制造色彩在纸面上的漫射 */
+.essence__halo {
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 32%, rgba(255, 107, 107, 0.5), rgba(255, 107, 107, 0) 62%);
+  filter: blur(20px);
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+}
+
+.essence__halo--alt {
+  inset: -22%;
+  background:
+    radial-gradient(circle at 64% 70%, rgba(78, 205, 196, 0.45), rgba(78, 205, 196, 0) 66%),
+    radial-gradient(circle at 46% 26%, rgba(255, 190, 11, 0.32), rgba(255, 190, 11, 0) 60%);
+  animation: essence-drift 24s ease-in-out infinite;
+}
+
+/* 核心：真正在变形的实体 */
+.essence__core {
+  position: absolute;
+  inset: 9%;
+  border-radius: 42% 38% 58% 32% / 60% 30% 70% 40%;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 107, 107, 0.92),
+    rgba(78, 205, 196, 0.72) 55%,
+    rgba(255, 190, 11, 0.86)
+  );
+  box-shadow:
+    0 0 30px rgba(255, 107, 107, 0.35),
+    0 0 62px rgba(78, 205, 196, 0.26),
+    0 0 100px rgba(255, 190, 11, 0.16);
+  animation:
+    essence-shape 16s ease-in-out infinite,
+    essence-hue 24s ease-in-out infinite;
+  transition: filter 0.5s ease, box-shadow 0.5s ease;
+}
+
+/* ---------- 状态：在线（有数据流过）时呼吸更快 ---------- */
+.essence[data-state="online"] .essence__core {
+  animation-duration: 9s, 13s;
+  box-shadow:
+    0 0 40px rgba(255, 107, 107, 0.5),
+    0 0 84px rgba(78, 205, 196, 0.36),
+    0 0 130px rgba(255, 190, 11, 0.22);
+}
+
+/* ---------- 状态：离线时降饱和，颜色退到背景里 ----------
+   这条挂在容器上而不是 .essence__core：core 自己的 filter 已被 essence-hue
+   占用，写在 core 上会被动画覆盖掉，离线降饱和等于没生效。 */
+.essence[data-state="offline"] {
+  filter: saturate(0.62) brightness(0.98);
+}
+
+/* ---------- 脉冲不再走 class + keyframes ----------
+   收帧时的那一圈光晕改由 components/essence.js 用 Web Animations API 直接播，
+   时长和幅度都在那儿定，这里不再维护 .is-pulse 状态和独立关键帧。 */
+
+/* ---------- 关键帧 ---------- */
+@keyframes essence-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(4deg);
+  }
+}
+
+@keyframes essence-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-6px, 10px) scale(1.08);
+  }
+}
+
+@keyframes essence-shape {
+  0% {
+    border-radius: 42% 38% 58% 32% / 60% 30% 70% 40%;
+  }
+  25% {
+    border-radius: 60% 40% 30% 60% / 40% 60% 30% 70%;
+  }
+  50% {
+    border-radius: 30% 60% 50% 40% / 50% 40% 60% 30%;
+  }
+  75% {
+    border-radius: 40% 40% 60% 60% / 60% 60% 40% 40%;
+  }
+  100% {
+    border-radius: 42% 38% 58% 32% / 60% 30% 70% 40%;
+  }
+}
+
+@keyframes essence-hue {
+  0%,
+  100% {
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    filter: hue-rotate(26deg);
+  }
+}

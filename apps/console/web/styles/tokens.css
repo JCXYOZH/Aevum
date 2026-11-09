@@ -1,0 +1,43 @@
+/* ============================================================
+   tokens.css —— 设计令牌：颜色、间距、字体
+   规则：整个前端的颜色只能从这里取，别在组件里新造 hex。
+   色板取自 MrHua 的彩色灵体（珊瑚 / 青绿 / 琥珀 / 紫），
+   加上纸白底与墨色文字。
+   ============================================================ */
+
+:root {
+  /* 灵体四色 */
+  --coral: #ff6b6b;
+  --teal: #4ecdc4;
+  --amber: #ffbe0b;
+  --plum: #6a4c93;
+
+  /* 纸白舞台 */
+  --paper: #fbfaf7;
+  --ink: #16181a;
+  --ink-soft: #6b7076;
+  --rule: rgba(22, 24, 26, 0.14);
+
+  /* 深色终端面板 */
+  --panel: #101215;
+  --panel-soft: #171a1e;
+  --panel-ink: #edeae4;
+  --panel-mute: #8b9198;
+  --screen: #040607;
+
+  /* 间距节奏 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 20px;
+  --sp-5: 32px;
+  --sp-6: 48px;
+
+  /* 圆角 */
+  --r-panel: 18px;
+  --r-cell: 8px;
+
+  /* 字体分工：标题与正文用宋体，数据与状态用等宽 */
+  --font-serif: "Songti SC", "SimSun", "Noto Serif SC", serif;
+  --font-mono: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+}

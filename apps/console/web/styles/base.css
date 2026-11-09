@@ -1,0 +1,36 @@
+/* ============================================================
+   base.css —— 重置与全局排版
+   只放跨组件的东西：盒模型、页面底色、文字基线。
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+canvas,
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}

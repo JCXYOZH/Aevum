@@ -1,0 +1,169 @@
+/* ============================================================
+   progress.css —— 开源进度区块（样式归属：本文件）
+   两块：顶部四个统计数字（横排细线分隔），下面是阶段清单。
+   不用卡片、不用圆角块，靠细线和留白分组。
+   ============================================================ */
+
+/* ---------- 统计数字 ---------- */
+.numbers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: clamp(28px, 4vh, 44px) 0 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.numbers > div {
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-4);
+  border-left: 1px solid var(--rule);
+}
+
+.numbers > div:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.numbers dt {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.numbers dd {
+  margin: var(--sp-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.numbers__note {
+  margin: var(--sp-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+/* ---------- 阶段清单 ---------- */
+.phases {
+  list-style: none;
+  margin: clamp(28px, 4vh, 44px) 0 0;
+  padding: 0;
+}
+
+.phase {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: var(--sp-4);
+  padding: clamp(20px, 3vh, 30px) 0;
+  border-top: 1px solid var(--rule);
+}
+
+.phase:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+.phase__id {
+  padding-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+
+.phase__body h3 {
+  margin: 0;
+  font-size: clamp(18px, 2vw, 22px);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.phase__state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: var(--sp-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.state-dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.state-dot--done {
+  background: var(--teal);
+}
+
+.state-dot--doing {
+  background: var(--amber);
+}
+
+.state-dot--todo {
+  background: var(--ink-soft);
+  opacity: 0.35;
+}
+
+.state-dot--far {
+  background: var(--ink-soft);
+  opacity: 0.18;
+}
+
+.phase__items {
+  display: grid;
+  gap: 6px;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phase__items li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.phase__items li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.72em;
+  width: 7px;
+  height: 1px;
+  background: var(--rule);
+}
+
+/* ---------- 窄屏：两列数字，阶段编号上移 ---------- */
+@media (max-width: 720px) {
+  .numbers {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .numbers > div:nth-child(3) {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .numbers > div:nth-child(n + 3) {
+    border-top: 1px solid var(--rule);
+  }
+
+  .phase {
+    grid-template-columns: 1fr;
+    gap: var(--sp-1);
+  }
+
+  .phase__id {
+    padding-top: 0;
+  }
+}

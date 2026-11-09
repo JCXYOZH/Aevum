@@ -1,0 +1,123 @@
+/* ============================================================
+   terminal.css —— VGA 终端面板组件（样式归属：本文件）
+   状态栏 / 画布 / 脚注三段的视觉都在这里，页面骨架不碰。
+   ============================================================ */
+
+.terminal {
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--r-panel);
+  box-shadow: 0 24px 60px rgba(16, 18, 21, 0.28);
+  overflow: hidden;
+  color: var(--panel-ink);
+}
+
+/* ---------- 顶部状态栏 ---------- */
+.terminal__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: 12px 16px;
+  background: var(--panel-soft);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--panel-mute);
+}
+
+.terminal__link {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--panel-ink);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #5a6067;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.dot[data-state="online"] {
+  background: var(--teal);
+  box-shadow: 0 0 8px rgba(78, 205, 196, 0.8);
+}
+
+.dot[data-state="connecting"] {
+  background: var(--amber);
+  box-shadow: 0 0 8px rgba(255, 190, 11, 0.8);
+}
+
+.dot[data-state="offline"] {
+  background: var(--coral);
+  box-shadow: 0 0 8px rgba(255, 107, 107, 0.7);
+}
+
+.terminal__stats {
+  display: flex;
+  gap: 18px;
+}
+
+.terminal__stats b {
+  font-weight: 400;
+  color: var(--panel-ink);
+}
+
+.terminal__reconnect {
+  padding: 4px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--panel-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.terminal__reconnect:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.terminal__reconnect:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.terminal__reconnect:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ---------- 画布 ---------- */
+.terminal__screen {
+  padding: clamp(8px, 1.6vw, 18px);
+  background: var(--screen);
+}
+
+#vga {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--r-cell);
+  background: #050607;
+}
+
+/* ---------- 脚注 ---------- */
+.terminal__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: 10px 16px;
+  background: var(--panel-soft);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--panel-mute);
+}
