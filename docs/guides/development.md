@@ -54,9 +54,12 @@ scripts\generate.ps1 -Checkpoint "build\checkpoint_demo" -Prompt "What " -Device
 
 ## 打包
 
+开源目录默认不含 `node_modules`。如果本机没有 `apps\desktop\node_modules\electron\dist`，用外部 Electron 运行时，不往仓库里拷依赖：
+
 ```powershell
+$env:MEMORIA_ELECTRON_DIST = "<path-to-electron-dist>"
+$env:MEMORIA_MONITOR_EXE = "<path-to-monitor-exe>"   # 可选；monitor 已在本仓库构建时可省略
 cd apps\desktop
-npm install
 npm run dist:installer
 ```
 
@@ -66,8 +69,8 @@ npm run dist:installer
 
 `training_metrics.jsonl`、检查点 exe 和语料不是写死的绝对路径，默认由运行位置推出来：
 
-- 源码运行监控：`desktop_server.py` 的 `ROOT` 是仓库根，`BUILD_ROOT` 默认是 `<repo>\build`，因此指标默认落在 `<repo>\build\training_metrics.jsonl`，模型默认是 `<repo>\build\memoria_gen_cpu.exe`。
-- 打包运行：`main.js` 注入 `MEMORIA_ROOT=resources`，`BUILD_ROOT` 默认是 `resources\build`；它不会去读开发机的 `D:\past-projects\memoria\build`。要读外部权重，设置 `MEMORIA_BUILD_ROOT`，或在安装目录 `resources` / exe 旁放 `model-root.txt`。
+- 源码运行监控：`desktop_server.py` 的 `ROOT` 是仓库根，`BUILD_ROOT` 默认是 `<repo>\build`，因此指标默认落在 `<repo>\build\training_metrics.jsonl`，模型默认是 `<repo>\build\memoria_gen_cpu.exe`。在开源目录里跑就是 `D:\Aevum\build\...`；只有从旧工作目录跑旧源码，才会落到旧目录。
+- 打包运行：`main.js` 注入 `MEMORIA_ROOT=resources`，`BUILD_ROOT` 默认是 `resources\build`，并在启动 monitor 前创建该目录；安装器也给 `{app}\resources\build` 授予用户写权限。因此安装后的默认指标路径是 `<安装目录>\resources\build\training_metrics.jsonl`，不会去读开发机的旧工作目录。要读外部权重，显式设置 `MEMORIA_BUILD_ROOT`，或在安装目录 `resources` / exe 旁放 `model-root.txt`。
 - 训练脚本 `scripts/train.ps1` 默认把指标写到同一个 `build\training_metrics.jsonl`，所以源码模式下看板与训练自动对齐。
 
 其他覆盖项：`MEMORIA_DATA_ROOT` 换语料目录，`MEMORIA_WEB_ROOT` 换页面目录，`MEMORIA_ERROR_TABLE` 换错误码表。

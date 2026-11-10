@@ -82,7 +82,13 @@ function monitorEnv() {
     env.MEMORIA_ROOT = process.resourcesPath;
     env.MEMORIA_WEB_ROOT = env.MEMORIA_WEB_ROOT || path.join(process.resourcesPath, "web");
     env.MEMORIA_ERROR_TABLE = env.MEMORIA_ERROR_TABLE || path.join(process.resourcesPath, "contracts", "errors.json");
-    env.MEMORIA_BUILD_ROOT = packagedBuildRoot();
+    const buildRoot = packagedBuildRoot();
+    try {
+      fs.mkdirSync(buildRoot, { recursive: true });
+    } catch (error) {
+      console.error("cannot create build root", buildRoot, error);
+    }
+    env.MEMORIA_BUILD_ROOT = buildRoot;
   }
   return env;
 }

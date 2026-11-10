@@ -112,12 +112,13 @@ scripts\generate.ps1 -Checkpoint "build\checkpoint_shakespeare_words_full" -Prom
 
 ```powershell
 cd apps\desktop
-npm install
+$env:MEMORIA_ELECTRON_DIST = "<path-to-electron-dist>"
+$env:MEMORIA_MONITOR_EXE = "<path-to-monitor-exe>"   # 可选
 npm run dist:installer  # Windows 安装包（Inno Setup，和 mrhua 同一形式）
 npm run dist:dir        # 免安装目录
 ```
 
-安装包会带 Electron 运行时、`resources/monitor/memoria-monitor.exe`、前端页面、错误码表和 3000 行语料；**不带训练权重**。用户要加载自己的检查点，在安装目录 `resources/build` 放权重，或设置 `MEMORIA_BUILD_ROOT`。安装包产物约 95 MB，放在 `dist-app`，不进 Git。安装器提供中文/英文向导、程序图标、可选桌面快捷方式和开始菜单项。
+安装包会带 Electron 运行时、`resources/monitor/memoria-monitor.exe`、前端页面、错误码表和 3000 行语料；**不带训练权重**。安装器会创建 `{app}\resources\build` 并授予用户写权限，安装后默认指标路径是 `<安装目录>\resources\build\training_metrics.jsonl`；要加载自己的检查点，设置 `MEMORIA_BUILD_ROOT`，或在该目录放权重。安装包产物约 96 MB，放在 `dist-app`，不进 Git。安装器提供中文/英文向导、程序图标、可选桌面快捷方式和开始菜单项。
 
 ## 纯内存中继是什么
 

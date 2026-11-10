@@ -1,10 +1,12 @@
 #Requires -Version 5.1
 # Build a Windows installer without electron-builder's 7z memory spike.
 #
-# It uses the Electron runtime already downloaded under
-# apps\desktop\node_modules\electron\dist, assembles the same resource layout
-# electron-builder would produce, then compiles apps\desktop\installer.iss with
-# Inno Setup 7 (the same installer family MrHua used).
+# It uses an Electron runtime (`apps/desktop/node_modules/electron/dist` by
+# default), assembles the same resource layout electron-builder would produce,
+# then compiles apps/desktop/installer.iss with Inno Setup 7.
+#
+# When the open-source tree has no node_modules, pass an external runtime:
+#   scripts\build-installer.ps1 -ElectronDist <path-to-electron-dist> -MonitorExe <path-to-monitor-exe>
 #
 # Usage, from the repository root:
 #   scripts\build-installer.ps1
@@ -12,6 +14,8 @@
 
 [CmdletBinding()]
 param(
+    [string]$ElectronDist,
+    [string]$MonitorExe,
     [switch]$SkipMonitorCheck
 )
 
@@ -23,14 +27,17 @@ $distApp = Join-Path $app "dist-app"
 $stageName = "installer-app-" + (Get-Date -Format "yyyyMMddHHmmss")
 $stage = Join-Path $distApp $stageName
 $stageRel = "dist-app\$stageName"
-$electronDist = Join-Path $app "node_modules\electron\dist"
+if (-not $ElectronDist) { $ElectronDist = $env:MEMORIA_ELECTRON_DIST }
+if (-not $ElectronDist) { $ElectronDist = Join-Path $app "node_modules\electron\dist" }
+if (-not $MonitorExe) { $MonitorExe = $env:MEMORIA_MONITOR_EXE }
+if (-not $MonitorExe) { $MonitorExe = Join-Path $root "apps\console\monitor\dist\memoria-monitor.exe" }
 $packageJson = Join-Path $app "package.json"
 $icon = Join-Path $app "icon.ico"
 $iss = Join-Path $app "installer.iss"
 
-foreach ($path in @($electronDist, $packageJson, $icon, $iss)) {
+foreach ($path in @($ElectronDist, $packageJson, $icon, $iss)) {
     if (-not (Test-Path -LiteralPath $path)) {
-        throw "missing $path; run 'npm install' in apps\desktop first."
+        throw "missing $path; run 'npm install' in apps\desktop first, or pass -ElectronDist."
     }
 }
 
@@ -40,9 +47,8 @@ $version = $pkg.version
 $exeName = "$productName.exe"
 $outFile = Join-Path $distApp "Memoria-Control-Desk-Setup-$version.exe"
 
-$monitorExe = Join-Path $root "apps\console\monitor\dist\memoria-monitor.exe"
-if (-not $SkipMonitorCheck -and -not (Test-Path -LiteralPath $monitorExe)) {
-    throw "missing $monitorExe; run scripts\package-desktop.ps1 -SkipElectron first."
+if (-not $SkipMonitorCheck -and -not (Test-Path -LiteralPath $MonitorExe)) {
+    throw "missing $MonitorExe; run scripts\package-desktop.ps1 -SkipElectron first, or pass -MonitorExe."
 }
 
 $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
