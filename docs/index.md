@@ -31,4 +31,4 @@
 
 ## 状态
 
-除本文件外，`docs/` 下的文件目前全部是 **0 字节占位**——目录结构已经定好，内容还没写。需要写哪一份，按上表的用途往里填；不要凭空造一份新的平行文档。
+`docs/` 仍有许多 0 字节占位；本轮已补 `memoria/README.md`、`memoria/design.md`、`memoria/usage.md`、`architecture/memoria.md`、`guides/development.md`。其他文件按用途填写，不要另造平行文档。

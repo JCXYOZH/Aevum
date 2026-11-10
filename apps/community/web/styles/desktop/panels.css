@@ -1,0 +1,162 @@
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .toolbar .tbtn { height: 28px; font-size: 11px; }
+  .kv { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .kv > div { background: var(--panel-2); padding: 9px 10px; min-width: 0; }
+  .kv dt { color: var(--dim); font: 9px/1.2 var(--mono); letter-spacing: .08em; }
+  .kv dd { margin: 5px 0 0; font: 15px/1.1 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kv dd.is-big { font-size: 19px; }
+
+  .chart-wrap { border: 1px solid var(--line); background: var(--panel-2); margin-top: 12px; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .chart-head span { color: var(--dim); font: 10px/1 var(--mono); }
+  .chart-head b { color: var(--text); font: 11px/1 var(--mono); font-weight: 500; }
+  #loss-chart { width: 100%; height: 190px; display: block; }
+  /* Terminal surfaces keep the old dark screen inside the paper shell. Local
+     variables stop light-theme text tokens from turning into low-contrast gray. */
+  .logbox, .kernel-stage, .model-result {
+    --text: #e6edf2;
+    --muted: #a3b2bc;
+    --dim: #728491;
+    --line: #2a3b47;
+    --line-soft: rgba(88, 115, 132, .28);
+  }
+  .logbox {
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    background: #0a1015;
+  }
+  .logbox__head { display: flex; align-items: center; justify-content: space-between; padding: 6px 9px; border-bottom: 1px solid var(--line); }
+  .logbox__head span { color: var(--dim); font: 10px/1 var(--mono); }
+  .logbox pre {
+    margin: 0; padding: 9px 10px;
+    max-height: 150px; overflow: auto;
+    color: #aebccc; font: 10px/1.55 var(--mono);
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .logbox--err pre { color: #d8a7a7; }
+
+  .kernel-stage { background: #070b0f; border: 1px solid var(--line); padding: 10px; overflow: auto; }
+  #vga { display: block; width: 100%; max-width: 960px; height: auto; margin: 0 auto; image-rendering: pixelated; }
+  .kernel-bar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 10px; }
+  .led { width: 7px; height: 7px; background: var(--dim); display: inline-block; }
+  .led[data-state="online"] { background: var(--teal); }
+  .led[data-state="connecting"] { background: var(--amber); }
+  .led[data-state="offline"] { background: var(--red); }
+
+  .relay-grid { display: grid; grid-template-rows: auto 1fr auto; height: 100%; min-height: 0; }
+  .relay-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 13px; border-bottom: 1px solid var(--line); background: var(--panel-3); }
+  .relay-bar strong { font: 11px/1 var(--mono); font-weight: 500; color: var(--text); }
+  .relay-meters { display: flex; gap: 10px; }
+  .relay-meters span { color: var(--dim); font: 9px/1.2 var(--mono); }
+  .relay-meters b { color: var(--text); font-weight: 500; }
+  .relay-feed { margin: 0; padding: 8px 12px; overflow-y: auto; list-style: none; min-height: 0; }
+  .post { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .post__meta { display: flex; align-items: baseline; gap: 8px; }
+  .post__who { color: var(--teal); font: 10px/1.2 var(--mono); }
+  .post__time { color: var(--dim); font: 9px/1.2 var(--mono); }
+  .post__body { margin: 4px 0 0; color: var(--text); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+  .post--system .post__body { color: var(--muted); }
+  .relay-compose { padding: 10px 12px; border-top: 1px solid var(--line); background: var(--panel); }
+  .relay-compose input, .relay-compose textarea {
+    width: 100%; border: 1px solid var(--line); background: #fffdf8; color: var(--text); padding: 6px 8px; outline: 0;
+    font-size: 12px;
+  }
+  .relay-compose textarea { resize: vertical; min-height: 40px; margin-top: 6px; }
+  .relay-compose input:focus, .relay-compose textarea:focus { border-color: var(--amber); }
+  .relay-compose .toolbar { margin-top: 6px; justify-content: space-between; }
+  .relay-state { font: 9px/1 var(--mono); color: var(--dim); }
+  .relay-state[data-state="online"] { color: var(--teal); }
+  .relay-state[data-state="error"] { color: var(--red); }
+
+  .errors-list { margin: 12px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+  .err-row { padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .err-row__top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .err-row__code { color: var(--red); font: 11px/1.2 var(--mono); }
+  .err-row__src { color: var(--dim); font: 9px/1.2 var(--mono); }
+  .err-row__line { margin: 4px 0 0; color: var(--muted); font: 10px/1.5 var(--mono); overflow-wrap: anywhere; }
+  .err-row__known { margin: 4px 0 0; color: var(--amber); font: 10px/1.4 var(--sans); }
+  .code-table { margin-top: 12px; border: 1px solid var(--line); }
+  .code-table__head { padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--panel-3); display: flex; justify-content: space-between; gap: 8px; }
+  .code-table__head span { color: var(--dim); font: 9px/1 var(--mono); }
+  .code-table__body { max-height: 170px; overflow-y: auto; }
+  .code-row { display: grid; grid-template-columns: 96px 1fr; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--line-soft); }
+  .code-row code { color: var(--red); font: 10px/1.5 var(--mono); }
+  .code-row span { color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+  .empty {
+    margin-top: 14px; padding: 18px;
+    border: 1px dashed var(--line-2);
+    color: var(--dim); font: 11px/1.6 var(--mono);
+  }
+
+
+  /* Model loader: one selectable checkpoint, one prompt, one executable call.
+     The panel deliberately shows stdout/stderr instead of hiding the loader. */
+  .model-status { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .model-chip {
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--muted);
+    padding: 4px 7px;
+    font: 9px/1.2 var(--mono);
+  }
+  .model-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .model-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .model-field--wide { grid-column: 1 / -1; }
+  .model-field span { color: var(--dim); font: 9px/1.2 var(--mono); letter-spacing: .04em; }
+  .model-field select, .model-field input, .model-field textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: #fffdf8;
+    color: var(--text);
+    padding: 6px 8px;
+    outline: 0;
+    font: 11px/1.45 var(--mono);
+  }
+  .model-field textarea { resize: vertical; min-height: 62px; }
+  .model-field select:focus, .model-field input:focus, .model-field textarea:focus { border-color: var(--amber); }
+  .model-actions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .model-actions .tbtn { cursor: pointer; border: 1px solid var(--line-2); background: var(--panel-3); color: var(--text); padding: 7px 11px; font: 11px/1 var(--sans); }
+  .model-actions .tbtn--primary { border-color: var(--amber); color: var(--amber); }
+  .model-actions .tbtn:disabled { opacity: .55; cursor: wait; }
+  .model-hint { color: var(--dim); font: 9px/1.2 var(--mono); }
+  .model-meta { margin-top: 10px; color: var(--dim); font: 9px/1.4 var(--mono); overflow-wrap: anywhere; }
+  .model-result { margin-top: 10px; border: 1px solid var(--line); background: #0a1015; }
+  .model-result__head { display: flex; justify-content: space-between; padding: 6px 9px; border-bottom: 1px solid var(--line); color: var(--dim); font: 9px/1 var(--mono); }
+  .model-output {
+    margin: 0; padding: 10px; min-height: 110px; max-height: 220px; overflow: auto;
+    color: var(--text); font: 11px/1.65 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .model-log {
+    margin: 0; padding: 8px 10px; max-height: 130px; overflow: auto;
+    border-top: 1px solid var(--line); color: #aebccc; font: 9px/1.5 var(--mono);
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+
+  /* A placeholder for the Linux-trained checkpoint. Keeping the address here
+     means the local panel does not pretend the remote model already exists. */
+  .model-cloud {
+    margin-top: 12px;
+    border: 1px dashed var(--line-2);
+    padding: 9px 10px;
+    background: var(--panel-2);
+  }
+  .model-cloud[open] { padding-bottom: 10px; }
+  .model-cloud__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .model-cloud__head::-webkit-details-marker { display: none; }
+  .model-cloud__head span:first-child { color: var(--muted); font: 10px/1.2 var(--mono); letter-spacing: .04em; }
+  .model-cloud__row { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; }
+  .model-cloud__row .model-field { flex: 1; }
+  .model-cloud__row .tbtn { flex: 0 0 auto; height: 30px; }

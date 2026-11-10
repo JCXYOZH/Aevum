@@ -1,0 +1,16 @@
+  .dialog {
+    position: fixed; inset: 0; z-index: 80;
+    background: rgba(80, 64, 45, .38);
+    display: grid; place-items: center;
+    padding: 18px;
+  }
+  .dialog__box { width: min(460px, 100%); background: var(--panel); border: 1px solid var(--line-2); padding: 18px; box-shadow: 10px 10px 0 rgba(0,0,0,.3); }
+  .dialog__box h3 { margin: 0 0 4px; font-size: 18px; }
+  .dialog__box p { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+  .field { margin-top: 10px; }
+  .field label { display: block; color: var(--dim); font: 9px/1.4 var(--mono); letter-spacing: .08em; margin-bottom: 4px; }
+  .field input { width: 100%; border: 1px solid var(--line); background: #fffdf8; color: var(--text); padding: 7px 8px; font-size: 12px; outline: 0; }
+  .field input:focus { border-color: var(--amber); }
+  .dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .dialog__err { min-height: 18px; color: var(--red); font: 10px/1.4 var(--mono); margin-top: 8px; }
+

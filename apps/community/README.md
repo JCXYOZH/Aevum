@@ -1,39 +1,45 @@
 # 社区平台 · apps/community
 
-社区自己的平台本体。目标形态是一份可自托管的页面，既能挂在自己的服务器上访问，也能被桌面端打包带走；服务端只做逻辑与状态，不参与显示。
+社区自己的平台本体。一份前端同时服务两件事：浏览器里打开的展示页，和 Electron 壳里的多窗口看板。
 
 ## 目录
 
 ```text
 apps/community/
 ├── README.md
-└── web/                    前端页面，仓库里唯一的页面入口
-    ├── index.html          页面结构
-    ├── README.md           页面组件与事件约定
-    ├── assets/             图标与二维码
-    ├── styles/             令牌、布局与各组件样式
+└── web/
+    ├── index.html            展示页（左侧 rail 灵体 + 连续内容）
+    ├── desktop.html          多窗口看板（总览 / 内核 / 训练 / 模型 / 中继 / 错误 / 展示页）
+    ├── README.md             页面组件与事件约定
+    ├── DESKTOP_STRUCTURE.md  看板窗口与面板结构
+    ├── assets/               图标、二维码；favicon-256.ico 供安装包用
+    ├── styles/
+    │   ├── tokens.css        展示页纸黄 token
+    │   ├── presence.css      展示页与看板共用的灵体
+    │   ├── showcase/         展示页 rail / 段落 / 页面
+    │   └── desktop/          壳、窗口、启动台、面板、响应式
     └── js/
-        ├── core/           事件总线、游走引擎、连接与演示数据
-        └── components/     灵体、屏幕、HUD、中继交流区
+        ├── main.js           展示页入口
+        ├── components/       HUD、中继、屏幕（旧灵体组件不再挂载）
+        ├── core/             事件总线、连接、演示数据
+        └── desktop/          看板入口、窗口系统、面板
 ```
 
-中继在 `apps/relay/`，单独部署，不在这个目录里；页面通过 `/v1/` 调它。
+展示页是桌面壳里的一个窗口，不是另起一份；页面不直接读权重，只调 `apps/console/monitor` 的 API。
 
 ## 本地预览
 
-两个进程：
-
 ```powershell
-# 1. 中继，监听 127.0.0.1:8790（在仓库根目录执行）
-cd apps/relay
-python -m relay
-
-# 2. 页面，另开一个终端
-cd apps/community/web
-python -m http.server 8080
+python -m http.server 8080 --directory apps/community/web
 ```
 
-打开 `http://localhost:8080`。页面里的交流区会连本机 `8790`；线上则走同源 `/v1/`，由 nginx 注入令牌。
+看板：`http://localhost:8080/desktop.html`；展示页：`http://localhost:8080/index.html`。
+
+只起监控和页面：
+
+```powershell
+scripts\desktop.ps1 -NoKernel
+```
 
 ## 放到服务器
 
@@ -42,6 +48,8 @@ python -m http.server 8080
 ```bash
 sudo bash apps/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
 ```
+
+桌面壳通过 `apps/desktop` 打包；安装包和 nginx 静态站是两条分发通道，不是二选一。
 
 ## 二维码
 

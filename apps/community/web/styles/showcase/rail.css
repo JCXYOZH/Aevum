@@ -1,0 +1,190 @@
+/* ============================================================
+   rail.css — the showcase page's persistent workbench rail.
+   It gives the page one identity column instead of a sequence of
+   independent marketing blocks: brand, presence, section index,
+   and honest local status all live in the same spine.
+   ============================================================ */
+
+.board {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+}
+
+.board__main {
+  min-width: 0;
+}
+
+.rail {
+  position: sticky;
+  top: 82px;
+  align-self: start;
+  min-width: 0;
+  padding: 24px 20px 28px 0;
+  border-right: 1px solid var(--line-soft);
+}
+
+.rail__kicker {
+  margin: 0;
+  color: var(--dim);
+  font: 9px/1.4 var(--mono);
+  letter-spacing: 0.14em;
+}
+
+.rail__presence {
+  display: flex;
+  justify-content: flex-start;
+  margin: 14px 0 0;
+}
+
+.rail__caption {
+  margin: 10px 0 0;
+  color: var(--text);
+  font: 12px/1.3 var(--sans);
+}
+
+.rail__meta {
+  margin: 5px 0 0;
+  color: var(--dim);
+  font: 9px/1.4 var(--mono);
+}
+
+.rail__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 28px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.rail__nav a {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 6px;
+  padding: 7px 0;
+  color: var(--muted);
+  font: 10px/1.4 var(--mono);
+}
+
+.rail__nav a span {
+  color: var(--dim);
+}
+
+.rail__nav a:hover {
+  color: var(--amber);
+}
+
+.rail__nav a:hover span {
+  color: var(--amber);
+}
+
+.rail__status {
+  display: grid;
+  gap: 7px;
+  margin: 22px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--dim);
+  font: 9px/1.4 var(--mono);
+}
+
+.rail__status p {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 7px;
+  align-items: center;
+}
+
+.rail__status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 8px rgba(121, 184, 176, 0.55);
+}
+
+.rail__status p:nth-child(2) i {
+  background: var(--amber);
+  box-shadow: 0 0 8px rgba(223, 176, 110, 0.5);
+}
+
+.rail__status p:nth-child(3) i {
+  background: var(--coral);
+  box-shadow: 0 0 8px rgba(214, 135, 108, 0.45);
+}
+
+.rail__open {
+  display: block;
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--teal);
+  font: 10px/1.4 var(--mono);
+}
+
+.rail__open:hover {
+  color: var(--amber);
+}
+
+@media (max-width: 1100px) {
+  .board {
+    grid-template-columns: 128px minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  .rail {
+    padding-right: 16px;
+  }
+
+  .presence--rail {
+    --presence-size: 100px;
+  }
+}
+
+/* Below 900px the rail stops being a sidebar and becomes a compact
+   product header strip. The wisp keeps its reserved 72px cell. */
+@media (max-width: 900px) {
+  .board {
+    display: block;
+  }
+
+  .rail {
+    position: relative;
+    top: 0;
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    column-gap: 14px;
+    align-items: center;
+    padding: 16px 0 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .rail__presence {
+    grid-row: span 3;
+    margin: 0;
+  }
+
+  .presence--rail {
+    --presence-size: 64px;
+  }
+
+  .rail__kicker,
+  .rail__caption,
+  .rail__meta {
+    grid-column: 2;
+  }
+
+  .rail__kicker { grid-row: 1; }
+  .rail__caption { grid-row: 2; margin-top: 2px; }
+  .rail__meta { grid-row: 3; margin-top: 0; }
+
+  .rail__nav,
+  .rail__status,
+  .rail__open {
+    display: none;
+  }
+}

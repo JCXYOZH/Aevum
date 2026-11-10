@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memoria 控制台 · AEVUM</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230c1117'/%3E%3Cpath d='M7 24 16 7l9 17h-4l-5-10-5 10z' fill='%23d9a35f'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles/desktop/tokens.css">
+<link rel="stylesheet" href="styles/presence.css">
+<link rel="stylesheet" href="styles/desktop/shell.css">
+<link rel="stylesheet" href="styles/desktop/windows.css">
+<link rel="stylesheet" href="styles/desktop/launchpad.css">
+<link rel="stylesheet" href="styles/desktop/panels.css">
+<link rel="stylesheet" href="styles/desktop/dialog.css">
+<link rel="stylesheet" href="styles/desktop/responsive.css">
+
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand__mark">A</div>
+      <div>
+        <p class="brand__name">AEVUM</p>
+        <p class="brand__sub">MEMORIA / CONTROL DESK</p>
+      </div>
+    </div>
+
+    <div class="topbar__status">
+      <button class="pill" type="button" data-svc="bridge" data-state="wait"><i></i><span>内核</span></button>
+      <button class="pill" type="button" data-svc="relay" data-state="wait"><i></i><span>中继</span></button>
+      <button class="pill" type="button" data-svc="trainer" data-state="wait"><i></i><span>训练</span></button>
+      <button class="pill" type="button" data-svc="web" data-state="wait"><i></i><span>页面</span></button>
+    </div>
+
+    <div class="topbar__right">
+      <span class="clock" id="clock">--:--:--</span>
+      <button class="tbtn" type="button" id="open-launchpad">启动台</button>
+      <button class="tbtn tbtn--solid" type="button" id="open-add">新增窗口</button>
+    </div>
+  </header>
+
+  <aside class="dock" aria-label="启动项">
+    <div class="dock__presence" aria-hidden="true">
+      <div class="presence presence--dock">
+        <span class="presence__halo"></span>
+        <span class="presence__halo presence__halo--alt"></span>
+        <span class="presence__core"></span>
+      </div>
+    </div>
+    <div class="dock__label">启动项</div>
+    <button class="dock__btn" type="button" data-open="overview" data-dock="overview"></button>
+    <button class="dock__btn" type="button" data-open="kernel" data-dock="kernel"></button>
+    <button class="dock__btn" type="button" data-open="trainer" data-dock="trainer"></button>
+    <button class="dock__btn" type="button" data-open="model" data-dock="model"></button>
+    <button class="dock__btn" type="button" data-open="relay" data-dock="relay"></button>
+    <button class="dock__btn" type="button" data-open="errors" data-dock="errors"></button>
+    <button class="dock__btn" type="button" data-open="exhibit" data-dock="exhibit"></button>
+    <div class="dock__sep"></div>
+    <div class="dock__label">桌面</div>
+    <button class="dock__btn" type="button" id="dock-launchpad" data-dock="launchpad"></button>
+    <div class="dock__spacer"></div>
+    <button class="dock__btn" type="button" id="dock-add" data-dock="add"></button>
+  </aside>
+
+  <main class="desk">
+    <div class="windows" id="windows"></div>
+    <div class="desk__hint">拖拽标题栏移动窗口 · 双击标题栏最大化 · 右下角调整大小</div>
+
+    <div class="launchpad" id="launchpad" hidden>
+      <div class="launchpad__head">
+        <div>
+          <div class="eyebrow">启动台 / LAUNCHPAD</div>
+          <h2>选择要打开的窗口</h2>
+        </div>
+        <button class="tbtn" type="button" id="close-launchpad">返回桌面</button>
+      </div>
+      <div class="launchpad__grid" id="launchpad-grid"></div>
+      <p class="launchpad__note">这里是别人的扩展位：填一个名字和地址，就会在桌面和启动台中出现一个新窗口；配置保存在本机 localStorage。原来的展示长页没有删除，仍放在「展示页」窗口里。</p>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>AEVUM / MEMORIA · CONTROL DESK</span>
+    <span id="foot-state">监控服务：连接中</span>
+    <span>127.0.0.1 · 本机桌面</span>
+  </footer>
+</div>
+
+<div class="dialog" id="add-dialog" hidden>
+  <div class="dialog__box">
+    <h3>新增窗口</h3>
+    <p>给启动台留一个位置。地址可以是同源页面、局域网地址或任意 http(s) 页面；跨域页面可能拒绝被 iframe 嵌套。</p>
+    <div class="field">
+      <label for="custom-title">窗口名</label>
+      <input id="custom-title" maxlength="24" placeholder="例如：构建记录房" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="custom-url">页面地址</label>
+      <input id="custom-url" maxlength="800" placeholder="例如：http://127.0.0.1:9000/ 或 notes.html" autocomplete="off">
+    </div>
+    <div class="dialog__err" id="add-error"></div>
+    <div class="dialog__actions">
+      <button class="tbtn" type="button" id="add-cancel">取消</button>
+      <button class="tbtn tbtn--solid" type="button" id="add-save">加入启动台</button>
+    </div>
+  </div>
+</div>
+
+<template id="win-template">
+  <section class="win is-hidden" data-focus="0">
+    <header class="win__bar">
+      <div class="win__id">
+        <span class="win__dot"></span>
+        <span class="win__title"></span>
+        <span class="win__meta"></span>
+      </div>
+      <div class="win__actions">
+        <button type="button" data-win="min" title="最小化">—</button>
+        <button type="button" data-win="max" title="最大化">□</button>
+        <button type="button" data-win="close" title="关闭">×</button>
+      </div>
+    </header>
+    <div class="win__body"></div>
+    <span class="win__resize" aria-hidden="true"></span>
+  </section>
+</template>
+
+<script src="js/desktop/core.js"></script>
+<script src="js/desktop/api.js"></script>
+<script src="js/desktop/components/terminal.js"></script>
+<script src="js/desktop/components/line-chart.js"></script>
+<script src="js/desktop/components/window.js"></script>
+<script src="js/desktop/components/topbar.js"></script>
+<script src="js/desktop/components/dock.js"></script>
+<script src="js/desktop/components/launchpad.js"></script>
+<script src="js/desktop/components/dialog.js"></script>
+<script src="js/desktop/panels/overview.js"></script>
+<script src="js/desktop/panels/kernel.js"></script>
+<script src="js/desktop/panels/trainer.js"></script>
+<script src="js/desktop/panels/model.js"></script>
+<script src="js/desktop/panels/relay.js"></script>
+<script src="js/desktop/panels/errors.js"></script>
+<script src="js/desktop/panels/exhibit.js"></script>
+<script src="js/desktop/main.js"></script>
+
+</body>
+</html>

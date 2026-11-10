@@ -6,11 +6,33 @@
 
 ### Added
 
-- `apps/community/web/assets/qrcode.png`：社区 QQ 群二维码入库。
+- `src/memoria/`：Memoria C++ 内核（17 个 `.cpp`：门控、链单元、三层平衡、分层记忆、训练、生成、检查点）。
+- `include/memoria/`：与源码对应的 15 个公共头文件。
+- `apps/console/monitor/`：桌面监控 API、模型生成子进程与检查点发现。
+- `apps/desktop/`：Electron 壳；`npm run dist` 为 NSIS 安装包，`npm run dist:dir` 为免安装目录。
+- `apps/community/web/desktop.html`：多窗口看板；`index.html` 保留为展示页并可作看板窗口。
+- `apps/community/web/styles/presence.css`：展示页与看板共用的灵体组件。
+- `data/tinyshakespeare_3000.txt`：3000 行公开语料。
+- `scripts/build-linux.sh`：Linux 云端编译入口（train / gen / gen_cpu）。
+- `docs/memoria/`、`docs/architecture/memoria.md`、`docs/guides/development.md`：Memoria 与开发入口文档。
+
+### Changed
+
+- `README.md` 代码位置表改为当前真实结构；本地开发命令改到 `scripts/desktop.ps1`。
+- `PROGRESS.md` 状态与新目录对齐；安装包与 Linux 产物单独标为未验收。
+- `apps/desktop/README.md` 改掉 portable-only 与“必须本机 Python”的旧说法。
+- 展示页与看板配色统一回纸黄系；看板保留深色终端块。
+- `scripts/build.ps1`、`scripts/build-linux.sh` 的源码路径改到 `src/memoria/`。
 
 ### Fixed
 
-- 二维码显示：容器改为按原图比例撑高，不再押成 132×132；图片缺失时才回落占位框。
+- `hello_torch.obj` 从仓库根目录移除。
+- `.gitignore` 增加 `node_modules/`、`dist-app/`、`build/`、`*.exe`、权重与日志，避免构建产物进入开源仓库。
+
+### Notes
+
+- 模型权重、检查点和 `node_modules` 不入库；模型发布走 Release 附件或服务器目录。
+- NSIS 安装包在本机受 `7za` 内存限制，目录包已验证；安装包需在内存更充足的机器完成最终验收。
 
 ## [0.1.0] - 2026-11-08
 

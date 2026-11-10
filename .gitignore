@@ -9,3 +9,28 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+
+# Build outputs and local tooling
+build/
+apps/desktop/node_modules/
+apps/desktop/dist-app/
+apps/desktop/dist/
+apps/desktop/dist-run*/
+apps/console/monitor/dist/
+apps/console/monitor/build/
+*.obj
+*.lib
+*.exp
+*.exe
+*.pdb
+*.ilk
+*.log
+
+# Model weights and checkpoints never enter the repository
+*.pt
+*.safetensors
+models/
+checkpoint*/
+build/trainer.out.log
+build/trainer.err.log
+build/training_metrics.jsonl

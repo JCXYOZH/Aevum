@@ -4,7 +4,7 @@
 
 - 仓库：`gitcode.com/AevumArk/Aevum`
 - 许可：Mozilla Public License 2.0
-- 当前状态：骨架 + 静态站 + 纯内存中继（`apps/relay/`，并入中）
+- 当前状态：展示页 + 多窗口看板 + 纯内存中继 + Memoria C++ 训练/生成内核 + Electron 桌面壳；安装包构建脚本已接入，权重与语料默认不打包
 - 维护邮箱：`open@mrhua.cn`
 
 ---
@@ -19,48 +19,105 @@ Aevum 是社区自己的平台，不是某个产品的官网。它的目标是�
 
 | 路径 | 是什么 | 状态 |
 | --- | --- | --- |
-| `apps/community/web/` | 页面：静态站；nginx 直接指向这个目录 | 静态站 |
+| `apps/community/web/` | 展示页 `index.html` + 多窗口看板 `desktop.html`，可直接挂 nginx | 已实现 |
 | `apps/relay/` | **纯内存中继**：会话、上下文、分片传输、在线计数；无数据库、无落盘 | 已实现 |
 | `apps/relay/contracts/` | 唯一契约源：`errors.json`（`0xRRFFTT` 码表）、`api.json`（HTTP 面） | 定稿 |
 | `apps/relay/deploy/` | 一键部署：systemd 单元、nginx vhost、`install.sh` | 可用 |
-| `apps/console/` | 内核与串口总线：引导、状态机、错误码、80×25 单元格；只做逻辑，不含页面 | 维护中 |
+| `apps/console/monitor/` | `desktop_server.py`：桌面监控 API，读检查点、训练指标、错误码，起模型子进程 | 已实现 |
+| `apps/console/bridge/` | 串口帧转 WebSocket，页面不直接碰内核 | 已实现 |
+| `apps/console/kernel/` | 引导、状态机、错误码、80×25 单元格；只做逻辑，不含页面 | 维护中 |
+| `apps/desktop/` | Electron 壳；`npm run dist` 出 Windows 安装包，`dist:dir` 出免安装目录 | 已接入 |
+| `src/memoria/` | Memoria C++ 内核：门控、链单元、三层平衡、分层记忆、训练、生成、检查点 | 可编译 |
+| `include/memoria/` | C++ 公共头文件；与 `src/memoria` 一一对应 | 可编译 |
+| `data/tinyshakespeare_3000.txt` | 3000 行公开语料，用于小模型冒烟训练；不是权重 | 已入库 |
+| `scripts/` | 构建、训练、生成、桌面栈、Linux 编译、桌面打包 | 可用 |
 | `src/fortuna/` | 内核方向：引导、内核、内存、调度、文件系统、网络、沙箱 | 空骨架 |
 | `src/libertas/` | 安全方向：扫描、蜜罐、取证、SIEM、逆向、响应 | 空骨架 |
-| `src/memoria/` | 记忆方向：记忆层、知识库、检索、训练、量化 | 空骨架 |
 | `src/common/` | 三个模块共用的基础件（缓存、队列、日志、校验等） | 空骨架 |
 | `src/integrations/` | 外部系统对接（redis / postgres / kafka / openai / huggingface 等） | 空骨架 |
-| `docs/` | 设计、架构、ADR、运维文档 | 占位 |
+| `docs/` | 设计、架构、ADR、运维文档 | 入口已补 |
 | `deployment/` | docker-compose、镜像、k8s、helm、ansible、terraform | 占位 |
 | `configs/` | 各模块配置样例 | 占位 |
 | `tests/` | 分层测试（unit / integration / performance / security） | 占位 |
 | `benchmarks/`、`experiments/`、`models/` | 基准、实验记录、模型产物 | 占位 |
-| `tools/`、`bin/`、`build/`、`sandbox/`、`scripts/` | 开发与构建辅助、临时实验区 | 占位 |
 
-**"占位"的意思是 0 字节**：空文件标记的是职责，不是永久空着。要写东西就写进表里指定的目录，稳定之前不进 `src/`；`sandbox/` 留给未验证的实验。
+**边界**：`src/memoria` 里是代码和空接口占位，不是训练权重。`*.pt`、`*.safetensors`、`checkpoint*/`、`build/`、`apps/desktop/node_modules/`、`dist-app/` 都在 `.gitignore` 里；要发布模型，走 Release 附件、对象存储或服务器下载，不把大文件塞进 Git。
 
 ## 本地开发
 
-Windows 上在仓库根目录执行一条命令：
+Windows 上在仓库根目录执行：
 
 ```powershell
-scripts\dev.cmd
+scripts\desktop.ps1
 ```
 
-默认起四个进程：中继 `127.0.0.1:8790`、页面 `127.0.0.1:8080`、QEMU 串口 `127.0.0.1:5555`、串口桥接 `ws://127.0.0.1:8765`，并打开页面。只起页面与中继：
+它起中继 `127.0.0.1:8790`、监控与看板 `127.0.0.1:8781`、QEMU 串口 `127.0.0.1:5555`、串口桥接 `ws://127.0.0.1:8765`，并打开看板。只起页面、中继与监控：
 
 ```powershell
-scripts\dev.cmd -NoKernel -NoBrowser
+scripts\desktop.ps1 -NoKernel
+```
+
+带 Electron 壳：
+
+```powershell
+scripts\desktop.ps1 -NoKernel -Electron
 ```
 
 停止：
 
 ```powershell
-scripts\dev.cmd -Stop
+scripts\desktop.ps1 -Stop
 ```
 
-脚本从 `PATH` 找 `python`；没有激活虚拟环境时用 `-Python` 指定解释器。QEMU 从 `PATH`、`QEMU_BIN` 或默认安装位置找，也可以用 `-Qemu`。日志与 pid 状态在 `%TEMP%\aevum-dev`，不写进仓库。
+脚本从 `PATH` 找 `python`；没有激活虚拟环境时用 `-Python` 指定解释器。QEMU 从 `PATH`、`QEMU_BIN` 或默认安装位置找，也可以用 `-Qemu`。日志与 pid 状态在 `build\desktop-logs`。
 
 内核是独立进程，不是网页的一部分：QEMU 只提供串口，桥接把串口帧转成 WebSocket；页面只连中继与桥接，不直接碰内核。任何一段挂掉，其余仍能启动。
+
+## Memoria C++ 内核
+
+`src/memoria/` 是 C++（LibTorch）实现，`include/memoria/` 是对应头文件。当前默认单周期链路：
+
+```text
+embedding -> gated valve -> chain × 3 -> tri-balancer × 3
+-> strata memory -> weighted fusion -> V regularization -> output
+```
+
+构建（Windows，需要 VS2022 Build Tools、Windows SDK、LibTorch 头与库）：
+
+```powershell
+scripts\build.ps1
+```
+
+产物是 `build\memoria_train.exe`、`build\memoria_gen.exe`、`build\memoria_gen_cpu.exe`。Linux 云端：
+
+```bash
+bash scripts/build-linux.sh
+```
+
+输出在 `build/linux/`。小语料训练：
+
+```powershell
+scripts\train.ps1 -Epochs 2 -Batch 16 -Dim 48 -Device cuda
+```
+
+生成：
+
+```powershell
+scripts\generate.ps1 -Checkpoint "build\checkpoint_shakespeare_words_full" -Prompt "What " -MaxNewTokens 8 -Device cpu
+```
+
+模型权重默认写到 `build/checkpoint_*`，不进 Git。看板通过 `MEMORIA_BUILD_ROOT` 或 exe 旁的 `model-root.txt` 找检查点；语料目录可用 `MEMORIA_DATA_ROOT` 指定。
+
+## 桌面壳与安装包
+
+```powershell
+cd apps\desktop
+npm install
+npm run dist      # Windows 安装包（NSIS）
+npm run dist:dir  # 免安装目录
+```
+
+安装包会带 Electron 运行时、`resources/monitor/memoria-monitor.exe`、前端页面、错误码表和 3000 行语料；**不带训练权重**。用户要加载自己的检查点，在安装目录 `resources/build` 放权重，或设置 `MEMORIA_BUILD_ROOT`。
 
 ## 纯内存中继是什么
 
@@ -80,17 +137,21 @@ scripts\dev.cmd -Stop
 
 ## 现在做到哪一步
 
-**社区站点**：单页静态站已成型——首屏、内核实况、开源进度、三个方向、加入方式、交流区、页脚备案。nginx 直接托管，无服务端渲染。
+**展示页**：`apps/community/web/index.html` 已改成工作台结构，左侧 rail 常驻灵体与状态，右侧是连续内容，不再是独立展台。
 
-**中继**：核心已完成。会话与上下文、分片传输、在线/浏览计数、交流房间都可用；HTTP 面 15 个端点，契约有 `MRR1/1` 版本号与 sha256 校验；四条方法论落到了代码里（绝对导入、层级表、契约生成、导入失败映射错误码）。
+**看板**：`apps/community/web/desktop.html` 是多窗口桌面，总览、内核、训练、模型、中继、错误码、展示页都是可开的窗口；展示页保留为其中一个窗口，不删除。
 
-**前端交流区**：房间条（在线 / 浏览 / 落盘）、帖子流、发言框已跑通。中继的消息模型只有角色、内容、时间，没有作者字段；昵称随正文传入，由前端拆分显示。
+**中继**：会话与上下文、分片传输、在线/浏览计数、交流房间可用；HTTP 面 15 个端点，契约 `MRR1/1`，码表 `0xRRFFTT`。
 
-**还没做**：账号与登录、帖子检索与回复层级、桌面壳、上游模型的流式代理、传输角色绑定（现在 token 谁拿到谁能用）。
+**监控服务**：`apps/console/monitor/desktop_server.py` 读检查点、训练日志和错误码，起模型生成子进程；`/api/model` 能看到本地检查点，`POST /api/model/generate` 能返回生成文本。
+
+**桌面壳**：`apps/desktop` 已能起 Electron 窗口，并拉起监控服务；Windows NSIS 安装包与免安装目录两套构建入口已配置。
+
+**还没做**：账号与登录、帖子检索与回复层级、云端模型/训练接口的真实接通、Linux 安装包、签名与自动更新。
 
 ## 接下来做什么
 
-见 [ROADMAP.md](ROADMAP.md)。短期三件事：把中继并入 `apps/relay/` 并挂上服务器；补账号与最小检索；再谈桌面壳。
+见 [ROADMAP.md](ROADMAP.md)。短期三件事：把安装包 build 完整跑通；补云端模型加载与训练接口；再谈账号与检索。
 
 ## 部署
 

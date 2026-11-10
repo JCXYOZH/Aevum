@@ -1,0 +1,63 @@
+{
+  "name": "memoria-control-desk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Memoria 的 Web 桌面端：多窗口监控内核、训练、中继与错误码。",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "dist:dir": "electron-builder --win dir",
+    "dist:portable": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "cn.mrhua.memoria",
+    "productName": "Memoria Control Desk",
+    "asar": false,
+    "directories": {
+      "output": "dist-app"
+    },
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../community/web",
+        "to": "web"
+      },
+      {
+        "from": "../console/monitor/dist/memoria-monitor.exe",
+        "to": "monitor/memoria-monitor.exe"
+      },
+      {
+        "from": "../relay/contracts/errors.json",
+        "to": "contracts/errors.json"
+      },
+      {
+        "from": "../../data/tinyshakespeare_3000.txt",
+        "to": "data/tinyshakespeare_3000.txt"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "../community/web/assets/favicon-256.ico",
+      "compression": "store"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Memoria Control Desk",
+      "installerIcon": "../community/web/assets/favicon-256.ico",
+      "uninstallerIcon": "../community/web/assets/favicon-256.ico",
+      "artifactName": "Memoria-Control-Desk-Setup-${version}.${ext}"
+    }
+  }
+}

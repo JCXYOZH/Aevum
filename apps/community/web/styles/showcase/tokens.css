@@ -1,0 +1,19 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f0e3;
+  --bg-soft: #fbf7ee;
+  --panel: #fffdf8;
+  --panel-2: #f7f0e1;
+  --line: #d8cbb6;
+  --line-soft: rgba(120, 100, 75, 0.26);
+  --text: #1c1a16;
+  --muted: #5e574b;
+  --dim: #8a8070;
+  --amber: #a9722d;
+  --teal: #2f7c76;
+  --coral: #b85f4b;
+  --mono: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+  --sans: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --display: "Iowan Old Style", "Palatino Linotype", "Songti SC", "Noto Serif CJK SC", "Microsoft YaHei", serif;
+  --page: 1120px;
+}
