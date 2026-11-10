@@ -45,9 +45,16 @@
 
   var params = new URLSearchParams(global.location.search);
   var loopback = /^(127\.0\.0\.1|localhost)$/.test(global.location.hostname);
+
+  function sameOriginWs(path) {
+    if (!global.location.host) return "";
+    var scheme = global.location.protocol === "https:" ? "wss:" : "ws:";
+    return scheme + "//" + global.location.host + path;
+  }
+
   MD.config = {
     relayBase: (params.get("relay") || (loopback ? "http://127.0.0.1:8790" : "")).replace(/\/$/, ""),
-    bridgeUrl: params.get("bridge") || (loopback ? "ws://127.0.0.1:8765" : ""),
+    bridgeUrl: params.get("bridge") || (loopback ? "ws://127.0.0.1:8765" : sameOriginWs("/ws")),
     monitorBase: ""
   };
 
