@@ -66,6 +66,8 @@ DATA_ROOT = Path(
     os.environ.get("MEMORIA_DATA_ROOT", str(ROOT / "data"))
 ).resolve()
 ERROR_PATTERN = re.compile(r"0x[0-9A-Fa-f]{6}")
+MODEL_EXE_NAME = "memoria_gen_cpu.exe" if os.name == "nt" else "memoria_gen_cpu"
+MODEL_EXE_CUDA_NAME = "memoria_gen.exe" if os.name == "nt" else "memoria_gen"
 
 
 def port_open(host: str, port: int, timeout: float = 0.35) -> bool:
@@ -586,12 +588,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--model-exe",
-        default=str(BUILD_ROOT / "memoria_gen_cpu.exe"),
+        default=str(BUILD_ROOT / MODEL_EXE_NAME),
         help="CPU-only generation executable (default)",
     )
     parser.add_argument(
         "--model-exe-cuda",
-        default=str(BUILD_ROOT / "memoria_gen.exe"),
+        default=str(BUILD_ROOT / MODEL_EXE_CUDA_NAME),
         help="CUDA-linked generation executable, used only when device=cuda",
     )
     parser.add_argument(

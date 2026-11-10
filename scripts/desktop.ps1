@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Memoria desktop launcher: relay + desktop monitor + optional QEMU/bridge.
 # Logs and pid state stay under build\desktop-logs, never in apps or src.
 
