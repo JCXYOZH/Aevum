@@ -7,8 +7,8 @@
 #     sudo DOMAIN=console.mrhua.cn bash apps/console/deploy/install.sh
 #     sudo bash apps/console/deploy/install.sh --tls     # 顺带申请证书
 #
-# 做的事：装依赖 → 建 venv → 起内核(QEMU 无头) → 起桥接 → 配 nginx →
-#         校验两个端口与页面。可以重复执行，不会重复建东西。
+# 做的事：装依赖 → 建 venv → 起内核(QEMU 无头) → 起桥接 → 起中继 →
+#         起监控与模型 → 配 nginx → 校验四个服务端口与页面。
 # =====================================================================
 set -euo pipefail
 
@@ -30,6 +30,10 @@ die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 CONSOLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_ROOT="$(cd "$CONSOLE_DIR/../.." && pwd)"
 IMAGE="$CONSOLE_DIR/kernel/disk.img"
+BUILD_DIR="$APP_ROOT/build/linux"
+MODEL_EXE="$BUILD_DIR/memoria_gen_cpu"
+MODEL_DATA="$APP_ROOT/data/tinyshakespeare_3000.txt"
+PYTHON="$APP_ROOT/.venv/bin/python"
 
 log "仓库根目录：$APP_ROOT"
 log "域名：$DOMAIN"
@@ -86,24 +90,64 @@ fi
 "$APP_ROOT/.venv/bin/pip" install --quiet --upgrade pip
 "$APP_ROOT/.venv/bin/pip" install --quiet websockets
 
+# ---------------------------------------------------------------- 2.1 torch 运行库
+# 生成器是 C++ 二进制，运行时需要 libtorch；优先用仓库外的现成 venv。
+log "探测 torch 运行库"
+TORCH_LIB=""
+for py in "${MEMORIA_PYTHON:-}" "$APP_ROOT/.venv/bin/python" "$APP_ROOT/venv/bin/python" python3; do
+    if [ -n "$py" ] && { [ -x "$py" ] || command -v "$py" >/dev/null 2>&1; }; then
+        TORCH_LIB="$("$py" -c 'import pathlib, torch; print(pathlib.Path(torch.__file__).resolve().parent / "lib")' 2>/dev/null || true)"
+        [ -n "$TORCH_LIB" ] && break
+    fi
+done
+if [ -n "$TORCH_LIB" ]; then
+    log "torch：$TORCH_LIB"
+else
+    log "未探测到 torch 运行库，生成器将依赖自身的 rpath"
+fi
+
 # ---------------------------------------------------------------- 3 内核镜像
 log "检查内核镜像"
 [ -f "$IMAGE" ] || die "缺少 $IMAGE：请在开发机上 make disk.img 后提交到仓库"
 printf '    %s（%s 字节）\n' "$IMAGE" "$(stat -c%s "$IMAGE")"
 [ "$(stat -c%s "$IMAGE")" -eq 16384 ] || die "disk.img 大小不是 16384 字节，镜像不对劲"
 
+# ---------------------------------------------------------------- 3.1 模型
+log "检查模型生成器与检查点"
+if [ -f "$MODEL_EXE" ] && [ ! -x "$MODEL_EXE" ]; then
+    chmod +x "$MODEL_EXE"
+fi
+[ -x "$MODEL_EXE" ] || die "缺少可执行生成器：$MODEL_EXE
+    先在服务器上编译：MEMORIA_PYTHON=python bash scripts/build-linux.sh --cpu-only"
+[ -f "$MODEL_DATA" ] || die "缺少模型语料：$MODEL_DATA"
+printf '    %s（%s 字节）\n' "$MODEL_EXE" "$(stat -c%s "$MODEL_EXE")"
+CHECKPOINT="$(find "$BUILD_DIR" -maxdepth 3 -name config.json -print -quit 2>/dev/null || true)"
+if [ -n "$CHECKPOINT" ]; then
+    log "检查点：$(dirname "$CHECKPOINT")"
+else
+    log "警告：$BUILD_DIR 下没有 config.json，看板可以启动，但模型窗口没有可加载的检查点"
+fi
+
 # ---------------------------------------------------------------- 4 systemd
 log "写入 systemd 单元并启动"
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@QEMU_BIN@|$QEMU_BIN|g" \
     "$CONSOLE_DIR/deploy/aevum-kernel.service" > /etc/systemd/system/aevum-kernel.service
-sed -e "s|@APP_ROOT@|$APP_ROOT|g" \
+sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" \
     "$CONSOLE_DIR/deploy/aevum-bridge.service" > /etc/systemd/system/aevum-bridge.service
+sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" \
+    "$CONSOLE_DIR/deploy/aevum-relay.service" > /etc/systemd/system/aevum-relay.service
+sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" -e "s|@TORCH_LIB@|$TORCH_LIB|g" \
+    "$CONSOLE_DIR/deploy/aevum-monitor.service" > /etc/systemd/system/aevum-monitor.service
 
 systemctl daemon-reload
-systemctl enable aevum-kernel aevum-bridge >/dev/null 2>&1
+systemctl enable aevum-kernel aevum-bridge aevum-relay aevum-monitor >/dev/null 2>&1
+systemctl restart aevum-relay
+sleep 1
 systemctl restart aevum-kernel
 sleep 1
 systemctl restart aevum-bridge
+sleep 1
+systemctl restart aevum-monitor
 sleep 1
 
 # ---------------------------------------------------------------- 5 nginx
@@ -147,8 +191,14 @@ check() {
 }
 check "内核服务在跑"      "systemctl is-active --quiet aevum-kernel"
 check "桥接服务在跑"      "systemctl is-active --quiet aevum-bridge"
+check "中继服务在跑"      "systemctl is-active --quiet aevum-relay"
+check "监控服务在跑"      "systemctl is-active --quiet aevum-monitor"
 check "5555 只绑回环"     "ss -lnt | grep -q '127.0.0.1:5555'"
 check "8765 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8765'"
+check "8781 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8781'"
+check "8790 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8790'"
+check "看板健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8781/api/health"
+check "中继健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8790/v1/health"
 check "页面能取到 200"    "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN'"
 
 if [ "$fail" -ne 0 ]; then
@@ -157,7 +207,9 @@ if [ "$fail" -ne 0 ]; then
 有项目没通过。常用排查：
   journalctl -u aevum-kernel -n 40      # 内核是否起来、是否报错
   journalctl -u aevum-bridge -n 40      # 桥接是否连上 5555
-  ss -lntp | grep 5555                  # 端口被谁占了
+  journalctl -u aevum-relay -n 40       # 中继是否监听 8790
+  journalctl -u aevum-monitor -n 40     # 监控与模型是否起来
+  ss -lntp | grep -E '5555|8765|8781|8790'
 EOF
     exit 1
 fi
@@ -165,6 +217,8 @@ fi
 log "完成"
 cat <<EOF
     访问：http${WITH_TLS:+s}://$DOMAIN/
+    看板：http${WITH_TLS:+s}://$DOMAIN/desktop
+    中继：http${WITH_TLS:+s}://$DOMAIN/v1/health
     页面上的灯变青绿、帧/格在涨，就说明 内核 → 桥接 → 前端 全通了。
-    安全组只需要放行 80/443；5555 与 8765 不要对外开放。
+    安全组只需要放行 80/443；5555、8765、8781、8790 不要对外开放。
 EOF

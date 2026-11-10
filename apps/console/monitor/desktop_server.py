@@ -537,6 +537,11 @@ class MonitorHandler(BaseHTTPRequestHandler):
             torch_lib = ROOT / torch_lib
         if torch_lib.is_dir():
             env["PATH"] = str(torch_lib) + os.pathsep + env.get("PATH", "")
+            if os.name != "nt":
+                env["LD_LIBRARY_PATH"] = (
+                    str(torch_lib)
+                    + (os.pathsep + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
+                )
         started = time.time()
         try:
             completed = subprocess.run(
