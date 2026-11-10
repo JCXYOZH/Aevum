@@ -33,6 +33,7 @@ IMAGE="$CONSOLE_DIR/kernel/disk.img"
 BUILD_DIR="$APP_ROOT/build/linux"
 MODEL_EXE="$BUILD_DIR/memoria_gen_cpu"
 MODEL_DATA="$APP_ROOT/data/tinyshakespeare_3000.txt"
+WEB_ROOT="$APP_ROOT/apps/community/web"
 PYTHON="$APP_ROOT/.venv/bin/python"
 
 log "仓库根目录：$APP_ROOT"
@@ -78,32 +79,57 @@ done
 log "QEMU：$QEMU_BIN"
 
 # ---------------------------------------------------------------- 2 Python
-# 优先用仓库里现成的 venv；只有确实没有时才创建 .venv 兜底。
-# 选中的解释器会写进 systemd 单元，不再固定写死在某个目录。
+# 环境变量优先；没有就按 pyvenv.cfg 自动发现，不自动创建 .venv。
+# 选中的解释器会写进 systemd 单元。
 log "选择 Python 环境"
-PYTHON=""
-for cand in "$APP_ROOT/venv/bin/python" "${MEMORIA_PYTHON:-}" "$APP_ROOT/.venv/bin/python" python3; do
-    [ -n "$cand" ] || continue
-    if [ -x "$cand" ]; then
-        resolved="$cand"
-    else
-        resolved="$(command -v "$cand" 2>/dev/null || true)"
-    fi
-    [ -n "$resolved" ] || continue
-    if "$resolved" -c 'import torch' >/dev/null 2>&1; then
-        PYTHON="$resolved"
-        break
-    fi
-    [ -z "$PYTHON" ] && PYTHON="$resolved"
-done
 
-if [ -z "$PYTHON" ] || [ ! -x "$PYTHON" ]; then
-    log "没有现成 venv，创建 $APP_ROOT/.venv"
-    python3 -m venv "$APP_ROOT/.venv" \
-        || die "python3 -m venv 失败：Debian 系装 python3-venv，RHEL 系装 python3-pip"
-    PYTHON="$APP_ROOT/.venv/bin/python"
+# 1) 显式 MEMORIA_PYTHON 最优先；2) 再看当前激活的 VIRTUAL_ENV。
+# 3) 如果 sudo 把环境变量清了，就自己找带 pyvenv.cfg 的 venv：
+#    仓库内、仓库上一级、/opt、SUDO_USER 的家目录、/home，最多四层。
+#    不自动创建 .venv，也不使用仓库里的 .venv 兜底。
+PYTHON=""
+if [ -n "${MEMORIA_PYTHON:-}" ]; then
+    PYTHON="$(command -v "$MEMORIA_PYTHON" 2>/dev/null || true)"
+    [ -n "$PYTHON" ] || PYTHON="$MEMORIA_PYTHON"
+    [ -x "$PYTHON" ] || die "MEMORIA_PYTHON 指向的 Python 不可执行：$PYTHON"
+    log "Python（MEMORIA_PYTHON）：$PYTHON"
+elif [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    PYTHON="$VIRTUAL_ENV/bin/python"
+    log "Python（VIRTUAL_ENV）：$PYTHON"
+else
+    log "环境变量里没有 venv，开始查找 pyvenv.cfg"
+    SUDO_HOME=""
+    if [ -n "${SUDO_USER:-}" ]; then
+        SUDO_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true)"
+    fi
+    CANDIDATES=()
+    for root in "$APP_ROOT" "$(cd "$APP_ROOT/.." && pwd)" "${SUDO_HOME:-}" /opt /home; do
+        [ -n "$root" ] && [ -d "$root" ] || continue
+        while IFS= read -r cfg; do
+            case "$cfg" in
+                */.venv/*) continue ;;
+            esac
+            py="$(dirname "$cfg")/bin/python"
+            [ -x "$py" ] && CANDIDATES+=("$py")
+        done < <(find "$root" -maxdepth 4 -type f -name pyvenv.cfg -print 2>/dev/null)
+    done
+    PYTHON=""
+    PYTHON_NO_TORCH=""
+    for py in "${CANDIDATES[@]}"; do
+        [ -n "$py" ] || continue
+        log "  发现：$py"
+        if "$py" -c 'import torch' >/dev/null 2>&1; then
+            PYTHON="$py"
+            break
+        fi
+        [ -z "$PYTHON_NO_TORCH" ] && PYTHON_NO_TORCH="$py"
+    done
+    [ -n "$PYTHON" ] || PYTHON="$PYTHON_NO_TORCH"
+    [ -n "$PYTHON" ] || die "找不到任何 venv：环境变量没给，APP_ROOT/上一级、/opt、/home 下也没有 pyvenv.cfg。
+    请用：
+      sudo env MEMORIA_PYTHON=/path/to/venv/bin/python bash apps/console/deploy/install.sh"
+    log "Python（自动发现）：$PYTHON"
 fi
-log "Python：$PYTHON"
 
 if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
     "$PYTHON" -m ensurepip --upgrade >/dev/null 2>&1 \
@@ -118,7 +144,7 @@ fi
 # 生成器是 C++ 二进制，运行时需要 libtorch；从选中的 Python 里取 torch/lib。
 log "探测 torch 运行库"
 TORCH_LIB=""
-for py in "$PYTHON" "$APP_ROOT/venv/bin/python" "$APP_ROOT/.venv/bin/python"; do
+for py in "$PYTHON"; do
     [ -x "$py" ] || continue
     TORCH_LIB="$("$py" -c 'import pathlib, torch; print(pathlib.Path(torch.__file__).resolve().parent / "lib")' 2>/dev/null || true)"
     [ -n "$TORCH_LIB" ] && break
@@ -183,10 +209,22 @@ log "写 nginx 配置"
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@DOMAIN@|$DOMAIN|g" \
     "$CONSOLE_DIR/deploy/nginx.conf" > /etc/nginx/conf.d/aevum-console.conf
 
+# nginx worker 通常不是 root。仓库目录若是 700，worker 连 index.html 都 stat 不到，
+# 就会返回 500，而 nginx -t 仍然是成功的。这里只补“可穿过 + 静态文件可读”，
+# 不递归打开整个仓库。
+log "修正静态目录权限"
+[ -d "$WEB_ROOT" ] || die "缺少静态目录：$WEB_ROOT"
+[ -f "$WEB_ROOT/index.html" ] || die "缺少首页：$WEB_ROOT/index.html"
+for dir in "$APP_ROOT" "$APP_ROOT/apps" "$APP_ROOT/apps/community" "$WEB_ROOT"; do
+    [ -d "$dir" ] && chmod o+x "$dir" 2>/dev/null || true
+done
+chmod -R o+rX "$WEB_ROOT" 2>/dev/null || true
+
 # RHEL 系默认 SELinux 会拦 nginx 的 127.0.0.1 反代
 if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = "Enforcing" ]; then
     log "SELinux 处于 Enforcing，允许 nginx 连接本机回环"
     setsebool -P httpd_can_network_connect 1 || true
+    chcon -R -t httpd_sys_content_t "$WEB_ROOT" 2>/dev/null || true
 fi
 
 nginx -t || die "nginx 配置校验失败，先看 /etc/nginx/conf.d/aevum-console.conf"
