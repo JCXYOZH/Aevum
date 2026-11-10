@@ -129,6 +129,12 @@ if (-not $Python) {
 if (-not (Test-Path -LiteralPath $Python)) {
     throw "Python 不存在：$Python"
 }
+if (-not $NoKernel) {
+    & $Python -c "import websockets" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "当前 Python 没有 websockets。用 -Python 指定虚拟环境的 python.exe。"
+    }
+}
 
 if (-not $NoKernel -and -not $Qemu) {
     if ($env:QEMU_BIN) {
