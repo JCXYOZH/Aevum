@@ -27,6 +27,67 @@ scripts\desktop.ps1
 
 `-NoKernel` 跳过 QEMU；`-Electron` 起桌面壳；`-Stop` 停掉本脚本起的进程。
 
+## Linux 云端启动
+
+从零到能训练、能看板、能生成，一条链路如下。示例目录是 `/opt/Aevum`，按实际路径替换。
+
+```bash
+cd /opt/Aevum
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -U pip
+# CPU 主机用 cpu 索引；有 CUDA 就换成 cu128 等匹配驱动的索引
+python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+MEMORIA_PYTHON=python bash scripts/build-linux.sh
+```
+
+训练到 `build/linux`（该目录被 Git 排除）：
+
+```bash
+mkdir -p build/linux/checkpoint_aevum
+./build/linux/memoria_train \
+  --data data/tinyshakespeare_3000.txt \
+  --device cpu \
+  --epochs 2 --batch 16 --seq-len 16 --vocab 3000 --dim 64 \
+  --save build/linux/checkpoint_aevum \
+  --metrics build/linux/training_metrics.jsonl
+```
+
+有 CUDA 版 torch 时把 `--device cpu` 改成 `--device cuda`，并用 `cu128` 一类的索引安装 torch。启动服务：
+
+```bash
+export MEMORIA_ROOT=/opt/Aevum
+export MEMORIA_BUILD_ROOT=/opt/Aevum/build/linux
+export MEMORIA_DATA_ROOT=/opt/Aevum/data
+export MEMORIA_TORCH_LIB="$(python -c 'import pathlib, torch; print(pathlib.Path(torch.__file__).resolve().parent / "lib")')"
+export PYTHONPATH=/opt/Aevum/apps/relay
+
+nohup python -m relay --port 8790 > build/relay.log 2>&1 &
+nohup python apps/console/monitor/desktop_server.py \
+  --host 127.0.0.1 --port 8781 --relay-port 8790 \
+  --metrics build/linux/training_metrics.jsonl \
+  --model-exe build/linux/memoria_gen_cpu \
+  --model-exe-cuda build/linux/memoria_gen \
+  --model-data data/tinyshakespeare_3000.txt \
+  > build/monitor.log 2>&1 &
+```
+
+检查：
+
+```bash
+curl -fsS http://127.0.0.1:8781/api/health
+curl -fsS http://127.0.0.1:8781/api/model
+curl -fsS http://127.0.0.1:8790/v1/health
+```
+
+远程查看用 SSH 隧道，不要把 8781 直接暴露到公网（监控 API 没有鉴权）：
+
+```bash
+ssh -L 8781:127.0.0.1:8781 -L 8790:127.0.0.1:8790 user@your-server
+```
+
+公开站点和 `/v1/` 走 nginx 时，用 `apps/relay/deploy/install.sh`，不要把 relay 和手工启动的重复起一份。
+
 ## 编译 Memoria
 
 ```powershell
