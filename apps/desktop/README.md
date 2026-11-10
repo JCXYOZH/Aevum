@@ -48,13 +48,13 @@ scripts\desktop.ps1 -NoKernel -Electron
 两套目标并存：
 
 ```powershell
-npm run dist:installer  # Windows NSIS 安装包，低内存路径
+npm run dist:installer  # Windows Inno Setup 安装包，低内存路径
 npm run dist:dir        # 免安装目录：dist-app\win-unpacked
 ```
 
-`npm run dist` 仍是 electron-builder 的常规 NSIS 路径；这台机器上它在解压 Electron 时会 OOM，因此实际验收走 `dist:installer`：用 `node_modules\electron\dist` 拼出完整 app 目录，再直接调 NSIS 编译器，`SetCompress off`，产物在 `apps\desktop\dist-app\Memoria-Control-Desk-Setup-0.1.0.exe`（约 281 MB）。
+`npm run dist` 仍是 electron-builder 的常规 NSIS 路径；这台机器上它在解压 Electron 时会 OOM，因此实际验收走 `dist:installer`：用 `node_modules\electron\dist` 拼出完整 app 目录，再由 `installer.iss` 调 Inno Setup 7 的 `ISCC.exe` 编译，产物在 `apps\desktop\dist-app\Memoria-Control-Desk-Setup-0.1.0.exe`（约 95 MB）。
 
-安装包带 Electron 运行时、监控 exe、前端页面、错误码表和 3000 行语料，**不带训练权重**。安装目录的 `resources/build` 可放检查点，或设置 `MEMORIA_BUILD_ROOT`。
+安装包带 Electron 运行时、监控 exe、前端页面、错误码表和 3000 行语料，**不带训练权重**。安装目录的 `resources/build` 可放检查点，或设置 `MEMORIA_BUILD_ROOT`。安装器提供中文/英文向导、程序图标、可选桌面快捷方式和开始菜单项；窗口图标由 `main.js` 的 `icon.ico` 设置。
 
 ## 窗口
 

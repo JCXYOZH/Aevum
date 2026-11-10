@@ -4,6 +4,8 @@ const fs = require("fs");
 const net = require("net");
 const path = require("path");
 
+const APP_ID = "cn.mrhua.memoria";
+const APP_ICON = path.join(__dirname, "icon.ico");
 const MONITOR_PORT = Number(process.env.MEMORIA_MONITOR_PORT || 8781);
 const MONITOR_URL = process.env.MEMORIA_MONITOR_URL || `http://127.0.0.1:${MONITOR_PORT}/`;
 let monitorProcess = null;
@@ -117,6 +119,7 @@ async function createWindow() {
     minHeight: 640,
     backgroundColor: "#f6f0e3",
     title: "Memoria Control Desk",
+    icon: fs.existsSync(APP_ICON) ? APP_ICON : undefined,
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -137,6 +140,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  app.setAppUserModelId(APP_ID);
   try {
     await createWindow();
   } catch (error) {

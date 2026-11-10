@@ -60,4 +60,14 @@ npm install
 npm run dist:installer
 ```
 
-`dist-app\win-unpacked` 是免安装目录；`Memoria-Control-Desk-Setup-*.exe` 是安装包。两者都不含 `node_modules` 与训练权重。低内存机器用 `dist:installer`；它绕开 electron-builder 解压 Electron 的内存峰值，直接调用 NSIS。
+`dist-app\win-unpacked` 是免安装目录；`Memoria-Control-Desk-Setup-*.exe` 是 Inno Setup 安装包。两者都不含 `node_modules` 与训练权重。低内存机器用 `dist:installer`；它绕开 electron-builder 解压 Electron 的内存峰值，用 `apps\desktop\installer.iss` 调 ISCC 编译，形式和 mrhua 的 Windows 安装包一致。
+
+## 训练指标与路径
+
+`training_metrics.jsonl`、检查点 exe 和语料不是写死的绝对路径，默认由运行位置推出来：
+
+- 源码运行监控：`desktop_server.py` 的 `ROOT` 是仓库根，`BUILD_ROOT` 默认是 `<repo>\build`，因此指标默认落在 `<repo>\build\training_metrics.jsonl`，模型默认是 `<repo>\build\memoria_gen_cpu.exe`。
+- 打包运行：`main.js` 注入 `MEMORIA_ROOT=resources`，`BUILD_ROOT` 默认是 `resources\build`；它不会去读开发机的 `D:\past-projects\memoria\build`。要读外部权重，设置 `MEMORIA_BUILD_ROOT`，或在安装目录 `resources` / exe 旁放 `model-root.txt`。
+- 训练脚本 `scripts/train.ps1` 默认把指标写到同一个 `build\training_metrics.jsonl`，所以源码模式下看板与训练自动对齐。
+
+其他覆盖项：`MEMORIA_DATA_ROOT` 换语料目录，`MEMORIA_WEB_ROOT` 换页面目录，`MEMORIA_ERROR_TABLE` 换错误码表。

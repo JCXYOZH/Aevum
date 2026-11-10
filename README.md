@@ -26,7 +26,7 @@ Aevum 是社区自己的平台，不是某个产品的官网。它的目标是�
 | `apps/console/monitor/` | `desktop_server.py`：桌面监控 API，读检查点、训练指标、错误码，起模型子进程 | 已实现 |
 | `apps/console/bridge/` | 串口帧转 WebSocket，页面不直接碰内核 | 已实现 |
 | `apps/console/kernel/` | 引导、状态机、错误码、80×25 单元格；只做逻辑，不含页面 | 维护中 |
-| `apps/desktop/` | Electron 壳；`npm run dist:installer` 出 Windows 安装包，`dist:dir` 出免安装目录 | 安装包已出 |
+| `apps/desktop/` | Electron 壳；`npm run dist:installer` 出 Inno Setup 安装包，`dist:dir` 出免安装目录 | 安装包已出 |
 | `src/memoria/` | Memoria C++ 内核：门控、链单元、三层平衡、分层记忆、训练、生成、检查点 | 可编译 |
 | `include/memoria/` | C++ 公共头文件；与 `src/memoria` 一一对应 | 可编译 |
 | `data/tinyshakespeare_3000.txt` | 3000 行公开语料，用于小模型冒烟训练；不是权重 | 已入库 |
@@ -113,11 +113,11 @@ scripts\generate.ps1 -Checkpoint "build\checkpoint_shakespeare_words_full" -Prom
 ```powershell
 cd apps\desktop
 npm install
-npm run dist:installer  # Windows 安装包（NSIS，免 7z 大内存路径）
+npm run dist:installer  # Windows 安装包（Inno Setup，和 mrhua 同一形式）
 npm run dist:dir        # 免安装目录
 ```
 
-安装包会带 Electron 运行时、`resources/monitor/memoria-monitor.exe`、前端页面、错误码表和 3000 行语料；**不带训练权重**。用户要加载自己的检查点，在安装目录 `resources/build` 放权重，或设置 `MEMORIA_BUILD_ROOT`。安装包产物约 281 MB，放在 `dist-app`，不进 Git。
+安装包会带 Electron 运行时、`resources/monitor/memoria-monitor.exe`、前端页面、错误码表和 3000 行语料；**不带训练权重**。用户要加载自己的检查点，在安装目录 `resources/build` 放权重，或设置 `MEMORIA_BUILD_ROOT`。安装包产物约 95 MB，放在 `dist-app`，不进 Git。安装器提供中文/英文向导、程序图标、可选桌面快捷方式和开始菜单项。
 
 ## 纯内存中继是什么
 
@@ -145,13 +145,13 @@ npm run dist:dir        # 免安装目录
 
 **监控服务**：`apps/console/monitor/desktop_server.py` 读检查点、训练日志和错误码，起模型生成子进程；`/api/model` 能看到本地检查点，`POST /api/model/generate` 能返回生成文本。
 
-**桌面壳**：`apps/desktop` 已能起 Electron 窗口，并拉起监控服务；Windows NSIS 安装包与免安装目录两套构建入口已配置。
+**桌面壳**：`apps/desktop` 已能起 Electron 窗口，并拉起监控服务；Windows Inno Setup 安装包与免安装目录两套构建入口已配置。
 
 **还没做**：账号与登录、帖子检索与回复层级、云端模型/训练接口的真实接通、Linux 安装包、签名与自动更新。
 
 ## 接下来做什么
 
-见 [ROADMAP.md](ROADMAP.md)。短期三件事：把安装包 build 完整跑通；补云端模型加载与训练接口；再谈账号与检索。
+见 [ROADMAP.md](ROADMAP.md)。短期三件事：在干净 Windows 用户目录把安装器实装/卸载跑一遍；补云端模型加载与训练接口；再谈账号与检索。
 
 ## 部署
 
