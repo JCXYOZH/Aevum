@@ -14,6 +14,7 @@
 #   MEMORIA_OPT=-O1 bash scripts/build-linux.sh --cpu-only
 #   JOBS=4 bash scripts/build-linux.sh --cpu-only
 #   MEMORIA_CXX_STANDARD=c++20 bash scripts/build-linux.sh --cpu-only
+#   MEMORIA_PCH=0 bash scripts/build-linux.sh --cpu-only   # disable precompiled header
 #
 # Outputs:
 #   build/linux/memoria_train
@@ -28,6 +29,7 @@ CXX11_ABI="${MEMORIA_CXX11_ABI:-0}"
 CXX_STANDARD="${MEMORIA_CXX_STANDARD:-}"
 OPT="${MEMORIA_OPT:--O2}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 2)}"
+PCH="${MEMORIA_PCH:-1}"
 CPU_ONLY=0
 CLEAN=0
 
@@ -80,9 +82,19 @@ case "$CXX_STANDARD" in
 esac
 
 if [[ "$CLEAN" == "1" ]]; then
-  rm -rf "$BUILD_DIR/obj"
+  echo "  --clean ignored: object files are overwritten in place, nothing is deleted"
 fi
 mkdir -p "$BUILD_DIR/obj"
+
+PCH_HEADER="$BUILD_DIR/obj/memoria_pch.h"
+PCH_FLAG=()
+if [[ "$PCH" == "1" ]]; then
+  printf '#include <torch/torch.h>\n' > "$PCH_HEADER"
+  echo "  build precompiled header (torch headers parsed once)"
+  "$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" \
+    -x c++-header "$PCH_HEADER" -o "$PCH_HEADER.gch"
+  PCH_FLAG=(-include "$PCH_HEADER")
+fi
 
 COMMON_SOURCES=(
   fixed_rms_norm
@@ -123,20 +135,20 @@ echo "== output:   $BUILD_DIR"
 COMMON_OBJECTS=()
 echo "  compile ${#COMMON_SOURCES[@]} common sources with -j$JOBS (opt=$OPT)"
 printf '%s\n' "${COMMON_SOURCES[@]}" | xargs -r -P "$JOBS" -I{} \
-  "$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" \
+  "$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" "${PCH_FLAG[@]}" \
   -c "$ROOT/src/memoria/{}.cpp" -o "$BUILD_DIR/obj/{}.o"
 for source in "${COMMON_SOURCES[@]}"; do
   COMMON_OBJECTS+=("$BUILD_DIR/obj/$source.o")
 done
 
 echo "  compile chat_main.cpp"
-"$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" -c "$ROOT/src/memoria/chat_main.cpp" -o "$BUILD_DIR/obj/gen_main.o"
+"$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" "${PCH_FLAG[@]}" -c "$ROOT/src/memoria/chat_main.cpp" -o "$BUILD_DIR/obj/gen_main.o"
 if [[ "$CPU_ONLY" != "1" ]]; then
   echo "  compile main.cpp"
-  "$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" -c "$ROOT/src/memoria/main.cpp" -o "$BUILD_DIR/obj/train_main.o"
+  "$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" "${PCH_FLAG[@]}" -c "$ROOT/src/memoria/main.cpp" -o "$BUILD_DIR/obj/train_main.o"
 fi
 echo "  compile cpu_cuda_stub.cpp"
-"$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" -c "$ROOT/src/memoria/cpu_cuda_stub.cpp" -o "$BUILD_DIR/obj/cpu_stub.o"
+"$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" "${PCH_FLAG[@]}" -c "$ROOT/src/memoria/cpu_cuda_stub.cpp" -o "$BUILD_DIR/obj/cpu_stub.o"
 
 link_target() {
   local output="$1"
