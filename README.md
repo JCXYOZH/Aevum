@@ -26,7 +26,7 @@ Aevum 是社区自己的平台，不是某个产品的官网。它的目标是�
 | `apps/console/monitor/` | `desktop_server.py`：桌面监控 API，读检查点、训练指标、错误码，起模型子进程 | 已实现 |
 | `apps/console/bridge/` | 串口帧转 WebSocket，页面不直接碰内核 | 已实现 |
 | `apps/console/kernel/` | 引导、状态机、错误码、80×25 单元格；只做逻辑，不含页面 | 维护中 |
-| `apps/desktop/` | Electron 壳；`npm run dist` 出 Windows 安装包，`dist:dir` 出免安装目录 | 已接入 |
+| `apps/desktop/` | Electron 壳；`npm run dist:installer` 出 Windows 安装包，`dist:dir` 出免安装目录 | 安装包已出 |
 | `src/memoria/` | Memoria C++ 内核：门控、链单元、三层平衡、分层记忆、训练、生成、检查点 | 可编译 |
 | `include/memoria/` | C++ 公共头文件；与 `src/memoria` 一一对应 | 可编译 |
 | `data/tinyshakespeare_3000.txt` | 3000 行公开语料，用于小模型冒烟训练；不是权重 | 已入库 |
@@ -113,11 +113,11 @@ scripts\generate.ps1 -Checkpoint "build\checkpoint_shakespeare_words_full" -Prom
 ```powershell
 cd apps\desktop
 npm install
-npm run dist      # Windows 安装包（NSIS）
-npm run dist:dir  # 免安装目录
+npm run dist:installer  # Windows 安装包（NSIS，免 7z 大内存路径）
+npm run dist:dir        # 免安装目录
 ```
 
-安装包会带 Electron 运行时、`resources/monitor/memoria-monitor.exe`、前端页面、错误码表和 3000 行语料；**不带训练权重**。用户要加载自己的检查点，在安装目录 `resources/build` 放权重，或设置 `MEMORIA_BUILD_ROOT`。
+安装包会带 Electron 运行时、`resources/monitor/memoria-monitor.exe`、前端页面、错误码表和 3000 行语料；**不带训练权重**。用户要加载自己的检查点，在安装目录 `resources/build` 放权重，或设置 `MEMORIA_BUILD_ROOT`。安装包产物约 281 MB，放在 `dist-app`，不进 Git。
 
 ## 纯内存中继是什么
 

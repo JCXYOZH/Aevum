@@ -9,7 +9,8 @@
 - `src/memoria/`：Memoria C++ 内核（17 个 `.cpp`：门控、链单元、三层平衡、分层记忆、训练、生成、检查点）。
 - `include/memoria/`：与源码对应的 15 个公共头文件。
 - `apps/console/monitor/`：桌面监控 API、模型生成子进程与检查点发现。
-- `apps/desktop/`：Electron 壳；`npm run dist` 为 NSIS 安装包，`npm run dist:dir` 为免安装目录。
+- `apps/desktop/`：Electron 壳；`npm run dist:installer` 为低内存 NSIS 安装包，`npm run dist:dir` 为免安装目录。
+- `scripts/build-installer.ps1`：用已下载的 Electron dist 拼完整 app 目录后直接调 NSIS，绕开 electron-builder 解压 Electron 的内存峰值。
 - `apps/community/web/desktop.html`：多窗口看板；`index.html` 保留为展示页并可作看板窗口。
 - `apps/community/web/styles/presence.css`：展示页与看板共用的灵体组件。
 - `data/tinyshakespeare_3000.txt`：3000 行公开语料。
@@ -32,7 +33,7 @@
 ### Notes
 
 - 模型权重、检查点和 `node_modules` 不入库；模型发布走 Release 附件或服务器目录。
-- NSIS 安装包在本机受 `7za` 内存限制，目录包已验证；安装包需在内存更充足的机器完成最终验收。
+- NSIS 安装包在本机受 electron-builder 解压 Electron 的内存峰值限制；`dist:installer` 已产出 `Memoria-Control-Desk-Setup-0.1.0.exe`（约 281 MB），产物不进 Git。常规 `npm run dist` 仍留作内存充足构建机使用。
 
 ## [0.1.0] - 2026-11-08
 

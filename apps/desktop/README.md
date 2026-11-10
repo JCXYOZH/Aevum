@@ -48,13 +48,13 @@ scripts\desktop.ps1 -NoKernel -Electron
 两套目标并存：
 
 ```powershell
-npm run dist      # Windows NSIS 安装包：Memoria-Control-Desk-Setup-0.1.0.exe
-npm run dist:dir  # 免安装目录：dist-app\win-unpacked
+npm run dist:installer  # Windows NSIS 安装包，低内存路径
+npm run dist:dir        # 免安装目录：dist-app\win-unpacked
 ```
 
-产物在 `apps\desktop\dist-app`。安装包带 Electron 运行时、监控 exe、前端页面、错误码表和 3000 行语料，**不带训练权重**。
+`npm run dist` 仍是 electron-builder 的常规 NSIS 路径；这台机器上它在解压 Electron 时会 OOM，因此实际验收走 `dist:installer`：用 `node_modules\electron\dist` 拼出完整 app 目录，再直接调 NSIS 编译器，`SetCompress off`，产物在 `apps\desktop\dist-app\Memoria-Control-Desk-Setup-0.1.0.exe`（约 281 MB）。
 
-当前机器上 `7za` 压 282 MiB 载荷会内存不足；`win.compression` 已设为 `store`，仍需在内存更充足的构建机完成安装包验收。免安装目录已能产出。
+安装包带 Electron 运行时、监控 exe、前端页面、错误码表和 3000 行语料，**不带训练权重**。安装目录的 `resources/build` 可放检查点，或设置 `MEMORIA_BUILD_ROOT`。
 
 ## 窗口
 

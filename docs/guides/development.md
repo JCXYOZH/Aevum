@@ -57,7 +57,7 @@ scripts\generate.ps1 -Checkpoint "build\checkpoint_demo" -Prompt "What " -Device
 ```powershell
 cd apps\desktop
 npm install
-npm run dist
+npm run dist:installer
 ```
 
-`dist-app\win-unpacked` 是免安装目录；`Memoria-Control-Desk-Setup-*.exe` 是安装包。两者都不含 `node_modules` 与训练权重。
+`dist-app\win-unpacked` 是免安装目录；`Memoria-Control-Desk-Setup-*.exe` 是安装包。两者都不含 `node_modules` 与训练权重。低内存机器用 `dist:installer`；它绕开 electron-builder 解压 Electron 的内存峰值，直接调用 NSIS。
