@@ -1,0 +1,5 @@
+# 内核构建产物（disk.img 例外，它是部署要用的成品）
+kernel/*.o
+kernel/*.elf
+kernel/*.bin
+kernel/build.log

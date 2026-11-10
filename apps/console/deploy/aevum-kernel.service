@@ -1,0 +1,12 @@
+[Unit]
+Description=Aevum kernel (headless QEMU, serial on loopback)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@QEMU_BIN@ -drive format=raw,file=@APP_ROOT@/apps/console/kernel/disk.img -display none -monitor none -no-reboot -serial tcp:127.0.0.1:5555,server=on,wait=off
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
