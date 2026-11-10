@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import logging
 import os
 import signal
@@ -18,7 +19,9 @@ import sys
 import threading
 
 from relay.bootstrap import start
+from relay.codes import code_of
 from relay.engine import DEFAULT_HOST, DEFAULT_PORT
+from relay.errors import RelayFault
 
 
 def _parse_args(argv=None) -> argparse.Namespace:
@@ -71,7 +74,18 @@ def main(argv=None) -> int:
         logger.exception("启动失败，且没有映射到 0xRRFFTT；请检查解释器环境")
         return 2
 
-    server = engine.start_http(args.host, args.port)
+    try:
+        server = engine.start_http(args.host, args.port)
+    except OSError as exc:
+        if exc.errno in (errno.EADDRINUSE, 10048):
+            fault = RelayFault(
+                code_of("R7_RUNTIME_FAILED"),
+                f"端口 {args.port} 已被占用；另一个中继进程还在跑，先停掉它再启动",
+                subject=f"{args.host}:{args.port}",
+            )
+            print(fault.render(), file=sys.stderr, flush=True)
+            return 3
+        raise
     print(
         f"memory-relay listening on http://{args.host}:{server.port} "
         f"token={'set' if args.token else 'none'} persisted=False",

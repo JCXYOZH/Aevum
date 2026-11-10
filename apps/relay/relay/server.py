@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -144,7 +145,9 @@ class RelayApp:
 
 class RelayHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = True
+    # Windows 的 SO_REUSEADDR 允许两个进程绑同一端口，旧实例会继续接管请求，
+    # 内存里的在线/浏览计数也就不会随重启清零；这里只在非 Windows 上启用。
+    allow_reuse_address = os.name != "nt"
 
     def __init__(self, address: Tuple[str, int], app: RelayApp) -> None:
         self.app = app
