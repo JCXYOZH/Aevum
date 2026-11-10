@@ -66,6 +66,19 @@ if [[ -z "$QEMU" ]]; then
   done
 fi
 
+QEMU_ACCEL=()
+if [[ "$NO_KERNEL" != "1" ]]; then
+  if [[ "${MEMORIA_QEMU_ACCEL:-auto}" == "tcg" ]]; then
+    echo "  qemu accel: tcg (forced)" >&2
+  elif [[ -r /dev/kvm && -w /dev/kvm ]]; then
+    QEMU_ACCEL=(-enable-kvm)
+    echo "  qemu accel: kvm" >&2
+  else
+    echo "  qemu accel: tcg (/dev/kvm unavailable; kernel will be slow)" >&2
+    echo "  for hardware acceleration use a nested-virtualization ECS instance, or --no-kernel." >&2
+  fi
+fi
+
 port_in_use() {
   "$PYTHON_BIN" - "$1" <<'PY'
 import socket, sys
@@ -239,7 +252,7 @@ fi
 
 if [[ "$NO_KERNEL" != "1" ]]; then
   start_service qemu "$ROOT/apps/console/kernel" \
-    "$QEMU" -drive format=raw,file=disk.img -display none -monitor none -no-reboot \
+    "$QEMU" "${QEMU_ACCEL[@]}" -drive format=raw,file=disk.img -display none -monitor none -no-reboot \
     -serial "tcp:127.0.0.1:$SERIAL_PORT,server=on,wait=off"
   if ! wait_port "$SERIAL_PORT"; then
     echo "qemu serial did not start; see $LOG_DIR/qemu.err.log" >&2
