@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Start a training run in the background and write the exact log/metric paths
 # the desktop monitor reads. Run scripts\desktop.ps1 first, then this file.
 
