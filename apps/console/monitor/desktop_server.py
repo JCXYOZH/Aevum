@@ -530,8 +530,10 @@ class MonitorHandler(BaseHTTPRequestHandler):
         env["MKL_NUM_THREADS"] = "1"
         env["TORCH_NUM_THREADS"] = "1"
         env["OPENBLAS_NUM_THREADS"] = "1"
-        torch_lib = Path(env.get("MEMORIA_TORCH_LIB", r"D:\venv\Lib\site-packages\torch\lib"))
-        if torch_lib.exists():
+        torch_lib = Path(env["MEMORIA_TORCH_LIB"]).expanduser() if env.get("MEMORIA_TORCH_LIB") else BUILD_ROOT / "runtime"
+        if not torch_lib.is_absolute():
+            torch_lib = ROOT / torch_lib
+        if torch_lib.is_dir():
             env["PATH"] = str(torch_lib) + os.pathsep + env.get("PATH", "")
         started = time.time()
         try:

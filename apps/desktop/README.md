@@ -56,7 +56,7 @@ npm run dist:dir        # 免安装目录：dist-app\win-unpacked
 
 `npm run dist` 仍是 electron-builder 的常规 NSIS 路径；这台机器上它在解压 Electron 时会 OOM，因此实际验收走 `dist:installer`：用 `node_modules\electron\dist` 拼出完整 app 目录，再由 `installer.iss` 调 Inno Setup 7 的 `ISCC.exe` 编译，产物在 `apps\desktop\dist-app\Memoria-Control-Desk-Setup-0.1.0.exe`（约 96 MB）。开源目录没有 `node_modules` 时，用 `MEMORIA_ELECTRON_DIST` 指向外部运行时，不要把依赖拷进仓库。
 
-安装包带 Electron 运行时、监控 exe、前端页面、错误码表和 3000 行语料，**不带训练权重**。安装器会创建 `{app}\resources\build` 并授予用户写权限；安装后默认指标路径是 `<安装目录>\resources\build\training_metrics.jsonl`，不是旧工作目录。要读外部权重，设置 `MEMORIA_BUILD_ROOT`，或在 `resources` / exe 旁放 `model-root.txt`。安装器提供中文/英文向导、程序图标、可选桌面快捷方式和开始菜单项；窗口图标由 `main.js` 的 `icon.ico` 设置。
+安装包带 Electron 运行时、监控 exe、前端页面、错误码表和 3000 行语料，**不带训练权重**。安装器会创建 `{app}\resources\build` 并授予用户写权限；安装后默认指标路径是 `<安装目录>\resources\build\training_metrics.jsonl`，不是旧工作目录。要读外部权重，设置 `MEMORIA_BUILD_ROOT`，或在 `resources` / exe 旁放 `model-root.txt`。模型生成器 `memoria_gen_cpu.exe` 依赖 `torch_cpu.dll` 等 CPU 运行时，把 DLL 放到 `<安装目录>\resources\build\runtime`，或设置 `MEMORIA_TORCH_LIB`；安装包本身不夹这组运行时。安装器提供中文/英文向导、程序图标、可选桌面快捷方式和开始菜单项；窗口图标由 `main.js` 的 `icon.ico` 设置。
 
 ## 窗口
 

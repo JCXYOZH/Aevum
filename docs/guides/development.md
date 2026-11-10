@@ -71,6 +71,7 @@ npm run dist:installer
 
 - 源码运行监控：`desktop_server.py` 的 `ROOT` 是仓库根，`BUILD_ROOT` 默认是 `<repo>\build`，因此指标默认落在 `<repo>\build\training_metrics.jsonl`，模型默认是 `<repo>\build\memoria_gen_cpu.exe`。在开源目录里跑就是 `D:\Aevum\build\...`；只有从旧工作目录跑旧源码，才会落到旧目录。
 - 打包运行：`main.js` 注入 `MEMORIA_ROOT=resources`，`BUILD_ROOT` 默认是 `resources\build`，并在启动 monitor 前创建该目录；安装器也给 `{app}\resources\build` 授予用户写权限。因此安装后的默认指标路径是 `<安装目录>\resources\build\training_metrics.jsonl`，不会去读开发机的旧工作目录。要读外部权重，显式设置 `MEMORIA_BUILD_ROOT`，或在安装目录 `resources` / exe 旁放 `model-root.txt`。
+- 模型生成器 `memoria_gen_cpu.exe` 依赖 `torch_cpu.dll` 等 CPU 运行时，不是单文件程序。把运行时 DLL 放到 `<build-root>\runtime`，或显式设置 `MEMORIA_TORCH_LIB`；monitor 会把该目录加到生成子进程的 `PATH`。不要把 `D:\venv` 这类开发机路径写进代码。
 - 训练脚本 `scripts/train.ps1` 默认把指标写到同一个 `build\training_metrics.jsonl`，所以源码模式下看板与训练自动对齐。
 
 其他覆盖项：`MEMORIA_DATA_ROOT` 换语料目录，`MEMORIA_WEB_ROOT` 换页面目录，`MEMORIA_ERROR_TABLE` 换错误码表。

@@ -83,10 +83,14 @@ function monitorEnv() {
     env.MEMORIA_WEB_ROOT = env.MEMORIA_WEB_ROOT || path.join(process.resourcesPath, "web");
     env.MEMORIA_ERROR_TABLE = env.MEMORIA_ERROR_TABLE || path.join(process.resourcesPath, "contracts", "errors.json");
     const buildRoot = packagedBuildRoot();
+    const runtimeDir = path.join(buildRoot, "runtime");
     try {
-      fs.mkdirSync(buildRoot, { recursive: true });
+      fs.mkdirSync(runtimeDir, { recursive: true });
     } catch (error) {
       console.error("cannot create build root", buildRoot, error);
+    }
+    if (!env.MEMORIA_TORCH_LIB && fs.existsSync(runtimeDir)) {
+      env.MEMORIA_TORCH_LIB = runtimeDir;
     }
     env.MEMORIA_BUILD_ROOT = buildRoot;
   }

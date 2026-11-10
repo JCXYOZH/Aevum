@@ -72,7 +72,7 @@ if (Test-Path -LiteralPath $stage) {
     Remove-Item -LiteralPath $stage -Recurse -Force
 }
 New-Item -ItemType Directory -Path $stage | Out-Null
-robocopy $electronDist $stage /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+robocopy $electronDist $stage /MIR /XF default_app.asar /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "copy electron failed (robocopy $LASTEXITCODE)" }
 Rename-Item -LiteralPath (Join-Path $stage "electron.exe") -NewName $exeName
 

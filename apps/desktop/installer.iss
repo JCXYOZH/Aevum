@@ -51,6 +51,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Dirs]
 Name: "{app}\resources\build"; Permissions: users-modify
+Name: "{app}\resources\build\runtime"; Permissions: users-modify
 
 [Files]
 Source: "{#AppStage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
