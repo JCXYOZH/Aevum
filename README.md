@@ -20,7 +20,7 @@ Aevum 是社区自己的平台，不是某个产品的官网。它的目标是�
 | 路径 | 是什么 | 状态 |
 | --- | --- | --- |
 | `apps/community/web/` | 页面：静态站；nginx 直接指向这个目录 | 静态站 |
-| `apps/relay/` | **纯内存中继**：会话、上下文、分片传输、在线计数；无数据库、无落盘 | 并入中 |
+| `apps/relay/` | **纯内存中继**：会话、上下文、分片传输、在线计数；无数据库、无落盘 | 已实现 |
 | `apps/relay/contracts/` | 唯一契约源：`errors.json`（`0xRRFFTT` 码表）、`api.json`（HTTP 面） | 定稿 |
 | `apps/relay/deploy/` | 一键部署：systemd 单元、nginx vhost、`install.sh` | 可用 |
 | `apps/console/` | 内核与串口总线：引导、状态机、错误码、80×25 单元格；只做逻辑，不含页面 | 维护中 |
@@ -37,6 +37,30 @@ Aevum 是社区自己的平台，不是某个产品的官网。它的目标是�
 | `tools/`、`bin/`、`build/`、`sandbox/`、`scripts/` | 开发与构建辅助、临时实验区 | 占位 |
 
 **"占位"的意思是 0 字节**：空文件标记的是职责，不是永久空着。要写东西就写进表里指定的目录，稳定之前不进 `src/`；`sandbox/` 留给未验证的实验。
+
+## 本地开发
+
+Windows 上在仓库根目录执行一条命令：
+
+```powershell
+scripts\dev.cmd
+```
+
+默认起四个进程：中继 `127.0.0.1:8790`、页面 `127.0.0.1:8080`、QEMU 串口 `127.0.0.1:5555`、串口桥接 `ws://127.0.0.1:8765`，并打开页面。只起页面与中继：
+
+```powershell
+scripts\dev.cmd -NoKernel -NoBrowser
+```
+
+停止：
+
+```powershell
+scripts\dev.cmd -Stop
+```
+
+脚本从 `PATH` 找 `python`；没有激活虚拟环境时用 `-Python` 指定解释器。QEMU 从 `PATH`、`QEMU_BIN` 或默认安装位置找，也可以用 `-Qemu`。日志与 pid 状态在 `%TEMP%\aevum-dev`，不写进仓库。
+
+内核是独立进程，不是网页的一部分：QEMU 只提供串口，桥接把串口帧转成 WebSocket；页面只连中继与桥接，不直接碰内核。任何一段挂掉，其余仍能启动。
 
 ## 纯内存中继是什么
 
