@@ -1,0 +1,26 @@
+# ============================================================
+# pyproject.toml — 锚点定标的唯一登记处
+#
+# 包名固定为 relay，所以代码里永远写 from relay.x import ...，
+# 与仓库目录叫什么、放在哪里无关。目录搬家时只改这一个文件。
+# ============================================================
+[project]
+name = "memory-relay"
+version = "0.1.0"
+description = "纯内存中继：会话即焚，文件只转发，磁盘不留痕"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+memory-relay = "relay.__main__:main"
+relay-selfcheck = "relay.bootstrap:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["relay"]
+
+[tool.setuptools.package-dir]
+relay = "relay"

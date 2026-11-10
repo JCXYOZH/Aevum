@@ -1,0 +1,253 @@
+/* ============================================================
+   relay.css —— 中继交流区（样式归属：本文件）
+   一块浅色"房间"卡片：顶部计数栏、帖子流、发言框。
+   颜色只从 tokens.css 取，组件内不新造 hex。
+   ============================================================ */
+
+.relay__room {
+  width: 100%;
+  max-width: 1000px;
+  margin-top: clamp(24px, 4vh, 40px);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-panel);
+  background: #fff;
+  overflow: hidden;
+}
+
+/* ---------- 顶部：房间名 / 计数 / 连接状态 ---------- */
+.relay__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.relay__room-id {
+  color: var(--ink);
+}
+
+.relay__meters {
+  display: flex;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+}
+
+.relay__meters div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.relay__meters dt {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.relay__meters dd {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.relay__led {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relay__led::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+}
+
+.relay__led[data-state="online"]::before {
+  background: var(--teal);
+}
+
+.relay__led[data-state="error"]::before {
+  background: var(--coral);
+}
+
+/* ---------- 帖子流 ---------- */
+.relay__feed {
+  min-height: 150px;
+  max-height: clamp(280px, 42vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: var(--sp-3) 18px;
+  list-style: none;
+  /* 滚动到半行时把切口淡掉，避免看起来像被裁断的 bug */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+}
+
+.relay__empty {
+  margin: 0;
+  padding: var(--sp-6) 18px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+
+.post {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--rule-soft, var(--rule));
+}
+
+.post:last-child {
+  border-bottom: 0;
+}
+
+.post__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.post__who {
+  display: block;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.post__time {
+  display: block;
+  opacity: 0.75;
+}
+
+.post__body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.post--system .post__meta {
+  color: var(--plum);
+}
+
+.post--system .post__body {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* ---------- 发言框 ---------- */
+.relay__compose {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: start;
+  padding: 14px 18px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.relay__compose input,
+.relay__compose textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-cell);
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.relay__compose textarea {
+  min-height: 64px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.relay__compose input:focus-visible,
+.relay__compose textarea:focus-visible {
+  outline: 2px solid var(--plum);
+  outline-offset: 1px;
+}
+
+.relay__send {
+  padding: 8px 16px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.relay__send:hover {
+  background: var(--plum);
+  border-color: var(--plum);
+}
+
+.relay__send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.relay__send:focus-visible {
+  outline: 2px solid var(--plum);
+  outline-offset: 2px;
+}
+
+/* ---------- 窄屏 ---------- */
+@media (max-width: 720px) {
+  .relay__bar {
+    gap: var(--sp-2) var(--sp-3);
+  }
+
+  .relay__meters {
+    gap: var(--sp-4);
+  }
+
+  .relay__led {
+    margin-left: 0;
+  }
+
+  .post {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .post__meta {
+    display: flex;
+    gap: var(--sp-2);
+  }
+
+  .post__who,
+  .post__time {
+    display: inline;
+  }
+
+  .relay__compose {
+    grid-template-columns: 1fr auto;
+  }
+
+  .relay__compose input {
+    grid-column: 1 / -1;
+  }
+}

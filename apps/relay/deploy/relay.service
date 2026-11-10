@@ -1,0 +1,28 @@
+[Unit]
+Description=Aevum in-memory relay
+Documentation=https://gitcode.com/AevumArk/Aevum
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aevum
+Group=aevum
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/aevum/relay.env
+WorkingDirectory=__APP_DIR__
+ExecStart=__PYTHON__ -m relay
+Restart=always
+RestartSec=3s
+
+# The relay keeps everything in RAM and writes nothing to disk.
+# ProtectSystem=strict therefore costs nothing; the process only needs to read the package.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=256M
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

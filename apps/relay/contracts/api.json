@@ -1,0 +1,43 @@
+{
+  "magic": "MRR1",
+  "version": 1,
+  "note": "HTTP 面的跨语言契约。响应统一带 magic/version，服务端另发 X-Relay-Contract 头；前端或 C 客户端按这份文件校验，不读 Python 源码。",
+  "envelope": {
+    "required": ["ok"],
+    "extra": {
+      "magic": "MRR1",
+      "v": 1,
+      "code": "0xRRFFTT，仅失败时出现",
+      "name": "码的符号名",
+      "message": "中文说明"
+    }
+  },
+  "endpoints": [
+    {"method": "GET", "path": "/v1/health", "role": "存活检查"},
+    {"method": "GET", "path": "/v1/stats", "role": "只读计数，不含内容"},
+    {"method": "GET", "path": "/v1/presence", "role": "交流房间的在线人数与浏览人数"},
+    {"method": "POST", "path": "/v1/presence", "role": "进房心跳，返回同一份计数"},
+    {"method": "GET", "path": "/v1/sessions", "role": "会话列表，不含内容"},
+    {"method": "POST", "path": "/v1/sessions", "role": "新建会话"},
+    {"method": "POST", "path": "/v1/sessions/{id}/messages", "role": "追加消息"},
+    {"method": "GET", "path": "/v1/sessions/{id}/context", "role": "取上下文"},
+    {"method": "DELETE", "path": "/v1/sessions/{id}", "role": "立刻焚毁"},
+    {"method": "POST", "path": "/v1/transfers", "role": "新建传输"},
+    {"method": "PUT", "path": "/v1/transfers/{token}/chunks", "role": "追加分片"},
+    {"method": "POST", "path": "/v1/transfers/{token}/end", "role": "声明发送完毕"},
+    {"method": "GET", "path": "/v1/transfers/{token}", "role": "流式取走，取完即销毁"},
+    {"method": "GET", "path": "/v1/transfers/{token}/info", "role": "传输状态"},
+    {"method": "DELETE", "path": "/v1/transfers/{token}", "role": "中止"}
+  ],
+  "auth": {
+    "header": "X-Relay-Token",
+    "alternative": "Authorization: Bearer <token>",
+    "required_when": "服务端设置了 RELAY_TOKEN"
+  },
+  "transfer": {
+    "chunk_max_bytes": 1048576,
+    "buffer_per_transfer_bytes": 4194304,
+    "backpressure_code": "0x050303",
+    "semantics": "一个 token 只服务一次取走；断线需重新建传输"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "magic": "MRR1",
+  "version": 1,
+  "note": "0xRRFFTT 的唯一出处。任何语言（Python / C / JS）都从本文件取码，不允许在各自代码里重新定义。",
+  "layout": {
+    "format": "0xRRFFTT",
+    "rr": "责任编号",
+    "ff": "字段编号",
+    "tt": "类型编号：01 缺失 / 02 冲突 / 03 依赖未满足 / 04 外部或运行时失败"
+  },
+  "responsibilities": {
+    "R1": "会话",
+    "R2": "消息",
+    "R3": "内存守卫",
+    "R4": "到期清理",
+    "R5": "文件中继",
+    "R6": "访问控制",
+    "R7": "架构与装载",
+    "R9": "接口"
+  },
+  "codes": [
+    {"code": "0x000000", "name": "OK", "message": "ok", "http": 200},
+
+    {"code": "0x010101", "name": "R1_SESSION_MISSING", "message": "会话不存在或已结束", "http": 404},
+    {"code": "0x010201", "name": "R1_SESSION_EXPIRED", "message": "会话已到期并被清理", "http": 410},
+
+    {"code": "0x020101", "name": "R2_MSG_EMPTY", "message": "消息内容为空", "http": 400},
+    {"code": "0x020102", "name": "R2_MSG_LIMIT", "message": "会话窗口已满", "http": 409},
+    {"code": "0x020203", "name": "R2_MSG_TOO_LARGE", "message": "单条消息超过字数上限", "http": 413},
+    {"code": "0x020301", "name": "R2_ROLE_INVALID", "message": "role 不在允许集合内", "http": 400},
+
+    {"code": "0x030103", "name": "R3_CAPACITY_EXCEEDED", "message": "全局会话数已达上限，请稍后再试", "http": 503},
+    {"code": "0x030203", "name": "R3_SESSION_BUDGET_EXCEEDED", "message": "整条消息超出单会话内存预算", "http": 413},
+
+    {"code": "0x050101", "name": "R5_TRANSFER_MISSING", "message": "传输不存在或已结束", "http": 404},
+    {"code": "0x050102", "name": "R5_CHUNK_EMPTY", "message": "分片为空", "http": 400},
+    {"code": "0x050202", "name": "R5_TRANSFER_CONSUMED", "message": "传输已被取走或已收尾", "http": 409},
+    {"code": "0x050203", "name": "R5_CHUNK_TOO_LARGE", "message": "单个分片超过上限", "http": 413},
+    {"code": "0x050303", "name": "R5_BUFFER_FULL", "message": "接收端没跟上，缓冲区已满", "http": 429},
+    {"code": "0x050404", "name": "R5_TRANSFER_TIMEOUT", "message": "等待分片超时", "http": 504},
+
+    {"code": "0x060101", "name": "R6_AUTH_MISSING", "message": "缺少访问令牌", "http": 401},
+    {"code": "0x060201", "name": "R6_AUTH_DENIED", "message": "访问令牌不正确", "http": 403},
+
+    {"code": "0x070101", "name": "R7_MODULE_MISSING", "message": "装载的模块不存在（导入失败，类型 01）", "http": 500},
+    {"code": "0x070202", "name": "R7_CONTRACT_CONFLICT", "message": "契约版本冲突或同名模块重复装载", "http": 500},
+    {"code": "0x070303", "name": "R7_DEPENDENCY_UNMET", "message": "依赖层级或版本不满足", "http": 500},
+    {"code": "0x070404", "name": "R7_RUNTIME_FAILED", "message": "运行时装载失败（解释器或环境问题）", "http": 500},
+
+    {"code": "0x090101", "name": "R9_PATH_MISSING", "message": "未知路径", "http": 404},
+    {"code": "0x090104", "name": "R9_INTERNAL", "message": "服务端内部错误", "http": 500}
+  ]
+}
