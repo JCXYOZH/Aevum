@@ -85,20 +85,20 @@ fi
 mkdir -p "$BUILD_DIR/obj"
 
 COMMON_SOURCES=(
-  fixed_rms_norm.cpp
-  processor.cpp
-  subnet.cpp
-  chain_unit.cpp
-  tri_balancer.cpp
-  gated_valve.cpp
-  strata_memory.cpp
-  embedding_layer.cpp
-  text_dataset.cpp
-  checkpoint.cpp
-  module_io.cpp
-  trainer.cpp
-  generator.cpp
-  model.cpp
+  fixed_rms_norm
+  processor
+  subnet
+  chain_unit
+  tri_balancer
+  gated_valve
+  strata_memory
+  embedding_layer
+  text_dataset
+  checkpoint
+  module_io
+  trainer
+  generator
+  model
 )
 
 INCLUDES=(
@@ -126,7 +126,7 @@ printf '%s\n' "${COMMON_SOURCES[@]}" | xargs -r -P "$JOBS" -I{} \
   "$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" \
   -c "$ROOT/src/memoria/{}.cpp" -o "$BUILD_DIR/obj/{}.o"
 for source in "${COMMON_SOURCES[@]}"; do
-  COMMON_OBJECTS+=("$BUILD_DIR/obj/${source%.cpp}.o")
+  COMMON_OBJECTS+=("$BUILD_DIR/obj/$source.o")
 done
 
 echo "  compile chat_main.cpp"
