@@ -25,7 +25,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${MEMORIA_LINUX_BUILD:-$ROOT/build/linux}"
 CXX="${CXX:-g++}"
-CXX11_ABI="${MEMORIA_CXX11_ABI:-0}"
+CXX11_ABI="${MEMORIA_CXX11_ABI:-}"
 CXX_STANDARD="${MEMORIA_CXX_STANDARD:-}"
 OPT="${MEMORIA_OPT:--O2}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 2)}"
@@ -48,8 +48,8 @@ for arg in "$@"; do
   esac
 done
 
+PYTHON_BIN="${MEMORIA_PYTHON:-python3}"
 if [[ -z "${MEMORIA_TORCH_ROOT:-}" ]]; then
-  PYTHON_BIN="${MEMORIA_PYTHON:-python3}"
   MEMORIA_TORCH_ROOT="$("$PYTHON_BIN" -c 'import pathlib, torch; print(pathlib.Path(torch.__file__).resolve().parent)')"
 fi
 
@@ -61,6 +61,12 @@ fi
 if [[ ! -d "$MEMORIA_TORCH_ROOT/lib" ]]; then
   echo "torch libraries not found under: $MEMORIA_TORCH_ROOT/lib" >&2
   exit 3
+fi
+
+# Match the C++ ABI of the installed torch wheel. Official PyTorch wheels are
+# built with the C++11 ABI; MEMORIA_CXX11_ABI still overrides this probe.
+if [[ -z "$CXX11_ABI" ]]; then
+  CXX11_ABI="$("$PYTHON_BIN" -c 'import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))' 2>/dev/null || echo 1)"
 fi
 
 # Torch 2.8+ headers may require C++20. Read that requirement from the headers
