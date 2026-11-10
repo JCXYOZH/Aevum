@@ -44,9 +44,10 @@
   };
 
   var params = new URLSearchParams(global.location.search);
+  var loopback = /^(127\.0\.0\.1|localhost)$/.test(global.location.hostname);
   MD.config = {
-    relayBase: (params.get("relay") || "http://127.0.0.1:8790").replace(/\/$/, ""),
-    bridgeUrl: params.get("bridge") || "ws://127.0.0.1:8765",
+    relayBase: (params.get("relay") || (loopback ? "http://127.0.0.1:8790" : "")).replace(/\/$/, ""),
+    bridgeUrl: params.get("bridge") || (loopback ? "ws://127.0.0.1:8765" : ""),
     monitorBase: ""
   };
 

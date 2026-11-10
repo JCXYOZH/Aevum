@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="AEVUM / Memoria：内存中继、x86 内核与 C++ 模型架构的开源工作台。展示页只讲项目，实时看板在 Memoria 控制台里。">
-  <title>AEVUM · 开源进度与内核实况</title>
+  <meta name="description" content="Aevum 是一个社区共建的社区平台：工具、文档、成员协作收在同一块地方。代码以 MPL-2.0 开源。">
+  <title>Aevum · 社区共建的社区平台</title>
   <link rel="icon" href="assets/favicon.ico" sizes="any">
   <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="stylesheet" href="styles/showcase/tokens.css">
@@ -61,10 +61,10 @@
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero__copy">
           <p class="kicker">OPEN SOURCE / 2026 · MPL-2.0</p>
-          <h1 id="hero-title">把内核、模型和社区，<br>放进一个桌面。</h1>
+          <h1 id="hero-title">Aevum</h1>
+          <p class="hero__tagline">社区共建的社区平台</p>
           <p class="lede">
-            AEVUM 是一个内存中继与 x86 内核的实验场；Memoria 是它的 C++ 模型架构和本地控制台。
-            这个页面只负责讲项目：内核怎么跑、模型怎么训练、社区怎么接入。实时帧、训练曲线和错误码，统一在控制台的多窗口里看。
+            手上的工具、写下的文档、成员之间的协作，都收在同一块地方；代码以 MPL-2.0 开源，谁都可以取用、修改、再发布。
           </p>
           <div class="hero__actions">
             <a class="btn" href="desktop.html" target="_top">打开 Memoria 控制台</a>
@@ -72,7 +72,7 @@
           </div>
           <dl class="hero__facts">
             <div><dt>模型</dt><dd>1,352,744 参数 · 3,000 词表</dd></div>
-            <div><dt>桌面</dt><dd>多窗口 · 浏览器 / Electron 同一页</dd></div>
+            <div><dt>桌面</dt><dd>多窗口 · 浏览器与 Electron 同页</dd></div>
             <div><dt>边界</dt><dd>权重不进仓库 · 内核后端保留</dd></div>
           </dl>
         </div>
@@ -85,7 +85,9 @@
             <li><span class="plate__no">03</span><strong>CHAIN UNIT × 3</strong><small>三路循环</small></li>
             <li><span class="plate__no">04</span><strong>TRI-BALANCER × 3</strong><small>三路平衡</small></li>
             <li><span class="plate__no">05</span><strong>STRATA MEMORY</strong><small>分层记忆</small></li>
-            <li><span class="plate__no">06</span><strong>OUTPUT</strong><small>加权融合 / V 正则</small></li>
+            <li><span class="plate__no">06</span><strong>FUSION + V REG</strong><small>加权融合 / V 正则</small></li>
+            <li><span class="plate__no">07</span><strong>NORMALIZE</strong><small>FixedRMSNorm / LayerNorm</small></li>
+            <li><span class="plate__no">08</span><strong>OUTPUT</strong><small>dim → vocab</small></li>
           </ol>
           <p class="plate__note">图示是代码里的真实顺序，不是另一个独立架构。</p>
         </aside>
@@ -93,90 +95,290 @@
 
       <section class="section" id="modules" aria-labelledby="modules-title">
         <div class="section__head">
-          <p class="kicker">ARCHITECTURE / 一模块一文件</p>
-          <h2 id="modules-title">三个模块，承担三种工作</h2>
-          <p class="section__lede">C++ 迁移不是把 Python 文件改个后缀。每个模块有自己的头文件、实现和保存/加载入口；前向链固定，注释写在代码里。</p>
+          <p class="kicker">ARCHITECTURE / 社区 AI 架构</p>
+          <h2 id="modules-title">三个目录：fortuna、libertas、memoria</h2>
+          <p class="section__lede">这是 Aevum 社区自己的开源 AI 架构，核心算法在 Memoria：门控阀、链式单元、三路平衡、分层记忆与多轮回写。这里按这套架构自己的模块和连接方式描述，不套用现成架构的名字，也不强行把它归入某一类现有体系。仓库根下是三个方向目录：<code>src/fortuna</code> 做内核与引导，<code>src/libertas</code> 做安全与工具，这两处目前是空骨架；<code>memoria</code> 目录里是模型与训练，没有桌面，桌面看板和展示页在 <code>apps</code> 外层。下面的图只画 Memoria 的前向主链：输入、门控、三个链式单元、分层记忆的写入与检索，再到融合、归一化与输出；训练、生成、检查点在外围，不在主链上。</p>
+          <p class="arch-claim"><span>COMMUNITY ARCH / 社区架构</span>Memoria 的核心算法由门控阀、链式单元、三路平衡、分层记忆与多轮回写组成；这里按它自己的模块命名和连接关系写。</p>
         </div>
-        <div class="chain">
-          <article class="chain__step">
-            <div class="chain__node">01</div>
-            <div class="chain__body">
-              <p class="chain__tag">GATE / 门控</p>
-              <h3>Gated Valve<span>门控写入</span></h3>
-              <p>把嵌入后的 token 向量按门控权重写入主路径。它决定这一步有多少信息进入循环，而不是让所有维度等权通过。</p>
-              <code>src/gated_valve.cpp</code>
-            </div>
-          </article>
-          <article class="chain__step">
-            <div class="chain__node">02</div>
-            <div class="chain__body">
-              <p class="chain__tag">CHAIN / 循环</p>
-              <h3>Chain Unit × 3<span>三路循环</span></h3>
-              <p>三个单元共享同一套前向契约，每个单元后面接一个 Tri-Balancer。循环次数由 <code>--cycles</code> 控制，不是写死的固定层数。</p>
-              <code>src/chain_unit.cpp · src/tri_balancer.cpp</code>
-            </div>
-          </article>
-          <article class="chain__step">
-            <div class="chain__node">03</div>
-            <div class="chain__body">
-              <p class="chain__tag">MEMORY / 输出</p>
-              <h3>Strata Memory<span>分层记忆</span></h3>
-              <p>在循环之后汇总 Q / K / V，做加权融合与 V 正则，再由输出层给出下一个 token 的 logits。断点续训会逐项比对词表，避免 token id 悄悄错位。</p>
-              <code>src/strata_memory.cpp · src/model.cpp</code>
-            </div>
-          </article>
-        </div>
-        <p class="note">代码阅读顺序：<code>docs/migration.md</code> → <code>docs/formulas.md</code> → <code>include/memoria/model.h</code> → <code>src/model.cpp</code>。</p>
+        <figure class="arch-figure">
+          <svg class="arch-svg" viewBox="0 0 900 980" role="img" aria-label="Memoria 单周期前向架构图">
+            <defs>
+              <marker id="ah" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0 0 L6 3 L0 6 Z" fill="#8a8070"/>
+              </marker>
+            </defs>
+
+            <text x="35" y="18" class="label">MEMORIA / 单周期前向</text>
+
+            <rect x="35" y="30" width="360" height="30" class="frame-main"/>
+            <text x="215" y="49" text-anchor="middle" class="title">输入 input_ids [B, S]</text>
+            <path class="flow" d="M215 60 V85" marker-end="url(#ah)"/>
+
+            <rect x="35" y="85" width="360" height="52" class="frame-main"/>
+            <text x="215" y="106" text-anchor="middle" class="title">嵌入层 Embedding Layer</text>
+            <text x="215" y="121" text-anchor="middle" class="sub">token embedding + 固定正弦位置编码</text>
+
+            <path class="flow-dashed" d="M395 111 H440"/>
+            <rect x="440" y="85" width="440" height="52" class="frame-side"/>
+            <text x="452" y="104" class="label">MARKER BRANCH</text>
+            <text x="452" y="118" class="sub">3 → 16 → 32，仅旁路输出</text>
+            <text x="452" y="131" class="sub">不进入主路径</text>
+
+            <path class="flow" d="M215 137 V160" marker-end="url(#ah)"/>
+            <rect x="35" y="160" width="360" height="52" class="frame-main"/>
+            <text x="215" y="181" text-anchor="middle" class="title">门控阀 Gated Valve</text>
+            <text x="215" y="196" text-anchor="middle" class="sub">Q / K / V 三路门控混合</text>
+
+            <path class="flow" d="M215 212 V220"/>
+            <path class="flow" d="M215 220 H100 V230" marker-end="url(#ah)"/>
+            <path class="flow" d="M215 220 V230" marker-end="url(#ah)"/>
+            <path class="flow" d="M215 220 H330 V230" marker-end="url(#ah)"/>
+            <rect x="50" y="230" width="100" height="28" class="frame"/>
+            <text x="100" y="248" text-anchor="middle" class="title-sm">Q</text>
+            <rect x="165" y="230" width="100" height="28" class="frame"/>
+            <text x="215" y="248" text-anchor="middle" class="title-sm">K</text>
+            <rect x="280" y="230" width="100" height="28" class="frame-v"/>
+            <text x="330" y="248" text-anchor="middle" class="title-sm">V</text>
+            <path class="flow" d="M215 258 V275" marker-end="url(#ah)"/>
+
+            <rect x="35" y="275" width="360" height="215" class="frame-group"/>
+            <text x="50" y="294" class="label">CHAIN UNIT ×3  ·  TRI-BALANCER ×3</text>
+
+            <rect x="50" y="305" width="180" height="42" class="frame"/>
+            <text x="60" y="323" class="title-sm">CHAIN UNIT 1</text>
+            <text x="60" y="337" class="sub">3 SubNet / 9 Processor</text>
+            <path class="flow" d="M230 326 H255" marker-end="url(#ah)"/>
+            <rect x="255" y="305" width="120" height="42" class="frame"/>
+            <text x="265" y="323" class="title-sm">TRI-BALANCER 1</text>
+            <text x="265" y="337" class="sub">Q/K/V 配比</text>
+
+            <path class="flow" d="M315 347 V351 H140 V355" marker-end="url(#ah)"/>
+            <rect x="50" y="355" width="180" height="42" class="frame"/>
+            <text x="60" y="373" class="title-sm">CHAIN UNIT 2</text>
+            <text x="60" y="387" class="sub">3 SubNet / 9 Processor</text>
+            <path class="flow" d="M230 376 H255" marker-end="url(#ah)"/>
+            <rect x="255" y="355" width="120" height="42" class="frame"/>
+            <text x="265" y="373" class="title-sm">TRI-BALANCER 2</text>
+            <text x="265" y="387" class="sub">Q/K/V 配比</text>
+
+            <path class="flow" d="M315 397 V401 H140 V405" marker-end="url(#ah)"/>
+            <rect x="50" y="405" width="180" height="42" class="frame"/>
+            <text x="60" y="423" class="title-sm">CHAIN UNIT 3</text>
+            <text x="60" y="437" class="sub">3 SubNet / 9 Processor</text>
+            <path class="flow" d="M230 426 H255" marker-end="url(#ah)"/>
+            <rect x="255" y="405" width="120" height="42" class="frame"/>
+            <text x="265" y="423" class="title-sm">TRI-BALANCER 3</text>
+            <text x="265" y="437" class="sub">Q/K/V 配比</text>
+
+            <path class="flow-dashed" d="M395 294 H440"/>
+            <rect x="440" y="275" width="440" height="225" class="frame-side"/>
+            <text x="452" y="294" class="label">CHAIN UNIT / 一个单元展开（其余同构）</text>
+            <text x="455" y="323" class="title-sm">SubNet 1</text>
+            <text x="560" y="323" class="sub">V → K → Q</text>
+            <text x="660" y="323" class="sub">3 个 Processor，顺序更新</text>
+            <line x1="452" y1="347" x2="868" y2="347" class="rule"/>
+            <text x="455" y="373" class="title-sm">SubNet 2</text>
+            <text x="560" y="373" class="sub">Q → V → K</text>
+            <text x="660" y="373" class="sub">每个 Processor 看前一步结果</text>
+            <line x1="452" y1="397" x2="868" y2="397" class="rule"/>
+            <text x="455" y="423" class="title-sm">SubNet 3</text>
+            <text x="560" y="423" class="sub">K → Q → V</text>
+            <text x="660" y="423" class="sub">残差 0.1，V 权重 1.5</text>
+            <text x="452" y="455" class="sub">Processor = Linear(3d→2d) → FixedRMSNorm → GELU</text>
+            <text x="452" y="468" class="sub">→ Linear(2d→d) → FixedRMSNorm → Dropout 0.1</text>
+            <text x="452" y="483" class="sub">3 units × 3 SubNet × 3 Processor = 27 Processor</text>
+
+            <path class="flow" d="M215 490 V515" marker-end="url(#ah)"/>
+            <rect x="35" y="515" width="360" height="150" class="frame-group"/>
+            <text x="50" y="535" class="label">STRATA MEMORY / 分层记忆</text>
+            <text x="50" y="549" class="sub">3 层 × 3 槽；每槽存 Q/K + 3 个 V 子值</text>
+            <text x="50" y="570" class="title-sm">D0 / 最新</text>
+            <text x="135" y="570" class="sub">写入当前均值，能量按 Q/K/V 密度计算</text>
+            <text x="50" y="600" class="title-sm">D1 / 中期</text>
+            <text x="135" y="600" class="sub">从 D0 复制，能量 ×0.9</text>
+            <text x="50" y="630" class="title-sm">D2 / 深层</text>
+            <text x="135" y="630" class="sub">能量 &lt; 0.1 时由 D1 修复</text>
+            <text x="50" y="649" class="sub">每次写入前所有能量 ×0.7；记忆是状态，不是可训练权重</text>
+
+            <path class="flow" d="M215 665 V680" marker-end="url(#ah)"/>
+            <rect x="35" y="680" width="360" height="28" class="frame-main"/>
+            <text x="50" y="692" class="title-sm">RETRIEVE(depth, time_layer)</text>
+            <text x="260" y="692" class="sub">Q/K 整槽；V 取第 3 子值</text>
+
+            <path class="flow" d="M215 708 V720" marker-end="url(#ah)"/>
+            <rect x="35" y="720" width="360" height="64" class="frame-main"/>
+            <text x="215" y="739" text-anchor="middle" class="title">加权融合 + V 正则</text>
+            <text x="215" y="754" text-anchor="middle" class="sub">Q/K：0.5 · 0.3 · 0.2　　V：0.6 · 0.3 · 0.1（按历史均值微调）</text>
+            <text x="215" y="768" text-anchor="middle" class="sub">V regularization + QK 关系后处理</text>
+
+            <path class="flow" d="M215 784 V800" marker-end="url(#ah)"/>
+            <rect x="35" y="800" width="360" height="46" class="frame-main"/>
+            <text x="215" y="819" text-anchor="middle" class="title">归一化 LayerNorm</text>
+            <text x="215" y="834" text-anchor="middle" class="sub">输出前归一化</text>
+            <path class="flow-dashed" d="M395 823 H440"/>
+            <rect x="440" y="800" width="440" height="56" class="frame-side"/>
+            <text x="452" y="819" class="label">NORMALIZATION / 两处</text>
+            <text x="452" y="833" class="sub">Processor 内：FixedRMSNorm ×2，无可学习缩放/偏置</text>
+            <text x="452" y="846" class="sub">输出前：LayerNorm(dim)</text>
+
+            <path class="flow" d="M215 846 V870" marker-end="url(#ah)"/>
+            <rect x="35" y="870" width="360" height="46" class="frame-main"/>
+            <text x="215" y="889" text-anchor="middle" class="title">输出投影 Output Projection</text>
+            <text x="215" y="904" text-anchor="middle" class="sub">dim → vocab</text>
+
+            <path class="flow" d="M215 916 V940" marker-end="url(#ah)"/>
+            <rect x="35" y="940" width="360" height="28" class="frame-main"/>
+            <text x="215" y="958" text-anchor="middle" class="title">logits [B, S, V]</text>
+
+            <path class="flow-dashed" d="M440 908 H410 V186 H395" marker-end="url(#ah)"/>
+            <rect x="440" y="870" width="440" height="76" class="frame-side"/>
+            <text x="452" y="889" class="label">CYCLE / 多轮</text>
+            <text x="452" y="903" class="sub">q_final → cycle_projection</text>
+            <text x="452" y="917" class="sub">d→2d→d + tanh → 下一轮</text>
+            <text x="452" y="931" class="sub">V health &lt; 0.25 → 提前停止</text>
+          </svg>
+          <figcaption>图 1 / Aevum 社区自己的 Memoria 架构：按当前代码画的单周期前向。训练器、文本数据集、生成器和检查点在外围；此图只画模型内部前向与记忆读写。</figcaption>
+        </figure>
+        <p class="note">代码入口：<code>docs/memoria/design.md</code> → <code>include/memoria/model.h</code> → <code>src/memoria/model.cpp</code>。</p>
       </section>
 
       <section class="section" id="state" aria-labelledby="state-title">
         <div class="section__head">
           <p class="kicker">STATE / 按仓库事实写</p>
           <h2 id="state-title">现在做到哪一步</h2>
-          <p class="section__lede">这里不写“已上线”这种口号。能跑的说能跑，没验收的说没验收；数字来自本机真实运行记录。</p>
+          <p class="section__lede">2026-09-16 三个模块定名；2026-11-05 首次公开提交；2026-11-08 首版展示页。现在已有 Windows 安装包与本地模型生成；未完成的事项列在后面。</p>
+          <p class="note">首版仓库（2026-11-08，排除 .git）：818 个文件，12 个非空。</p>
         </div>
+        <div class="state__scroll-shell">
+        <div class="state__scroll" tabindex="0" aria-label="项目进度时间轴，可滚动">
         <ol class="timeline">
           <li class="timeline__row">
-            <div class="timeline__when"><span>P0</span><small>结构迁移</small></div>
+            <div class="timeline__when"><span>09-16</span><small>立项</small></div>
             <div class="timeline__body">
-              <h3>15 个 C++ 模块，一模块一文件</h3>
-              <p>模型、训练器、文本处理器、检查点、生成器和模块保存/加载都已落地；Python 参考实现只读，不复制进仓库。</p>
+              <h3>立项</h3>
+              <p>三个模块定名，主体用 C/C++，目录先按职责分开。</p>
+            </div>
+            <span class="badge badge--pre">前史</span>
+          </li>
+          <li class="timeline__row">
+            <div class="timeline__when"><span>09-17</span><small>fortuna 第一屏</small></div>
+            <div class="timeline__body">
+              <h3>fortuna 第一屏</h3>
+              <p>引导程序在 QEMU 里打出第一行字；实模式到保护模式再到分页的链路走通。</p>
+            </div>
+            <span class="badge badge--pre">前史</span>
+          </li>
+          <li class="timeline__row">
+            <div class="timeline__when"><span>P0</span><small>骨架与文档</small></div>
+            <div class="timeline__body">
+              <h3>三模块目录、许可与入口文档</h3>
+              <ul>
+                <li>三模块目录：fortuna / libertas / memoria</li>
+                <li>许可定为 MPL-2.0，行为准则单独成文</li>
+                <li>入口文档六份，静态站首版可打开</li>
+              </ul>
+            </div>
+            <span class="badge badge--done">完成</span>
+          </li>
+          <li class="timeline__row">
+            <div class="timeline__when"><span>P1</span><small>一个能打开的地址</small></div>
+            <div class="timeline__body">
+              <h3>域名可访问，二维码入库</h3>
+              <ul>
+                <li>域名 <code>http://www.mrhua.cn/</code> 已可访问</li>
+                <li>社区二维码已入库，按原比例显示</li>
+                <li>证书与安全基线（只开 80/443、关目录索引）未做</li>
+              </ul>
+            </div>
+            <span class="badge badge--work">当时部分完成</span>
+          </li>
+          <li class="timeline__row">
+            <div class="timeline__when"><span>P2</span><small>服务端 API</small></div>
+            <div class="timeline__body">
+              <h3>先定三个决定，再写代码</h3>
+              <ul>
+                <li>服务端形态：单体 Python / 自写 C 服务 / 纯静态加最小接口</li>
+                <li>数据存储：SQLite 起步，ECS 2C2G 先不上中间件</li>
+                <li>身份与准入：邀请制优先，还是邮件验证</li>
+              </ul>
+            </div>
+            <span class="badge badge--work">待决策</span>
+          </li>
+          <li class="timeline__row">
+            <div class="timeline__when"><span>P3</span><small>平台化</small></div>
+            <div class="timeline__body">
+              <h3>工具调度、桌面端、记忆接入</h3>
+              <ul>
+                <li>工具调度：libertas 的工具打成镜像，按需运行回传结果</li>
+                <li>桌面端：打包同一份 Web，多窗口</li>
+                <li>memoria：讨论与工具产出沉淀成可检索的记忆</li>
+              </ul>
+            </div>
+            <span class="badge badge--work">计划中</span>
+          </li>
+          <li class="timeline__row">
+            <div class="timeline__when"><span>P4</span><small>长期</small></div>
+            <div class="timeline__body">
+              <h3>fortuna 引导、memoria 独立服务</h3>
+              <ul>
+                <li>fortuna 能真正引导起来，memoria 作为独立服务运行</li>
+                <li>社区数据落在自己的服务器上，有备份与迁移路径</li>
+              </ul>
+            </div>
+            <span class="badge badge--work">未启动</span>
+          </li>
+          <li class="timeline__row">
+            <div class="timeline__when"><span>P5</span><small>模型链</small></div>
+            <div class="timeline__body">
+              <h3>C++ 模型链跑通</h3>
+              <ul>
+                <li>模型、训练、文本处理、检查点、生成器连成一条链路</li>
+                <li>3,000 行语料，8 个 epoch、424 步</li>
+                <li>只验证链路可跑，不证明算法有效</li>
+              </ul>
             </div>
             <span class="badge badge--done">已落地</span>
           </li>
           <li class="timeline__row">
-            <div class="timeline__when"><span>P1</span><small>训练链</small></div>
+            <div class="timeline__when"><span>P6</span><small>桌面</small></div>
             <div class="timeline__body">
-              <h3>GPU 训练，断点续训，伪装检查点都能读</h3>
-              <p>一次 3,000 行小语料的真实运行：8 个 epoch、424 步、train loss 6.25653 → 3.76544。它只证明链路能跑，不证明算法有效。</p>
+              <h3>多窗口桌面</h3>
+              <ul>
+                <li>内核、训练、中继、错误看板各有窗口</li>
+                <li>本地可选检查点、输入提示词、查看输出</li>
+                <li>云端入口已留位置，尚未接通</li>
+              </ul>
             </div>
-            <span class="badge badge--done">已跑通</span>
+            <span class="badge badge--done">已接入</span>
           </li>
           <li class="timeline__row">
-            <div class="timeline__when"><span>P2</span><small>桌面壳</small></div>
+            <div class="timeline__when"><span>P7</span><small>安装包</small></div>
             <div class="timeline__body">
-              <h3>多窗口 + 启动台 + 组件化</h3>
-              <p>内核、训练、中继、错误码各有窗口；CSS/JS 按组件拆开。原展示长页保留成启动项，不删。</p>
+              <h3>Windows 安装包</h3>
+              <ul>
+                <li>约 96 MB 的 Windows 安装包已产出</li>
+                <li>模型在开源目录之外重新训练：1,352,744 参数、3,000 词表</li>
+                <li>旧权重未复制，仓库不放大型模型文件</li>
+              </ul>
             </div>
-            <span class="badge badge--done">已落地</span>
+            <span class="badge badge--done">已产出</span>
           </li>
           <li class="timeline__row">
-            <div class="timeline__when"><span>P3</span><small>模型窗口</small></div>
+            <div class="timeline__when"><span>P8</span><small>云端</small></div>
             <div class="timeline__body">
-              <h3>加载检查点，直接生成</h3>
-              <p>新增 <code>memoria_gen_cpu.exe</code> 与 <code>/api/model</code>。看板里选检查点、写提示词、看 stdout；浏览器不解释权重。云端训练产物的地址位已经留在模型窗口里。</p>
+              <h3>Linux 构建与启动</h3>
+              <ul>
+                <li>Linux 构建脚本已补</li>
+                <li>中继、监控的启动、环境变量、健康检查、远程连接已写入文档</li>
+                <li>云端实机未验收</li>
+              </ul>
             </div>
-            <span class="badge badge--work">已接入</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P4</span><small>打包</small></div>
-            <div class="timeline__body">
-              <h3>Electron 桌面包</h3>
-              <p>监控服务已打成 PyInstaller 单文件并接入 Electron；免安装目录包已产出。单文件 portable 包因本机提交内存不足尚未完成，Linux 云端编译脚本已补。</p>
-            </div>
-            <span class="badge badge--work">部分验收</span>
+            <span class="badge badge--work">待实机</span>
           </li>
         </ol>
+        </div>
+        <p class="state__scroll-hint">上下滚动查看全部 11 个节点</p>
+        </div>
       </section>
 
       <section class="section console" id="console" aria-labelledby="console-title">
@@ -221,7 +423,7 @@
     </main>
 
     <footer class="foot">
-      <span>AEVUM / MEMORIA · 2026</span>
+      <span>AEVUM / MEMORIA · 2026 · 文档口径 2026-11-08</span>
       <span><a href="https://beian.miit.gov.cn/" rel="noopener">鄂ICP备2026056886号-2</a></span>
       <span>展示页不代替看板；看板不代替代码。</span>
     </footer>

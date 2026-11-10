@@ -1,6 +1,6 @@
 # 进度
 
-> 更新于 2026-11-10。这份文件只写能核对的状态；计划写在 [ROADMAP.md](ROADMAP.md)。
+> 更新于 2026-11-10。仓库第一个提交是 2026-11-05，首版展示页进度口径是 2026-11-08；这份文件只写能核对的状态，计划写在 [ROADMAP.md](ROADMAP.md)。
 
 ## 一句话
 
@@ -11,7 +11,7 @@
 | 部分 | 位置 | 状态 | 依据 |
 | --- | --- | --- | --- |
 | 顶层文档 | 根目录 | 已更新 | README / PROGRESS / start_here / CONTRIBUTING / CHANGELOG |
-| 展示页 | `apps/community/web/index.html` | 可打开 | 左侧 rail 灵体 + 连续内容，保留 P0–P4 进度 |
+| 展示页 | `apps/community/web/index.html` | 可打开 | 左侧 rail 灵体 + 连续内容，保留 P0–P8 进度；P0–P4 为首版原文 |
 | 看板 | `apps/community/web/desktop.html` | 可打开 | 多窗口、启动台、展示页窗口保留 |
 | 纯内存中继 | `apps/relay/` | 已实现 | 会话、上下文、分片、在线计数；无落盘 |
 | 监控服务 | `apps/console/monitor/desktop_server.py` | 已实现 | 读检查点、训练指标、错误码；起模型子进程 |

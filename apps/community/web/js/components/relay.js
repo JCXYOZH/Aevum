@@ -12,9 +12,8 @@
   }
 
   /* 地址口径：
-     - 本地预演是「静态站 8080 + 中继 8790」两个端口，data-base 写 8790；
-     - 线上是 nginx 同源反代 /v1/，页面里再写 127.0.0.1 会把浏览器指回用户自己的电脑，
-       所以「环回地址」只允许在本地页面里生效，线上自动退回同源。 */
+     - 本地预演时，页面可以显式给 data-base 指到 127.0.0.1:8790；
+     - 线上不写死主机，直接走 nginx 同源反代 /v1/，否则浏览器会把地址指回用户自己的电脑。 */
   function resolveBase() {
     var declared = (section.getAttribute('data-base') || '').replace(/\/+$/, '');
     var pageIsLocal = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);

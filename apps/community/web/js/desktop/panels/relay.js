@@ -28,7 +28,8 @@
       return id;
     })();
 
-    function q(name) { return root.querySelector('[data-field="' + name + '"]'); }
+  /* 地址口径：本地页面默认 127.0.0.1:8790；线上页面不写死主机，走同源 /v1。 */
+  function q(name) { return root.querySelector('[data-field="' + name + '"]'); }
     function set(name, text) { var node = q(name); if (node) node.textContent = text; }
     function state(text, kind) {
       var node = q("r-state");
@@ -130,7 +131,8 @@
       }).then(function () { q("r-send").disabled = false; });
     }
 
-    q("r-base").textContent = MD.config.relayBase.replace(/^https?:\/\//, "");
+    var baseLabel = MD.config.relayBase ? MD.config.relayBase.replace(/^https?:\/\//, "") : "同源 /v1";
+    q("r-base").textContent = baseLabel;
     q("r-send").addEventListener("click", send);
     q("r-text").addEventListener("keydown", function (event) {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); send(); }

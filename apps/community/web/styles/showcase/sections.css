@@ -1,103 +1,105 @@
-/* One continuous signal chain, not three promotional cards. The line is
-   the structure; each step is a station on it. */
-.chain {
-  position: relative;
-  margin-top: 26px;
-  border-top: 1px solid var(--line-soft);
-}
-
-.chain::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 19px;
-  width: 1px;
-  background: linear-gradient(180deg, var(--teal), rgba(121, 184, 176, 0.12));
-  opacity: 0.55;
-}
-
-.chain__step {
-  position: relative;
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  column-gap: 20px;
-  padding: 22px 0 24px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.chain__node {
-  position: relative;
-  z-index: 1;
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--teal);
-  font: 10px/1 var(--mono);
-}
-
-.chain__body {
-  min-width: 0;
-  padding-top: 2px;
-}
-
-.chain__tag {
-  margin: 0 0 7px;
-  color: var(--dim);
-  font: 9px/1.3 var(--mono);
-  letter-spacing: 0.12em;
-}
-
-.chain h3 {
-  margin: 0;
-  font: 15px/1.3 var(--mono);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-
-.chain h3 span {
-  margin-left: 10px;
-  color: var(--amber);
-  font: 11px/1.4 var(--sans);
-  font-weight: 400;
-}
-
-.chain p {
-  margin: 9px 0 0;
-  max-width: 66ch;
-  color: var(--muted);
-  font-size: 12px;
+/* A paper-style architecture figure: the main path runs top-down on the
+   left, one unit's internals open on the right, and side branches stay
+   dashed. No per-component cards, no horizontal overflow. */
+.arch-claim {
+  margin: 18px 0 0;
+  max-width: 72ch;
+  color: var(--text);
+  font-size: 13px;
   line-height: 1.75;
 }
-
-.chain code {
-  display: inline-block;
-  margin-top: 10px;
-  color: var(--dim);
-  font-size: 9px;
-  overflow-wrap: anywhere;
+.arch-claim span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--teal);
+  font: 9px/1.2 var(--mono);
+  letter-spacing: 0.08em;
 }
+.arch-figure {
+  margin: 22px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--line-soft);
+}
+.arch-figure svg { display: block; width: 100%; height: auto; }
+.arch-figure figcaption {
+  margin: 14px 0 0;
+  color: var(--dim);
+  font: 9px/1.5 var(--mono);
+  letter-spacing: 0.01em;
+}
+.arch-svg .frame { fill: var(--bg-soft); stroke: var(--line-soft); stroke-width: 1; }
+.arch-svg .frame-main { fill: var(--panel); stroke: var(--text); stroke-width: 1.1; }
+.arch-svg .frame-v { fill: var(--panel-2); stroke: var(--amber); stroke-width: 1.2; }
+.arch-svg .frame-group { fill: var(--panel-2); stroke: var(--line); stroke-width: 1; }
+.arch-svg .frame-side { fill: var(--bg); stroke: var(--dim); stroke-width: 0.8; stroke-dasharray: 4 3; }
+.arch-svg .flow { stroke: var(--dim); stroke-width: 1; fill: none; }
+.arch-svg .flow-dashed { stroke: var(--dim); stroke-width: 0.9; fill: none; stroke-dasharray: 4 3; }
+.arch-svg .rule { stroke: var(--line-soft); stroke-width: 1; }
+.arch-svg .title { font-family: var(--sans); font-size: 13px; font-weight: 600; fill: var(--text); }
+.arch-svg .title-sm { font-family: var(--mono); font-size: 11px; font-weight: 600; fill: var(--text); letter-spacing: 0.01em; }
+.arch-svg .sub { font-family: var(--sans); font-size: 9.8px; fill: var(--muted); }
+.arch-svg .label { font-family: var(--mono); font-size: 9.4px; fill: var(--dim); letter-spacing: 0.04em; }
 
-.timeline { margin: 26px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line-soft); }
+.timeline { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-soft); }
+.state__scroll {
+  max-height: 520px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  padding-right: 10px;
+}
+.state__scroll-shell { position: relative; }
+.state__scroll-shell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 12px;
+  bottom: 22px;
+  height: 30px;
+  background: linear-gradient(180deg, rgba(246, 240, 227, 0), var(--bg));
+  pointer-events: none;
+}
+.state__scroll-hint {
+  margin: 8px 0 0;
+  color: var(--dim);
+  font: 9px/1.4 var(--mono);
+  letter-spacing: 0.02em;
+}
+.state__scroll:focus-visible { outline: 1px solid var(--teal); outline-offset: 4px; }
+.state__scroll::-webkit-scrollbar { width: 6px; }
+.state__scroll::-webkit-scrollbar-track { background: transparent; }
+.state__scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
 .timeline__row {
+  position: relative;
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr) 72px;
+  grid-template-columns: 112px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   padding: 18px 0;
   border-bottom: 1px solid var(--line-soft);
 }
+.timeline__body { min-width: 0; padding-right: 84px; }
 .timeline__when { display: flex; align-items: baseline; gap: 8px; }
 .timeline__when span { color: var(--teal); font: 11px/1 var(--mono); }
 .timeline__when small { color: var(--dim); font: 9px/1.2 var(--mono); }
 .timeline__body h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; }
 .timeline__body p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.timeline__body ul {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  list-style: square;
+}
+.timeline__body ul li { margin: 0 0 2px; }
+.timeline__body ul li::marker { color: var(--teal); }
 
 .badge {
-  justify-self: end;
+  grid-column: 2;
+  justify-self: start;
+  margin-top: 8px;
   border: 1px solid var(--line);
   padding: 4px 7px;
   color: var(--dim);
@@ -106,6 +108,7 @@
 }
 .badge--done { border-color: rgba(121, 184, 176, 0.55); color: var(--teal); }
 .badge--work { border-color: rgba(223, 176, 110, 0.55); color: var(--amber); }
+.badge--pre { border-color: var(--line-soft); color: var(--dim); }
 
 .console {
   display: grid;
@@ -159,9 +162,6 @@
 .join__qr figcaption { margin-top: 8px; color: var(--dim); font: 9px/1.2 var(--mono); text-align: center; }
 
 @media (max-width: 900px) {
-  .chain__step { grid-template-columns: 36px minmax(0, 1fr); column-gap: 14px; }
-  .chain__node { width: 34px; height: 34px; }
-  .chain::before { left: 17px; }
   .timeline__row { grid-template-columns: 90px minmax(0, 1fr); }
   .badge { grid-column: 2; justify-self: start; }
   .console { grid-template-columns: 1fr; gap: 24px; }
@@ -172,6 +172,7 @@
 @media (max-width: 620px) {
   .timeline__row { gap: 10px; }
   .timeline__when { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .state__scroll { max-height: 430px; padding-right: 6px; }
   .join__links { grid-template-columns: 1fr; }
   .join__links > div { padding-right: 0; }
 }
