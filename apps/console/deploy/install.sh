@@ -78,27 +78,50 @@ done
 log "QEMU：$QEMU_BIN"
 
 # ---------------------------------------------------------------- 2 Python
-log "准备 Python 环境（$APP_ROOT/.venv）"
-if [ ! -x "$APP_ROOT/.venv/bin/python" ]; then
+# 优先用仓库里现成的 venv；只有确实没有时才创建 .venv 兜底。
+# 选中的解释器会写进 systemd 单元，不再固定写死在某个目录。
+log "选择 Python 环境"
+PYTHON=""
+for cand in "$APP_ROOT/venv/bin/python" "${MEMORIA_PYTHON:-}" "$APP_ROOT/.venv/bin/python" python3; do
+    [ -n "$cand" ] || continue
+    if [ -x "$cand" ]; then
+        resolved="$cand"
+    else
+        resolved="$(command -v "$cand" 2>/dev/null || true)"
+    fi
+    [ -n "$resolved" ] || continue
+    if "$resolved" -c 'import torch' >/dev/null 2>&1; then
+        PYTHON="$resolved"
+        break
+    fi
+    [ -z "$PYTHON" ] && PYTHON="$resolved"
+done
+
+if [ -z "$PYTHON" ] || [ ! -x "$PYTHON" ]; then
+    log "没有现成 venv，创建 $APP_ROOT/.venv"
     python3 -m venv "$APP_ROOT/.venv" \
         || die "python3 -m venv 失败：Debian 系装 python3-venv，RHEL 系装 python3-pip"
+    PYTHON="$APP_ROOT/.venv/bin/python"
 fi
-if [ ! -x "$APP_ROOT/.venv/bin/pip" ]; then
-    "$APP_ROOT/.venv/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 \
-        || die "venv 里没有 pip：RHEL 系先 dnf install -y python3-pip 再重跑"
+log "Python：$PYTHON"
+
+if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
+    "$PYTHON" -m ensurepip --upgrade >/dev/null 2>&1 \
+        || die "Python 里没有 pip：RHEL 系先 dnf install -y python3-pip 再重跑"
 fi
-"$APP_ROOT/.venv/bin/pip" install --quiet --upgrade pip
-"$APP_ROOT/.venv/bin/pip" install --quiet websockets
+if ! "$PYTHON" -c 'import websockets' >/dev/null 2>&1; then
+    "$PYTHON" -m pip install --quiet websockets \
+        || die "装不上 websockets：检查网络或换 MEMORIA_PYTHON 指向已有 venv"
+fi
 
 # ---------------------------------------------------------------- 2.1 torch 运行库
-# 生成器是 C++ 二进制，运行时需要 libtorch；优先用仓库外的现成 venv。
+# 生成器是 C++ 二进制，运行时需要 libtorch；从选中的 Python 里取 torch/lib。
 log "探测 torch 运行库"
 TORCH_LIB=""
-for py in "${MEMORIA_PYTHON:-}" "$APP_ROOT/.venv/bin/python" "$APP_ROOT/venv/bin/python" python3; do
-    if [ -n "$py" ] && { [ -x "$py" ] || command -v "$py" >/dev/null 2>&1; }; then
-        TORCH_LIB="$("$py" -c 'import pathlib, torch; print(pathlib.Path(torch.__file__).resolve().parent / "lib")' 2>/dev/null || true)"
-        [ -n "$TORCH_LIB" ] && break
-    fi
+for py in "$PYTHON" "$APP_ROOT/venv/bin/python" "$APP_ROOT/.venv/bin/python"; do
+    [ -x "$py" ] || continue
+    TORCH_LIB="$("$py" -c 'import pathlib, torch; print(pathlib.Path(torch.__file__).resolve().parent / "lib")' 2>/dev/null || true)"
+    [ -n "$TORCH_LIB" ] && break
 done
 if [ -n "$TORCH_LIB" ]; then
     log "torch：$TORCH_LIB"
@@ -121,11 +144,16 @@ fi
     先在服务器上编译：MEMORIA_PYTHON=python bash scripts/build-linux.sh --cpu-only"
 [ -f "$MODEL_DATA" ] || die "缺少模型语料：$MODEL_DATA"
 printf '    %s（%s 字节）\n' "$MODEL_EXE" "$(stat -c%s "$MODEL_EXE")"
-CHECKPOINT="$(find "$BUILD_DIR" -maxdepth 3 -name config.json -print -quit 2>/dev/null || true)"
+CHECKPOINT="$(find "$APP_ROOT/build" -maxdepth 4 -type f \( -name memoria_model.pt -o -name pytorch_model.bin \) -print -quit 2>/dev/null || true)"
 if [ -n "$CHECKPOINT" ]; then
-    log "检查点：$(dirname "$CHECKPOINT")"
+    CHECKPOINT_DIR="$(dirname "$CHECKPOINT")"
+    if [ -f "$CHECKPOINT_DIR/memoria_config.txt" ] || [ -f "$CHECKPOINT_DIR/config.json" ]; then
+        log "检查点：$CHECKPOINT_DIR"
+    else
+        log "警告：$CHECKPOINT_DIR 有权重，但没有 memoria_config.txt 或 config.json"
+    fi
 else
-    log "警告：$BUILD_DIR 下没有 config.json，看板可以启动，但模型窗口没有可加载的检查点"
+    log "警告：$APP_ROOT/build 下没有 memoria_model.pt 或 pytorch_model.bin，看板可以启动，但模型窗口没有可加载的检查点"
 fi
 
 # ---------------------------------------------------------------- 4 systemd
@@ -211,6 +239,9 @@ if [ "$fail" -ne 0 ]; then
   journalctl -u aevum-monitor -n 40     # 监控与模型是否起来
   ss -lntp | grep -E '5555|8765|8781|8790'
 EOF
+    systemctl --no-pager -l status aevum-relay aevum-monitor aevum-bridge 2>&1 | tail -80
+    echo "--- nginx error ---"
+    tail -20 /var/log/nginx/aevum-console.error.log 2>/dev/null || true
     exit 1
 fi
 

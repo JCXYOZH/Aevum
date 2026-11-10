@@ -110,23 +110,48 @@ def display_path(path: Path) -> str:
         return str(path.resolve()).replace("\\", "/")
 
 
+def read_model_config(directory: Path) -> dict:
+    """Read either the JSON export or the native key=value config."""
+    json_path = directory / "config.json"
+    if json_path.exists():
+        return read_json(json_path)
+    txt_path = directory / "memoria_config.txt"
+    if not txt_path.exists():
+        return {}
+    config: dict = {}
+    try:
+        for line in txt_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            config[key.strip()] = value.strip()
+    except OSError:
+        return {}
+    if "dim" in config and "hidden_size" not in config:
+        config["hidden_size"] = config["dim"]
+    return config
+
+
 def checkpoint_entries() -> list[dict]:
     """List local model directories without loading any weights.
 
-    A directory is a checkpoint when it has a config plus either the native
-    Memoria weights or the BERT-shaped disguised file. Model weights stay under
-    build/, which is ignored by Git; the dashboard only reads metadata.
+    A checkpoint is a directory holding the native Memoria weights or the
+    BERT-shaped disguised file; the config may be config.json or the native
+    memoria_config.txt. Model weights stay under build/, which is ignored by
+    Git; the dashboard only reads metadata.
     """
     entries: list[dict] = []
     if not BUILD_ROOT.exists():
         return entries
-    for config_path in sorted(BUILD_ROOT.rglob("config.json")):
-        directory = config_path.parent
+    directories = set()
+    for weights_name in ("memoria_model.pt", "pytorch_model.bin"):
+        for weights in BUILD_ROOT.rglob(weights_name):
+            directories.add(weights.parent)
+    for directory in sorted(directories):
         native = directory / "memoria_model.pt"
         disguised = directory / "pytorch_model.bin"
-        if not native.exists() and not disguised.exists():
-            continue
-        config = read_json(config_path)
+        config = read_model_config(directory)
         entries.append(
             {
                 "path": display_path(directory),
