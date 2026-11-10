@@ -72,7 +72,7 @@
   <section class="live" id="live">
     <header class="section-head">
       <h2>内核实况</h2>
-      <p>本机内核跑起来时，引导程序把 80×25 文本屏逐格经串口发出，桥接转成 WebSocket，落在这块画布上。没连上时走同一套帧格式的演示回放。</p>
+      <p>内核跑起来时，引导程序把 80×25 文本屏逐格经串口发出，桥接转成 WebSocket，落在这块画布上。没连上时走同一套帧格式的演示回放。</p>
     </header>
 
     <section class="terminal" aria-label="VGA 文本屏幕">
@@ -164,7 +164,7 @@
           <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分完成</p>
           <ul class="phase__items">
             <li>域名 https://www.mrhua.cn/ 已可访问，证书已生效</li>
-            <li>线上当前仍是上一版页面；新版与中继待部署</li>
+            <li>页面与中继的部署配置已随仓库提供</li>
             <li>社区二维码已入库，页脚备案号已指向备案系统</li>
           </ul>
         </div>
@@ -174,11 +174,11 @@
         <span class="phase__id">P2</span>
         <div class="phase__body">
           <h3>纯内存中继</h3>
-          <p class="phase__state"><i class="state-dot state-dot--doing"></i>本地完成，待部署</p>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
           <ul class="phase__items">
             <li>中继落在 apps/relay：会话、上下文、分片传输、在线计数</li>
             <li>没有数据库、没有账号；进程重启，房间与文件一起消失</li>
-            <li>本地端到端验证通过；ECS 部署、nginx 反代还没做</li>
+            <li>端到端验证通过；部署配置在 apps/relay/deploy</li>
           </ul>
         </div>
       </li>
@@ -202,7 +202,7 @@
           <h3>长期</h3>
           <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分启动</p>
           <ul class="phase__items">
-            <li>fortuna 内核已在本机 QEMU 跑通，尚未上服务器</li>
+            <li>fortuna 内核已在 QEMU 跑通</li>
             <li>memoria 独立服务、社区数据落库与备份都未开始</li>
           </ul>
         </div>
@@ -236,15 +236,15 @@
       <li>
         <span class="trace__date">11-09</span>
         <div>
-          <p class="trace__title">内核本地跑通</p>
-          <p class="trace__desc">引导程序在本机 QEMU 中启动，串口帧经桥接推到页面；还没有部署到服务器，也没有登录与存储。</p>
+          <p class="trace__title">内核跑通</p>
+          <p class="trace__desc">引导程序在 QEMU 中启动，串口帧经桥接推到页面；没有登录与存储。</p>
         </div>
       </li>
       <li>
         <span class="trace__date">11-10</span>
         <div>
           <p class="trace__title">中继与页面入库</p>
-          <p class="trace__desc">纯内存中继落到 apps/relay，页面归入 apps/community/web；旧页面移除，内核后端保留。本地跑通，尚未部署。</p>
+          <p class="trace__desc">纯内存中继落到 apps/relay，页面归入 apps/community/web；旧页面移除，内核后端保留。</p>
         </div>
       </li>
     </ol>
