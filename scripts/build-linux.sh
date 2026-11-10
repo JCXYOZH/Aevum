@@ -86,16 +86,6 @@ if [[ "$CLEAN" == "1" ]]; then
 fi
 mkdir -p "$BUILD_DIR/obj"
 
-PCH_HEADER="$BUILD_DIR/obj/memoria_pch.h"
-PCH_FLAG=()
-if [[ "$PCH" == "1" ]]; then
-  printf '#include <torch/torch.h>\n' > "$PCH_HEADER"
-  echo "  build precompiled header (torch headers parsed once)"
-  "$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" \
-    -x c++-header "$PCH_HEADER" -o "$PCH_HEADER.gch"
-  PCH_FLAG=(-include "$PCH_HEADER")
-fi
-
 COMMON_SOURCES=(
   fixed_rms_norm
   processor
@@ -126,6 +116,16 @@ CXXFLAGS=(
   "-D_GLIBCXX_USE_CXX11_ABI=$CXX11_ABI"
   -Wno-deprecated-declarations
 )
+
+PCH_HEADER="$BUILD_DIR/obj/memoria_pch.h"
+PCH_FLAG=()
+if [[ "$PCH" == "1" ]]; then
+  printf '#include <torch/torch.h>\n' > "$PCH_HEADER"
+  echo "  build precompiled header (torch headers parsed once)"
+  "$CXX" "${CXXFLAGS[@]}" "${INCLUDES[@]}" \
+    -x c++-header "$PCH_HEADER" -o "$PCH_HEADER.gch"
+  PCH_FLAG=(-include "$PCH_HEADER")
+fi
 
 echo "== compiler: $($CXX --version | head -n 1)"
 echo "== standard: $CXX_STANDARD"
