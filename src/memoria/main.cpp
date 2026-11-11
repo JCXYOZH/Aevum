@@ -33,7 +33,8 @@ struct Options {
     int64_t batch = 32;
     int64_t seq = 16;          // Synthetic sequence length.
     int64_t seq_len = 128;     // Text sequence length.
-    int64_t vocab = 64;        // Synthetic vocabulary size; text default overwritten.
+    int64_t vocab = 64;        // Synthetic vocabulary size; text default built from data.
+    bool vocab_explicit = false;
     int64_t dim = 32;
     int64_t units = 3;
     int64_t cycles = 1;
@@ -74,7 +75,7 @@ Options parse_options(int argc, char** argv) {
         else if (key == "--batch") opt.batch = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--seq") opt.seq = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--seq-len") opt.seq_len = std::stoll(need_value(i, argc, argv, key));
-        else if (key == "--vocab") opt.vocab = std::stoll(need_value(i, argc, argv, key));
+        else if (key == "--vocab") { opt.vocab = std::stoll(need_value(i, argc, argv, key)); opt.vocab_explicit = true; }
         else if (key == "--dim") opt.dim = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--units") opt.units = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--cycles") opt.cycles = std::stoll(need_value(i, argc, argv, key));
@@ -302,7 +303,8 @@ int main(int argc, char** argv) {
         trainer_options.save_dir = opt.save_dir;
         trainer_options.metrics_path = opt.metrics_path;
         trainer_options.dataset.seq_length = opt.seq_len;
-        trainer_options.dataset.vocab_size = opt.vocab;
+        trainer_options.dataset.vocab_size =
+            opt.vocab_explicit ? opt.vocab : trainer_options.dataset.vocab_size;
         trainer_options.dataset.max_samples = opt.max_samples;
         trainer_options.dataset.vocab_path = opt.vocab_path;
         trainer_options.dataset.force_char_level = opt.force_char;
