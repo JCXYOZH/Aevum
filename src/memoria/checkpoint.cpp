@@ -302,14 +302,15 @@ void load_checkpoint(MemoriaModel& model,
         format == CheckpointFormat::kDisguisedBert
             ? join_path(directory, "pytorch_model.bin")
             : join_path(directory, "memoria_model.pt");
+    // Remember where the caller placed the model. The archive is deserialized
+    // on CPU for portability, so restore the model to that device before
+    // loading optimizer state; otherwise AdamW keeps CPU moments and fails on
+    // the first CUDA step with a cuda/cpu device mismatch.
+    const auto target_device = model->parameters()[0].device();
     torch::serialize::InputArchive archive;
-    // A checkpoint saved on CUDA records CUDA storages. Loading it without a
-    // map location asks the archive for CUDA tensors again, which fails on a
-    // CPU-only machine (and even on a CUDA machine before the model is moved).
-    // Always deserialize onto CPU; Trainer moves the model afterwards when the
-    // caller asked for a CUDA device.
     archive.load_from(weight_path, torch::kCPU);
     model->load(archive);
+    model->to(target_device);
     std::cout << "checkpoint_loaded: " << directory
               << " format="
               << (format == CheckpointFormat::kDisguisedBert ? "disguised_bert"
@@ -320,9 +321,8 @@ void load_checkpoint(MemoriaModel& model,
         const auto optimizer_path = join_path(directory, "memoria_optimizer.pt");
         if (file_exists(optimizer_path)) {
             torch::serialize::InputArchive optimizer_archive;
-            // Optimizer state has the same device metadata problem as weights.
-            // Map it to CPU before the optimizer copies it into its parameters.
-            optimizer_archive.load_from(optimizer_path, torch::kCPU);
+            // Load optimizer state on the same device as the restored model.
+            optimizer_archive.load_from(optimizer_path, target_device);
             optimizer->load(optimizer_archive);
             std::cout << "optimizer_loaded: " << optimizer_path << std::endl;
         }
