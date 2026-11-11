@@ -108,6 +108,10 @@ Trainer::Trainer(TrainerOptions options)
         }
         load_checkpoint(model_, optimizer_.get(), options_.load_dir,
                         &next_epoch_, &global_step_);
+        // load_checkpoint deserializes tensors onto CPU so a checkpoint saved
+        // on CUDA can also be read on CPU-only hosts. Move the restored model
+        // back to the requested device before the first forward pass.
+        model_->to(device_);
     }
     open_metrics();
 }
