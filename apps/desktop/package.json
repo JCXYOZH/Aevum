@@ -37,6 +37,30 @@
         "to": "monitor/memoria-monitor.exe"
       },
       {
+        "from": "../relay/dist/memoria-relay.exe",
+        "to": "relay/memoria-relay.exe"
+      },
+      {
+        "from": "../console/bridge/dist/memoria-bridge.exe",
+        "to": "bridge/memoria-bridge.exe"
+      },
+      {
+        "from": "../../build/memoria_gen_cpu.exe",
+        "to": "build/memoria_gen_cpu.exe"
+      },
+      {
+        "from": "../../build/checkpoint_aevum_shakespeare",
+        "to": "build/checkpoint_aevum_shakespeare"
+      },
+      {
+        "from": "../../build/training_metrics.jsonl",
+        "to": "build/training_metrics.jsonl"
+      },
+      {
+        "from": "../../apps/console/kernel/disk.img",
+        "to": "kernel/disk.img"
+      },
+      {
         "from": "../relay/contracts/errors.json",
         "to": "contracts/errors.json"
       },

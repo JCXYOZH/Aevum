@@ -79,6 +79,47 @@ def port_open(host: str, port: int, timeout: float = 0.35) -> bool:
         return False
 
 
+def port_listening(port: int) -> bool:
+    """Return True when the port is in LISTEN state.
+
+    QEMU's serial backend accepts one client at a time; once the bridge holds
+    the serial connection, a fresh health probe is refused even though QEMU is
+    healthy.  Checking the listen table avoids that false negative.
+    """
+    if os.name == "nt":
+        netstat = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "netstat.exe"
+        try:
+            completed = subprocess.run(
+                [str(netstat), "-ano", "-p", "tcp"],
+                capture_output=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        output = completed.stdout.decode("mbcs", errors="replace")
+        for line in output.splitlines():
+            fields = line.split()
+            if len(fields) < 4 or "LISTEN" not in line.upper():
+                continue
+            if fields[1].rsplit(":", 1)[-1] == str(port):
+                return True
+        return False
+
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            lines = Path(table).read_text(encoding="utf-8").splitlines()[1:]
+        except OSError:
+            continue
+        for line in lines:
+            fields = line.split()
+            if len(fields) < 4:
+                continue
+            local, state = fields[1], fields[3]
+            if state == "0A" and local.rsplit(":", 1)[-1].upper() == f"{port:04X}":
+                return True
+    return False
+
+
 def read_text(path: Path, limit: int | None = None) -> str:
     """Read UTF-8 text defensively; logs can contain half-written lines."""
     if not path.exists():
@@ -363,7 +404,7 @@ def health_payload(metrics_path: Path, ports: dict[str, int] | None = None) -> d
             "web": {"ok": True, "port": ports["web"]},
             "relay": {"ok": port_open("127.0.0.1", ports["relay"]), "port": ports["relay"]},
             "bridge": {"ok": port_open("127.0.0.1", ports["bridge"]), "port": ports["bridge"]},
-            "qemu": {"ok": port_open("127.0.0.1", ports["serial"]), "port": ports["serial"]},
+            "qemu": {"ok": port_listening(ports["serial"]), "port": ports["serial"]},
         },
         "trainer": {
             "available": trainer["available"],

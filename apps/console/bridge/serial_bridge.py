@@ -4,14 +4,16 @@ AEVUM serial bridge: reads TCP-framed serial from QEMU, forwards to WebSocket.
 Frame format: A5 5A 01 COUNT [row col ch attr] * COUNT CRC
 """
 import asyncio
+import os
 import struct
 import sys
 import websockets
 
-QEMU_SERIAL_HOST = "127.0.0.1"
-QEMU_SERIAL_PORT = 5555
-WS_HOST          = "127.0.0.1"
-WS_PORT          = 8765
+# 桌面安装包会通过环境变量指定端口；仓库里直接运行时保持旧默认值。
+QEMU_SERIAL_HOST = os.environ.get("QEMU_SERIAL_HOST", "127.0.0.1")
+QEMU_SERIAL_PORT = int(os.environ.get("QEMU_SERIAL_PORT", "5555"))
+WS_HOST = os.environ.get("BRIDGE_WS_HOST", "127.0.0.1")
+WS_PORT = int(os.environ.get("BRIDGE_WS_PORT", "8765"))
 
 SYNC0 = 0xA5
 SYNC1 = 0x5A

@@ -1,14 +1,15 @@
-# Build the Python monitor and the Electron desktop shell in one pass.
-# The monitor is a PyInstaller one-file executable; Electron copies it into
-# resources/monitor so a target machine does not need a Python installation.
-# The default Electron target is `dir` (unpacked app), because the single-file
-# portable target needs more memory than this host currently has.
+# Build the Python services and the Electron desktop shell in one pass.
+# Each service is a PyInstaller one-file executable, so a target machine does
+# not need Python. The default Electron target is `dir` (unpacked app), because
+# the single-file portable target needs more memory than this host currently has.
 # Usage:
 #   .\scripts\package-desktop.ps1
 #   .\scripts\package-desktop.ps1 -SkipMonitor
-#   .\scripts\package-desktop.ps1 -SkipElectron
+#   .\scripts\package-desktop.ps1 -SkipServices -SkipElectron
 param(
     [switch]$SkipMonitor,
+    [switch]$SkipRelay,
+    [switch]$SkipBridge,
     [switch]$SkipElectron,
     [switch]$Clean
 )
@@ -21,6 +22,27 @@ function Write-Step([string]$message) {
     Write-Host "== $message" -ForegroundColor Cyan
 }
 
+function Invoke-PyInstaller([string]$name, [string]$entry, [string]$dist, [string]$work, [string[]]$extra = @()) {
+    if ($Clean) {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $dist -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $args = @(
+        "-m", "PyInstaller",
+        "--noconfirm", "--clean", "--onefile", "--console",
+        "--name", $name,
+        "--distpath", $dist,
+        "--workpath", $work,
+        "--specpath", $work
+    ) + $extra + @($entry)
+    & $python @args
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed for $name (exit $LASTEXITCODE)" }
+    $exe = Join-Path $dist "$name.exe"
+    if (-not (Test-Path -LiteralPath $exe)) { throw "Expected executable was not produced: $exe" }
+    Write-Host "$name : $exe" -ForegroundColor Green
+    return $exe
+}
+
 $monitorDir = Join-Path $repo "apps\console\monitor"
 $monitorDist = Join-Path $monitorDir "dist"
 $monitorWork = Join-Path $repo "build\pyinstaller\monitor"
@@ -28,30 +50,31 @@ $monitorExe = Join-Path $monitorDist "memoria-monitor.exe"
 
 if (-not $SkipMonitor) {
     Write-Step "PyInstaller: monitor"
-    if ($Clean) {
-        Remove-Item -LiteralPath $monitorWork -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $monitorDist -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    # A one-file monitor keeps the portable app to a single extra process.
-    # desktop_server.py only imports the standard library, so no hidden imports
-    # or data files are required by the build itself.
-    & $python -m PyInstaller `
-        --noconfirm `
-        --clean `
-        --onefile `
-        --console `
-        --name memoria-monitor `
-        --distpath $monitorDist `
-        --workpath $monitorWork `
-        --specpath $monitorWork `
-        (Join-Path $monitorDir "desktop_server.py")
-    if ($LASTEXITCODE -ne 0) {
-        throw "PyInstaller failed with exit code $LASTEXITCODE"
-    }
-    if (-not (Test-Path -LiteralPath $monitorExe)) {
-        throw "Expected monitor executable was not produced: $monitorExe"
-    }
-    Write-Host "monitor: $monitorExe" -ForegroundColor Green
+    # desktop_server.py only imports the standard library.
+    $monitorExe = Invoke-PyInstaller "memoria-monitor" (Join-Path $monitorDir "desktop_server.py") $monitorDist $monitorWork
+}
+
+$relayDir = Join-Path $repo "apps\relay"
+$relayDist = Join-Path $relayDir "dist"
+$relayWork = Join-Path $repo "build\pyinstaller\relay"
+$relayExe = Join-Path $relayDist "memoria-relay.exe"
+
+if (-not $SkipRelay) {
+    Write-Step "PyInstaller: relay"
+    $relayExe = Invoke-PyInstaller "memoria-relay" (Join-Path $relayDir "relay_entry.py") $relayDist $relayWork @(
+        "--paths", $relayDir,
+        "--add-data", "$(Join-Path $relayDir 'contracts');contracts"
+    )
+}
+
+$bridgeDir = Join-Path $repo "apps\console\bridge"
+$bridgeDist = Join-Path $bridgeDir "dist"
+$bridgeWork = Join-Path $repo "build\pyinstaller\bridge"
+$bridgeExe = Join-Path $bridgeDist "memoria-bridge.exe"
+
+if (-not $SkipBridge) {
+    Write-Step "PyInstaller: serial bridge"
+    $bridgeExe = Invoke-PyInstaller "memoria-bridge" (Join-Path $bridgeDir "serial_bridge.py") $bridgeDist $bridgeWork @("--hidden-import", "websockets")
 }
 
 if (-not $SkipElectron) {

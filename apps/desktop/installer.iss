@@ -23,6 +23,7 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
+LicenseFile=..\..\LICENSE
 OutputDir=dist-app
 OutputBaseFilename=Memoria-Control-Desk-Setup-{#MyAppVersion}
 SetupIconFile=icon.ico
