@@ -15,6 +15,7 @@
 #   JOBS=4 bash scripts/build-linux.sh --cpu-only
 #   MEMORIA_CXX_STANDARD=c++20 bash scripts/build-linux.sh --cpu-only
 #   MEMORIA_PCH=0 bash scripts/build-linux.sh --cpu-only   # disable precompiled header
+#   MEMORIA_NCCL_LIB=/path/to/libnccl.so bash scripts/build-linux.sh
 #
 # Outputs:
 #   build/linux/memoria_train
@@ -61,6 +62,40 @@ fi
 if [[ ! -d "$MEMORIA_TORCH_ROOT/lib" ]]; then
   echo "torch libraries not found under: $MEMORIA_TORCH_ROOT/lib" >&2
   exit 3
+fi
+
+# torch's CUDA shared library has an undefined reference to NCCL. Some wheels
+# (including AIStudio's cu128 build) do not put NCCL in torch/lib, so the
+# linker needs the actual libnccl path. MEMORIA_NCCL_LIB wins; otherwise probe
+# the torch wheel and the system linker cache.
+NCCL_LIB="${MEMORIA_NCCL_LIB:-}"
+if [[ -z "$NCCL_LIB" && -e "$MEMORIA_TORCH_ROOT/lib/libtorch_cuda.so" ]]; then
+  for d in \
+    "$MEMORIA_TORCH_ROOT/lib" \
+    "$MEMORIA_TORCH_ROOT/../nvidia/nccl/lib" \
+    "$MEMORIA_TORCH_ROOT/../../nvidia/nccl/lib"; do
+    if [[ -d "$d" ]]; then
+      candidate="$(ls -1 "$d"/libnccl.so* 2>/dev/null | sort -V | tail -n 1 || true)"
+      if [[ -n "$candidate" ]]; then
+        NCCL_LIB="$candidate"
+        break
+      fi
+    fi
+  done
+fi
+if [[ -z "$NCCL_LIB" && -e "$MEMORIA_TORCH_ROOT/lib/libtorch_cuda.so" ]] && command -v ldconfig >/dev/null 2>&1; then
+  NCCL_LIB="$(ldconfig -p 2>/dev/null | awk '/libnccl\.so/{print $NF}' | sort -V | tail -n 1 || true)"
+fi
+
+NCCL_LINK=()
+if [[ -n "$NCCL_LIB" && -e "$NCCL_LIB" ]]; then
+  NCCL_LINK=("$NCCL_LIB" "-Wl,-rpath,$(dirname "$NCCL_LIB")")
+  echo "== nccl:     $NCCL_LIB"
+elif [[ -e "$MEMORIA_TORCH_ROOT/lib/libtorch_cuda.so" ]]; then
+  # Keep the build usable on hosts without NCCL; single-GPU training does not
+  # call NCCL, but linking torch_cuda still needs its undefined symbols.
+  NCCL_LINK=("-Wl,--allow-shlib-undefined")
+  echo "== nccl:     not found; allowing unresolved torch_cuda symbols" >&2
 fi
 
 # Match the C++ ABI of the installed torch wheel. Official PyTorch wheels are
@@ -182,7 +217,7 @@ fi
 echo "  link memoria_train"
 if [[ -e "$MEMORIA_TORCH_ROOT/lib/libtorch_cuda.so" ]]; then
   link_target "$BUILD_DIR/memoria_train" "train_main.o" 0 \
-    -ltorch_cuda -ltorch -ltorch_cpu -lc10_cuda -lc10 -lpthread
+    -ltorch_cuda -ltorch -ltorch_cpu -lc10_cuda -lc10 -lpthread "${NCCL_LINK[@]}"
 else
   echo "  (no libtorch_cuda.so; training target uses the CPU stub)"
   link_target "$BUILD_DIR/memoria_train" "train_main.o" 1 \
@@ -192,7 +227,7 @@ fi
 echo "  link memoria_gen"
 if [[ -e "$MEMORIA_TORCH_ROOT/lib/libtorch_cuda.so" ]]; then
   link_target "$BUILD_DIR/memoria_gen" "gen_main.o" 0 \
-    -ltorch_cuda -ltorch -ltorch_cpu -lc10_cuda -lc10 -lpthread
+    -ltorch_cuda -ltorch -ltorch_cpu -lc10_cuda -lc10 -lpthread "${NCCL_LINK[@]}"
 else
   echo "  (no libtorch_cuda.so; generation target uses the CPU stub)"
   link_target "$BUILD_DIR/memoria_gen" "gen_main.o" 1 \
