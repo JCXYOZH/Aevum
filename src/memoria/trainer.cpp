@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -33,11 +34,53 @@ namespace memoria {
 
 Trainer::Trainer(TrainerOptions options)
     : options_(std::move(options)), rng_(options_.seed) {
-    if (options_.data_path.empty()) {
-        throw std::invalid_argument("Memoria: Trainer needs --data");
+    std::vector<std::string> data_paths = options_.data_paths;
+
+    // An explicit list is the canonical multi-shard form. Resolve relative
+    // entries against the list file so a cloud-side train_files.txt works from
+    // any current directory.
+    if (data_paths.empty() && !options_.data_list.empty()) {
+        std::ifstream list_in(options_.data_list);
+        if (!list_in) {
+            throw std::runtime_error(
+                "Memoria: cannot open data list: " + options_.data_list);
+        }
+        const auto base = std::filesystem::path(options_.data_list).parent_path();
+        std::string line;
+        while (std::getline(list_in, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.empty()) continue;
+            std::filesystem::path path(line);
+            if (path.is_relative() && !base.empty()) {
+                path = base / path;
+            }
+            data_paths.push_back(path.string());
+        }
     }
-    dataset_ = std::make_unique<TextDataset>(
-        options_.data_path, options_.dataset);
+
+    if (data_paths.empty()) {
+        if (options_.data_path.empty()) {
+            throw std::invalid_argument("Memoria: Trainer needs --data or --data-list");
+        }
+        if (std::filesystem::is_directory(options_.data_path)) {
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(options_.data_path)) {
+                if (!entry.is_regular_file()) continue;
+                const auto ext = entry.path().extension().string();
+                if (ext == ".jsonl" || ext == ".json" || ext == ".txt") {
+                    data_paths.push_back(entry.path().string());
+                }
+            }
+            std::sort(data_paths.begin(), data_paths.end());
+        } else {
+            data_paths.push_back(options_.data_path);
+        }
+    }
+
+    if (data_paths.empty()) {
+        throw std::invalid_argument("Memoria: no data files found");
+    }
+    dataset_ = std::make_unique<TextDataset>(data_paths, options_.dataset);
 
     setup_model();
     // Generation-only runs (epochs == 0 and no save target) do not need an
@@ -305,6 +348,10 @@ void Trainer::train() {
     if (eval_index.empty()) {
         eval_index = train_index;
     }
+    if (options_.max_eval_samples > 0 &&
+        static_cast<int64_t>(eval_index.size()) > options_.max_eval_samples) {
+        eval_index.resize(static_cast<size_t>(options_.max_eval_samples));
+    }
 
     std::cout << "trainer_start: total=" << total
               << " train=" << train_index.size()
@@ -326,7 +373,9 @@ void Trainer::train() {
         ",\"vocab\":" + std::to_string(dataset_->vocab_size()) +
         ",\"dim\":" + std::to_string(config_.dim) +
         ",\"params\":" + std::to_string(parameter_count()) +
-        ",\"data\":\"" + json_escape(options_.data_path) +
+        ",\"data\":\"" + json_escape(options_.data_list.empty()
+                                         ? options_.data_path
+                                         : options_.data_list) +
         "\",\"load\":\"" + json_escape(options_.load_dir) +
         "\",\"save\":\"" + json_escape(options_.save_dir) + "\"}");
 

@@ -40,12 +40,15 @@ struct Options {
     int64_t epochs = 1;
     int64_t max_steps = 0;
     int64_t max_samples = 0;
+    int64_t max_eval_samples = 512;
     int64_t max_new_tokens = 32;
     int64_t min_new_tokens = 0;
     double lr = 0.003;
     double grad_clip = 1.0;
     double temperature = 1.0;
     std::string data_path;
+    std::string data_list;
+    std::string vocab_path;
     std::string load_dir;
     std::string save_dir;
     std::string metrics_path;
@@ -78,12 +81,15 @@ Options parse_options(int argc, char** argv) {
         else if (key == "--epochs") opt.epochs = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--max-steps") opt.max_steps = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--max-samples") opt.max_samples = std::stoll(need_value(i, argc, argv, key));
+        else if (key == "--max-eval-samples") opt.max_eval_samples = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--max-new-tokens") opt.max_new_tokens = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--min-new-tokens") opt.min_new_tokens = std::stoll(need_value(i, argc, argv, key));
         else if (key == "--lr") opt.lr = std::stod(need_value(i, argc, argv, key));
         else if (key == "--grad-clip") opt.grad_clip = std::stod(need_value(i, argc, argv, key));
         else if (key == "--temperature") opt.temperature = std::stod(need_value(i, argc, argv, key));
         else if (key == "--data") opt.data_path = need_value(i, argc, argv, key);
+        else if (key == "--data-list") opt.data_list = need_value(i, argc, argv, key);
+        else if (key == "--vocab-file") opt.vocab_path = need_value(i, argc, argv, key);
         else if (key == "--load") opt.load_dir = need_value(i, argc, argv, key);
         else if (key == "--save") opt.save_dir = need_value(i, argc, argv, key);
         else if (key == "--metrics") opt.metrics_path = need_value(i, argc, argv, key);
@@ -96,7 +102,8 @@ Options parse_options(int argc, char** argv) {
             std::cout
                 << "memoria_train options:\n"
                 << "  --steps N --batch N --seq N --vocab N --dim N --units 3 --cycles N\n"
-                << "  --data FILE --seq-len N --epochs N --max-steps N --max-samples N\n"
+                << "  --data FILE|DIR --data-list FILE --vocab-file FILE --seq-len N --epochs N\n"
+                << "  --max-steps N --max-samples N --max-eval-samples N\n"
                 << "  --lr F --grad-clip F --load DIR --save DIR --char\n"
                 << "  --device cpu|cuda --metrics FILE\n"
                 << "  --prompt TEXT --max-new-tokens N --min-new-tokens N --temperature F --disguise\n"
@@ -287,20 +294,23 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (!opt.data_path.empty()) {
+    if (!opt.data_path.empty() || !opt.data_list.empty()) {
         memoria::TrainerOptions trainer_options;
         trainer_options.data_path = opt.data_path;
+        trainer_options.data_list = opt.data_list;
         trainer_options.load_dir = opt.load_dir;
         trainer_options.save_dir = opt.save_dir;
         trainer_options.metrics_path = opt.metrics_path;
         trainer_options.dataset.seq_length = opt.seq_len;
         trainer_options.dataset.vocab_size = opt.vocab;
         trainer_options.dataset.max_samples = opt.max_samples;
+        trainer_options.dataset.vocab_path = opt.vocab_path;
         trainer_options.dataset.force_char_level = opt.force_char;
         trainer_options.dim = opt.dim;
         trainer_options.batch = opt.batch;
         trainer_options.epochs = opt.epochs;
         trainer_options.max_steps = opt.max_steps;
+        trainer_options.max_eval_samples = opt.max_eval_samples;
         trainer_options.cycles = opt.cycles;
         trainer_options.lr = opt.lr;
         trainer_options.grad_clip = opt.grad_clip;

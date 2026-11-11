@@ -15,16 +15,19 @@
 namespace memoria {
 
 struct TrainerOptions {
-    std::string data_path;       // UTF-8 text or LCCC-style JSON.
+    std::string data_path;       // One UTF-8 text/JSONL file, or a directory.
+    std::string data_list;       // Optional text file with one shard path per line.
+    std::vector<std::string> data_paths; // Optional explicit shard list.
     std::string load_dir;        // Resume from this checkpoint when non-empty.
     std::string save_dir;        // Save after every epoch when non-empty.
     std::string metrics_path;    // JSONL telemetry for the desktop monitor.
     std::string device = "cpu"; // "cpu" or "cuda".
-    TextDatasetOptions dataset;  // seq_length / vocab_size / max_samples.
+    TextDatasetOptions dataset;  // seq_length / vocab_size / max_samples / vocab.
     int64_t dim = 32;            // Model width; units are fixed at 3.
     int64_t batch = 8;
     int64_t epochs = 1;
     int64_t max_steps = 0;       // 0 = run all batches in every epoch.
+    int64_t max_eval_samples = 512; // Cap validation; full 10% is too expensive.
     int64_t cycles = 1;
     double lr = 0.003;
     double weight_decay = 1e-4;
