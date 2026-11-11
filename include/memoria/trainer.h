@@ -76,6 +76,7 @@ private:
     std::ofstream metrics_;
     int64_t next_epoch_ = 0;
     int64_t global_step_ = 0;
+    int64_t run_steps_ = 0;      // Steps in this process; --max-steps caps this.
     double first_loss_ = 0.0;
     double last_loss_ = 0.0;
     std::mt19937 rng_;

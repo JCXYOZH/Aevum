@@ -277,6 +277,7 @@ std::pair<double, int64_t> Trainer::train_one_epoch(
         epoch_tokens += tokens;
         ++batches;
         ++global_step_;
+        ++run_steps_;
 
         const auto now = std::chrono::system_clock::now();
         const auto stamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -294,7 +295,7 @@ std::pair<double, int64_t> Trainer::train_one_epoch(
             std::cout << "epoch " << epoch << " step " << global_step_
                       << " loss " << loss_value << std::endl;
         }
-        if (options_.max_steps > 0 && global_step_ >= options_.max_steps) {
+        if (options_.max_steps > 0 && run_steps_ >= options_.max_steps) {
             break;
         }
     }
@@ -414,7 +415,7 @@ void Trainer::train() {
                                 options_.save_dir, next_epoch_, global_step_);
             }
         }
-        if (options_.max_steps > 0 && global_step_ >= options_.max_steps) {
+        if (options_.max_steps > 0 && run_steps_ >= options_.max_steps) {
             break;
         }
     }
