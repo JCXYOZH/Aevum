@@ -34,3 +34,15 @@ checkpoint*/
 build/trainer.out.log
 build/trainer.err.log
 build/training_metrics.jsonl
+# Real model fixtures stay local
+engine/tests/fixtures/
+# 测试目录只在本地运行
+engine/tests/
+# 模型文件不进入仓库
+*.vrm
+*.pmx
+*.glb
+engine/assets/
+# 外部参考实现与源码包只在本地
+.refs/
+*.tgz

@@ -26,6 +26,7 @@ Aevum 是社区自己的平台，不是某个产品的官网。它的目标是�
 | `apps/console/monitor/` | `desktop_server.py`：桌面监控 API，读检查点、训练指标、错误码，起模型子进程 | 已实现 |
 | `apps/console/bridge/` | 串口帧转 WebSocket，页面不直接碰内核 | 已实现 |
 | `apps/console/kernel/` | 引导、状态机、错误码、80×25 单元格；只做逻辑，不含页面 | 维护中 |
+| `engine/` | 独立渲染引擎：数学核心、PMX/VMD 解析、WebGL2 蒙皮渲染、VRM/Live2D；真实模型只在本地验证 | MMD/VRM/Live2D 可用 |
 | `apps/desktop/` | Electron 壳；`npm run dist:installer` 出 Inno Setup 安装包，`dist:dir` 出免安装目录 | 安装包已出 |
 | `src/memoria/` | Memoria C++ 内核：门控、链单元、三层平衡、分层记忆、训练、生成、检查点 | 可编译 |
 | `include/memoria/` | C++ 公共头文件；与 `src/memoria` 一一对应 | 可编译 |

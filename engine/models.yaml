@@ -1,0 +1,7 @@
+# 演示清单：路径只是示例，换成自己的模型即可
+actions: assets/all_animations.glb
+
+models:
+  - assets/models/demo/model.vrm
+  - assets/models/demo/model.pmx
+  - assets/models/demo/model3.json

@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aevum 渲染引擎验证</title>
+  <style>
+    :root {
+      --bg: #070b12;
+      --panel: #0d1420;
+      --line: rgba(255,255,255,.1);
+      --text: #dbe6f5;
+      --muted: #8fa0b8;
+      --accent: #59d3c8;
+      --warm: #f4c76b;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+    body {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      color: var(--text);
+      font: 14px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    }
+    .panel {
+      height: 100vh;
+      overflow-y: auto;
+      padding: 18px 16px 28px;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #0d1420, #09101a 60%);
+    }
+    .eyebrow {
+      margin: 0 0 4px;
+      color: var(--accent);
+      font: 11px/1.3 ui-monospace, Consolas, monospace;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0 0 4px; font-size: 20px; font-weight: 650; letter-spacing: .02em; }
+    .sub { margin: 0 0 18px; color: var(--muted); font-size: 12px; }
+    .group { margin: 0 0 18px; padding: 0; border: 0; }
+    .group-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 9px;
+      color: var(--muted);
+      font: 11px/1.3 ui-monospace, Consolas, monospace;
+      letter-spacing: .12em;
+    }
+    .group-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+    .field { display: block; margin: 0 0 9px; }
+    .field span { display: block; margin: 0 0 4px; color: var(--muted); font-size: 12px; }
+    select, input[type="range"] { width: 100%; }
+    select {
+      height: 34px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #101a26;
+      color: var(--text);
+      font: inherit;
+    }
+    .switch {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,.055);
+      cursor: pointer;
+    }
+    .switch:last-child { border-bottom: 0; }
+    .switch strong { display: block; color: var(--text); font-size: 13px; font-weight: 500; }
+    .switch small { display: block; margin-top: 1px; color: var(--muted); font-size: 11px; }
+    .switch input { position: absolute; opacity: 0; pointer-events: none; }
+    .track {
+      position: relative;
+      width: 38px;
+      height: 21px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 999px;
+      background: #111b28;
+      transition: background .16s ease, border-color .16s ease;
+    }
+    .track::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #718096;
+      transition: transform .16s ease, background .16s ease;
+    }
+    .switch input:checked + .track { border-color: rgba(89,211,200,.6); background: rgba(89,211,200,.16); }
+    .switch input:checked + .track::after { transform: translateX(17px); background: var(--accent); }
+    .switch input:focus-visible + .track { outline: 2px solid var(--warm); outline-offset: 2px; }
+    .switch.is-disabled { opacity: .42; cursor: not-allowed; }
+    .switch.is-disabled .track { pointer-events: none; }
+    .readout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 2px;
+    }
+    .stat {
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: rgba(255,255,255,.025);
+    }
+    .stat b { display: block; font: 12px/1.3 ui-monospace, Consolas, monospace; color: var(--warm); }
+    .stat span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .buttons { display: flex; gap: 7px; margin-top: 14px; }
+    .buttons button {
+      flex: 1;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #111b28;
+      color: var(--text);
+      font: 12px/1 inherit;
+      cursor: pointer;
+    }
+    .buttons button:hover { border-color: rgba(89,211,200,.45); color: var(--accent); }
+    .stage { position: relative; min-width: 0; height: 100vh; }
+    #view { display: block; width: 100%; height: 100%; }
+    #live2dView { position: absolute; inset: 0; display: none; width: 100%; height: 100%; }
+    #debug { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    #toast {
+      position: absolute;
+      left: 18px;
+      bottom: 18px;
+      max-width: min(560px, calc(100% - 36px));
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: rgba(7,11,18,.8);
+      color: var(--muted);
+      font: 12px/1.45 ui-monospace, Consolas, monospace;
+      pointer-events: none;
+    }
+    #toast.is-error { border-color: rgba(255,120,120,.45); color: #ffb0b0; }
+    .hint {
+      position: absolute;
+      top: 16px;
+      right: 18px;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: rgba(7,11,18,.72);
+      color: var(--muted);
+      font: 11px/1.3 ui-monospace, Consolas, monospace;
+    }
+    @media (max-width: 760px) {
+      body { grid-template-columns: 1fr; grid-template-rows: 45vh 55vh; }
+      .panel { height: 45vh; border-right: 0; border-bottom: 1px solid var(--line); }
+      .stage { height: 55vh; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="panel">
+    <p class="eyebrow">Aevum Render Lab</p>
+    <h1>渲染引擎验证</h1>
+    <p class="sub">逐项开关，观察同一模型的变化。每次只改一个开关做对照。</p>
+
+    <fieldset class="group">
+      <legend class="group-title">模型</legend>
+      <label class="field">
+        <span>当前模型</span>
+        <select id="modelSelect"></select>
+      </label>
+      <label class="field">
+        <span>动作</span>
+        <select id="actionSelect">
+          <option value="idle">待机</option>
+          <option value="walk">走路</option>
+          <option value="run">跑步</option>
+          <option value="greet">打招呼</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend class="group-title">渲染功能</legend>
+      <label class="switch" data-feature="texture">
+        <span><strong>贴图</strong><small>关闭后显示材质底色</small></span>
+        <input type="checkbox" id="optTexture" checked>
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="light">
+        <span><strong>光照</strong><small>关闭后只保留环境光</small></span>
+        <input type="checkbox" id="optLight" checked>
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="toon">
+        <span><strong>卡通着色</strong><small>PMX toon 渐变，关闭后回到 Lambert</small></span>
+        <input type="checkbox" id="optToon" checked>
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="sphere">
+        <span><strong>球面贴图</strong><small>PMX sphere 高光/反射贴图</small></span>
+        <input type="checkbox" id="optSphere" checked>
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="outline">
+        <span><strong>描边</strong><small>按 edge 标记绘制背面外扩轮廓</small></span>
+        <input type="checkbox" id="optOutline" checked>
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="wireframe">
+        <span><strong>线框</strong><small>用线段绘制三角网格</small></span>
+        <input type="checkbox" id="optWireframe">
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="bones">
+        <span><strong>骨骼</strong><small>绘制人形骨链与关节</small></span>
+        <input type="checkbox" id="optBones">
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="ground">
+        <span><strong>接地</strong><small>限制脚底穿过地面</small></span>
+        <input type="checkbox" id="optGround" checked>
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="grid">
+        <span><strong>地面网格</strong><small>显示世界坐标参考面</small></span>
+        <input type="checkbox" id="optGrid" checked>
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="autoRotate">
+        <span><strong>自动旋转</strong><small>围绕模型缓慢转动视角</small></span>
+        <input type="checkbox" id="optAutoRotate">
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="visible">
+        <span><strong>显示模型</strong><small>关闭后只保留参考网格</small></span>
+        <input type="checkbox" id="optVisible" checked>
+        <span class="track" aria-hidden="true"></span>
+      </label>
+      <label class="switch" data-feature="paused">
+        <span><strong>暂停动作</strong><small>冻结当前帧，便于观察</small></span>
+        <input type="checkbox" id="optPaused">
+        <span class="track" aria-hidden="true"></span>
+      </label>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend class="group-title">相机</legend>
+      <label class="field">
+        <span>水平视角 <b id="yawValue">16°</b></span>
+        <input type="range" id="yawRange" min="-180" max="180" value="16" step="1">
+      </label>
+      <label class="field">
+        <span>缩放 <b id="zoomValue">1.00×</b></span>
+        <input type="range" id="zoomRange" min="0.5" max="2.5" value="1" step="0.01">
+      </label>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend class="group-title">当前状态</legend>
+      <div class="readout">
+        <div class="stat"><b id="statRenderer">-</b><span>渲染器</span></div>
+        <div class="stat"><b id="statBones">-</b><span>骨骼</span></div>
+        <div class="stat"><b id="statTris">-</b><span>三角面</span></div>
+        <div class="stat"><b id="statFps">-</b><span>帧率</span></div>
+      </div>
+      <div class="buttons">
+        <button type="button" id="resetView">重置视角</button>
+        <button type="button" id="resetOptions">重置开关</button>
+      </div>
+    </fieldset>
+  </aside>
+
+  <main class="stage">
+    <canvas id="view"></canvas>
+    <canvas id="live2dView"></canvas>
+    <canvas id="debug" aria-hidden="true"></canvas>
+    <div class="hint">拖动模型可旋转 · 滚轮缩放</div>
+    <div id="toast">正在加载模型…</div>
+  </main>
+
+  <script src="orb/math.js?v=20261114c"></script>
+  <script src="formats/glb.js?v=20261114c"></script>
+  <script src="formats/vrm.js?v=20261114c"></script>
+  <script src="formats/gltf-accessor.js?v=20261114c"></script>
+  <script src="formats/gltf-animation.js?v=20261114c"></script>
+  <script src="formats/pmx.js?v=20261114c"></script>
+  <script src="formats/tga.js?v=20261114c"></script>
+  <script src="vendor/live2dcubismcore.min.js?v=20261114c"></script>
+  <script src="formats/live2d-motion.js?v=20261114c"></script>
+  <script src="render/vrm-renderer.js?v=20261114c"></script>
+  <script src="render/webgl-renderer.js?v=20261114c"></script>
+  <script src="render/live2d-renderer.js?v=20261114c"></script>
+  <script src="render/animation-retarget.js?v=20261114c"></script>
+  <script src="action/action-core.js?v=20261114c"></script>
+  <script src="action/action-capture.js?v=20261114c"></script>
+  <script src="action/action-chain.js?v=20261114c"></script>
+  <script src="action/action-capture-stream.js?v=20261114c"></script>
+  <script src="action/action-capture-data.js?v=20261114c"></script>
+  <script src="action/action-matcher.js?v=20261114c"></script>
+  <script src="action/action-joint-ik.js?v=20261114c"></script>
+  <script src="action/procedural-animator.js?v=20261114c"></script>
+  <script src="action/index.js?v=20261114c"></script>
+  <script src="app/validate.js?v=20261114c"></script>
+</body>
+</html>
