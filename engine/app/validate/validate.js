@@ -836,7 +836,7 @@
               // 走路腿 IK 的单帧尖峰用 30 ms 低通削掉；状态跨帧保存。
               dt: dt,
               legSmoothState: currentAction === 'walk' ? walkLegFilter : null,
-              armLimitState: currentAction === 'walk' ? walkArmFilter : null
+              armLimitState: currentAction === 'walk' ? walkArmLimit : null
             };
             const source = player.getPose();
             target = retarget(current.vrm, actionGLB.json, source, retargetOptions);
