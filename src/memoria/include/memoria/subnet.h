@@ -4,7 +4,7 @@
 
 #include <tuple>
 
-#include "memoria/processor.h"
+#include "processor.h"
 
 namespace memoria {
 

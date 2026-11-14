@@ -12,10 +12,10 @@
 #include <stdexcept>
 #include <string>
 
-#include "memoria/checkpoint.h"
-#include "memoria/generator.h"
-#include "memoria/text_dataset.h"
-#include "memoria/trainer.h"
+#include "include/memoria/checkpoint.h"
+#include "include/memoria/generator.h"
+#include "include/memoria/text_dataset.h"
+#include "include/memoria/trainer.h"
 
 namespace {
 

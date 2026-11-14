@@ -5,12 +5,12 @@
 #include <tuple>
 #include <vector>
 
-#include "memoria/chain_unit.h"
-#include "memoria/config.h"
-#include "memoria/embedding_layer.h"
-#include "memoria/gated_valve.h"
-#include "memoria/strata_memory.h"
-#include "memoria/tri_balancer.h"
+#include "chain_unit.h"
+#include "config.h"
+#include "embedding_layer.h"
+#include "gated_valve.h"
+#include "strata_memory.h"
+#include "tri_balancer.h"
 
 namespace memoria {
 

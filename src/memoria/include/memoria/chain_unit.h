@@ -4,7 +4,7 @@
 
 #include <tuple>
 
-#include "memoria/subnet.h"
+#include "subnet.h"
 
 namespace memoria {
 

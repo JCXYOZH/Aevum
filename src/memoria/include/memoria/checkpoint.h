@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "memoria/config.h"
-#include "memoria/model.h"
+#include "config.h"
+#include "model.h"
 
 namespace memoria {
 

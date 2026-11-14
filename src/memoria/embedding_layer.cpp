@@ -1,4 +1,4 @@
-#include "memoria/embedding_layer.h"
+#include "include/memoria/embedding_layer.h"
 
 #include <cmath>
 #include <stdexcept>

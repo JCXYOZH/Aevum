@@ -76,7 +76,7 @@ scripts\desktop.ps1 -Stop
 
 ## Memoria C++ 内核
 
-`src/memoria/` 是 C++（LibTorch）实现，`src/memoria/include/memoria/` 是对应头文件。当前默认单周期链路：
+`src/memoria/` 是 C++（LibTorch）实现，`src/memoria/include/memoria/` 是对应头文件。源码用文件自身相对路径包含头文件（`#include "include/memoria/xxx.h"`，头文件之间用同目录文件名），编辑器和编译器都按文件位置解析，不依赖额外的 includePath 配置。当前默认单周期链路：
 
 ```text
 embedding -> gated valve -> chain × 3 -> tri-balancer × 3

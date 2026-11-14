@@ -2,7 +2,7 @@
 
 #include <torch/torch.h>
 
-#include "memoria/fixed_rms_norm.h"
+#include "fixed_rms_norm.h"
 
 namespace memoria {
 

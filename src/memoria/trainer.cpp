@@ -1,4 +1,4 @@
-#include "memoria/trainer.h"
+#include "include/memoria/trainer.h"
 
 #include <algorithm>
 #include <chrono>
@@ -28,7 +28,7 @@ int8_t device_count();
 #include <windows.h>
 #endif
 
-#include "memoria/checkpoint.h"
+#include "include/memoria/checkpoint.h"
 
 namespace memoria {
 

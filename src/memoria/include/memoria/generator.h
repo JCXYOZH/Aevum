@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <string>
 
-#include "memoria/model.h"
-#include "memoria/text_dataset.h"
+#include "model.h"
+#include "text_dataset.h"
 
 namespace memoria {
 
