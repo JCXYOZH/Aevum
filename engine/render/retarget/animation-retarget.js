@@ -51,12 +51,15 @@
   // 的肩骨为了不干扰手臂被固定在休息姿态，胸腔又和骨盆同相，整段上身
   // 像一块板。这里按源肩线相对骨盆的 yaw 给 chest 加一个反向扭转。
   const WALK_TORSO_YAW_GAIN = 0.95;
-  // 目标左右上臂的局部轴不同；0.72/0.15 是 60 Hz 实测把两臂摆幅
+  // 目标左右上臂的局部轴不同；0.78/0.15 是 60 Hz 实测把两臂摆幅
   // 拉到源动作 35.8°/49.4° 附近的折中，左臂不再超过源，右臂不再外甩。
-  const WALK_LEFT_ARM_SWING_GAIN = 0.72;
+  const WALK_LEFT_ARM_SWING_GAIN = 0.78;
   // 右臂的局部轴和源镜像相反，完整差值在目标上会过冲成 100° 摆幅；
   // 0.15 只补胸腔反扭造成的摆幅损失，保留源右臂的相位，实测 48.4°。
   const WALK_RIGHT_ARM_SWING_GAIN = 0.15;
+  // 左臂摆幅已经对齐，但 60 Hz 下峰值角速度仍明显高于源；用 200°/s
+  // 的单帧上限削掉 0.48–0.57 s 的连续甩臂，摆幅仍保持 36.6°。
+  const WALK_ARM_MAX_DEG_PER_SEC = 200;
   // 走路腿部低通时间常数：只在 walk 生效。50 ms 比原来的 30 ms 更能压掉
   // 左腿在大腿接近伸直时的单帧弹动，同时保留 40° 以上的前后摆。
   const WALK_LEG_SMOOTH_TAU = 0.05;
@@ -432,6 +435,26 @@
       pose.rotation[index] = out;
       state[bones[i]] = out;
     }
+  }
+
+  // 单帧摆速封顶：按左臂当前 sagittal 角和上一帧限幅后的角比较，
+  // 超过上限就把上臂沿世界 X 回退相应角度，避免削顶后又慢慢追回去。
+  function limitWalkLeftArmSpeed(vrm, humanoid, pose, state, dt, math) {
+    if (!state || !(dt > 0)) return;
+    if (humanoid.leftUpperArm === undefined || humanoid.leftLowerArm === undefined) return;
+    const current = armSagittal(vrm.json, pose, humanoid.leftUpperArm, humanoid.leftLowerArm);
+    const previous = state.leftArmSagittal;
+    if (previous === undefined) {
+      state.leftArmSagittal = current;
+      return;
+    }
+    const maxStep = WALK_ARM_MAX_DEG_PER_SEC * Math.min(0.05, dt);
+    const delta = current - previous;
+    const limited = Math.max(-maxStep, Math.min(maxStep, delta));
+    if (Math.abs(delta - limited) > 1e-4) {
+      rotateBoneWorld(vrm.json, pose, math, humanoid.leftUpperArm, [1, 0, 0], (delta - limited) * Math.PI / 180);
+    }
+    state.leftArmSagittal = previous + limited;
   }
 
   // 支撑脚在接触地面时锁定前后位置，髋部反向平移抵消滑步。
@@ -937,6 +960,7 @@
       adductWalkLegs(humanoid, pose, math, WALK_LEG_ADDUCT_LEFT, WALK_LEG_ADDUCT_RIGHT);
       liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math);
       smoothWalkLegs(humanoid, pose, options.legSmoothState, options.dt, math);
+      limitWalkLeftArmSpeed(vrm, humanoid, pose, options.armLimitState, options.dt, math);
     }
     return pose;
   }

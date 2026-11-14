@@ -123,6 +123,7 @@
   let loadToken = 0;
   // 走路循环接缝由 walk clip 尾帧扩展处理，不再做 90 ms 全身交叉淡化。
   let walkLegFilter = Object.create(null);
+  let walkArmLimit = Object.create(null);
 
   if (query.get('action') && CLIP_FOR[query.get('action')]) {
     actionSelect.value = query.get('action');
@@ -476,6 +477,7 @@
     stateMachine.currentState = initial;
     currentAction = initial;
     walkLegFilter = Object.create(null);
+    walkArmLimit = Object.create(null);
     actionSelect.value = initial;
     if (hasClip(CLIP_FOR[initial])) {
       player.setClip(CLIP_FOR[initial]).reset().setLoop(true).play();
@@ -833,7 +835,8 @@
               footClearance: currentAction === 'walk',
               // 走路腿 IK 的单帧尖峰用 30 ms 低通削掉；状态跨帧保存。
               dt: dt,
-              legSmoothState: currentAction === 'walk' ? walkLegFilter : null
+              legSmoothState: currentAction === 'walk' ? walkLegFilter : null,
+              armLimitState: currentAction === 'walk' ? walkArmFilter : null
             };
             const source = player.getPose();
             target = retarget(current.vrm, actionGLB.json, source, retargetOptions);
@@ -1028,6 +1031,7 @@
     if (!stateMachine || !hasClip(CLIP_FOR[target])) return;
     currentAction = target;
     walkLegFilter = Object.create(null);
+    walkArmLimit = Object.create(null);
     stateMachine.setCondition('target', target);
   });
 
