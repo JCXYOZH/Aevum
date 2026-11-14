@@ -464,6 +464,25 @@
       }
     }
 
+    // 待机是静止对称姿态：源 idle 左右手臂本身对称，但目标两侧手臂局部轴不同，
+    // 逐侧重定向会把一只手抬高/外展。这里用目标左臂镜像右臂，只用于站立类动作。
+    if (options && options.symmetricArms) {
+      const armPairs = [
+        ['leftShoulder', 'rightShoulder'],
+        ['leftUpperArm', 'rightUpperArm'],
+        ['leftLowerArm', 'rightLowerArm'],
+        ['leftHand', 'rightHand']
+      ];
+      for (const pair of armPairs) {
+        const leftIndex = humanoid[pair[0]];
+        const rightIndex = humanoid[pair[1]];
+        if (leftIndex === undefined || rightIndex === undefined) continue;
+        const left = pose.rotation[leftIndex];
+        if (!left) continue;
+        pose.rotation[rightIndex] = normalizeQuat([left[0], -left[1], -left[2], left[3]]);
+      }
+    }
+
     // 髋部按源动作起伏后，目标腿长和站距不同，脚会悬空；把最低脚踝拉回绑定高度。
     if (hipsTargetIndex !== undefined && humanoid.leftFoot !== undefined && humanoid.rightFoot !== undefined) {
       const restPos = nodeWorldPositions(vrm.json, null);
