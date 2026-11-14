@@ -31,6 +31,12 @@
   // 目标左大腿的局部轴比右腿更偏，0.8 会把左步幅压到源的六成；
   // 1.50 让左腿前后摆回到源动作 45.8° 附近，膝角仍由源腿和抬脚 IK 决定。
   const WALK_LEFT_UPLEG_GAIN = 1.50;
+  // 左大腿增益 1.50 同时放大了源动作的均值偏移，60 Hz 实测左脚平均落在
+  // 髋前 134 mm（源在髋后 30 mm），整条左腿看起来走在身体前面。
+  // 在腿部平滑之后把左大腿绕局部 X 向后回摆 11.5°，只平移均值、不改摆幅。
+  const WALK_LEFT_UPLEG_PITCH_BIAS_DEG = -11.5;
+  // 右腿均值比源偏后约 20 mm，向前补 3°，让左右膝/踝平均位置都贴近源动作。
+  const WALK_RIGHT_UPLEG_PITCH_BIAS_DEG = 3.0;
   const WALK_RIGHT_LOWER_GAIN = 1.0;
   // 走路手臂/躯干校正角：目标骨架的左右局部轴方向不同，单纯套源动作会
   // 让右臂外展、左臂摆幅被压小、躯干整体左倾。以下角度由 60 Hz 采样
@@ -434,6 +440,18 @@
       math.Q.slerp(out, previous, current, alpha);
       pose.rotation[index] = out;
       state[bones[i]] = out;
+    }
+  }
+
+  // 左右腿均值校正：只绕大腿局部 X 平移俯仰均值，不改前后摆幅。
+  function biasWalkLegsPitch(humanoid, pose, math) {
+    if (humanoid.leftUpperLeg !== undefined) {
+      rotateBoneLocal(pose, math, humanoid.leftUpperLeg, [1, 0, 0],
+        WALK_LEFT_UPLEG_PITCH_BIAS_DEG * Math.PI / 180);
+    }
+    if (humanoid.rightUpperLeg !== undefined) {
+      rotateBoneLocal(pose, math, humanoid.rightUpperLeg, [1, 0, 0],
+        WALK_RIGHT_UPLEG_PITCH_BIAS_DEG * Math.PI / 180);
     }
   }
 
@@ -960,6 +978,7 @@
       adductWalkLegs(humanoid, pose, math, WALK_LEG_ADDUCT_LEFT, WALK_LEG_ADDUCT_RIGHT);
       liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math);
       smoothWalkLegs(humanoid, pose, options.legSmoothState, options.dt, math);
+      biasWalkLegsPitch(humanoid, pose, math);
       limitWalkLeftArmSpeed(vrm, humanoid, pose, options.armLimitState, options.dt, math);
     }
     return pose;
