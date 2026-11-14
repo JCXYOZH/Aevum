@@ -881,7 +881,32 @@
     }
   }
 
-  // 跑步躯干只对齐 Hips→Head 的世界俯仰，不继承走路的 2° 前倾偏置。
+  // 世界方向对齐只固定肩→肘、肘→腕的位置，骨头自身的绕骨轴旋转仍来自
+  // 局部重定向。源上臂/前臂/手骨 -X 指向下一节，目标 +X，且前轴相反，
+  // 因此整条右臂用 R*Q*R（R 为绕 Y 180°）同步位置和扭转。
+  function alignRightArmOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math) {
+    const bones = [
+      ['rightUpperArm', 'RightArm'],
+      ['rightLowerArm', 'RightForeArm'],
+      ['rightHand', 'RightHand']
+    ];
+    const sourceWorld = nodeWorldQuaternions(sourceJson, sourcePose, math);
+    const turn = [0, 1, 0, 0];
+    for (const pair of bones) {
+      const targetIndex = humanoid[pair[0]];
+      const sourceIndex = sourceNodeIndex(sourceJson, pair[1]);
+      if (targetIndex === undefined || sourceIndex < 0) continue;
+      const turned = math.Q.mult(math.Q.create(), turn, sourceWorld(sourceIndex));
+      const desired = math.Q.mult(math.Q.create(), turned, turn);
+      const parent = vrm.json.nodes.findIndex(node => (node.children || []).indexOf(targetIndex) >= 0);
+      const world = nodeWorldQuaternions(vrm.json, pose, math);
+      const parentWorld = parent >= 0 ? world(parent) : [0, 0, 0, 1];
+      pose.rotation[targetIndex] = normalizeQuat(
+        math.Q.mult(math.Q.create(), inverseQuat(parentWorld), desired)
+      );
+    }
+  }
+
   // 用多次小步反馈替代原跑步分支的单次 0.2 rad，避免把脊柱来回甩。
   function alignRunTorsoPitch(sourceJson, sourcePose, vrm, humanoid, pose, math) {
     if (humanoid.spine === undefined || humanoid.hips === undefined || humanoid.head === undefined) return;
@@ -1310,7 +1335,7 @@
     // 右腕整体低 79 mm 且提前 0.73 s 落到最低点。这里改用源肩→肘、
     // 肘→腕的世界方向重解两臂；左臂随后由 idle 结果覆盖，不受影响。
     if (options && options.greetPose) {
-      alignArmDirections(vrm, sourceJson, sourcePose, humanoid, pose, math);
+      alignRightArmOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math);
     }
 
     // 髋部按源动作起伏后，目标腿长和站距不同，脚会悬空；把最低脚踝拉回绑定高度。
