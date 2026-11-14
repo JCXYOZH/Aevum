@@ -292,11 +292,14 @@
     for (let i = 0; i < legs.length; i += 1) {
       const upper = legs[i][0], lower = legs[i][1], foot = legs[i][2], sourceFoot = legs[i][3];
       const sourceClear = sourceWorld(sourceFoot)[1] - sourceRestGround;
-      if (sourceClear < 0.02) continue;
+      if (sourceClear <= 0) continue;
+      // 触地附近连续渐入渐出，避免在 20 mm 阈值上把修正量瞬间开关，造成单帧跳腿。
+      const ramp = Math.min(1, sourceClear / 0.05);
+      const weight = ramp * ramp * (3 - 2 * ramp);
       const targetClear = targetWorld(foot)[1] - targetRestGround;
-      const desired = Math.min(0.2, sourceClear * legScale);
+      const desired = Math.min(0.2, sourceClear * legScale * weight);
       const lift = desired - targetClear;
-      if (lift < 0.005) continue;
+      if (lift < 0.001) continue;
       const knee = targetWorld(lower);
       const ankle = targetWorld(foot);
       const hip = targetWorld(upper);
@@ -316,14 +319,21 @@
         hip[1] + dir[1] * distance,
         hip[2] + dir[2] * distance
       ];
-      const plane = [
-        thigh[1] * shin[2] - thigh[2] * shin[1],
-        thigh[2] * shin[0] - thigh[0] * shin[2],
-        thigh[0] * shin[1] - thigh[1] * shin[0]
+      const ankleDirection = normalizeQuat([
+        ankle[0] - hip[0], ankle[1] - hip[1], ankle[2] - hip[2], 0
+      ]);
+      const alongThigh = thigh[0] * ankleDirection[0] + thigh[1] * ankleDirection[1] +
+        thigh[2] * ankleDirection[2];
+      const pole = [
+        knee[0] - hip[0] - ankleDirection[0] * alongThigh,
+        knee[1] - hip[1] - ankleDirection[1] * alongThigh,
+        knee[2] - hip[2] - ankleDirection[2] * alongThigh
       ];
-      const planeLength = Math.hypot(plane[0], plane[1], plane[2]);
-      if (planeLength <= 1e-4) continue;
-      const normal = [plane[0] / planeLength, plane[1] / planeLength, plane[2] / planeLength];
+      const poleLength = Math.hypot(pole[0], pole[1], pole[2]);
+      if (poleLength <= 1e-4) continue;
+      // 用当前膝盖相对髋踝连线的偏移方向当弯折平面，不用叉积符号；
+      // 腿接近伸直时叉积会翻转，膝盖会突然弹到另一侧。
+      const normal = [pole[0] / poleLength, pole[1] / poleLength, pole[2] / poleLength];
       const along = (thighLength * thighLength - shinLength * shinLength + distance * distance) /
         (2 * distance);
       const bend = Math.sqrt(Math.max(0, thighLength * thighLength - along * along));
