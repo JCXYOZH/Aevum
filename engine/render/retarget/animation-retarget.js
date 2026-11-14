@@ -529,6 +529,41 @@
   // 源走路由髋部横移带动全身，但肩线/头部只保留约 1/3 的横向摆动；目标
   // 目前肩线和头几乎跟着髋部平移。这里按源肩-髋、头-髋的横向偏移给 spine
   // 和 neck 补反向侧倾，让上身稳定在支撑面上方。
+  function alignWalkTorsoPitch(sourceJson, sourcePose, vrm, humanoid, pose, math) {
+    if (humanoid.spine === undefined || humanoid.hips === undefined || humanoid.head === undefined) return;
+    const sourceNodes = sourceJson.nodes || [];
+    const sourceHip = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'Hips');
+    const sourceHead = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'Head');
+    if (sourceHip < 0 || sourceHead < 0) return;
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    const sourceHipPos = sourceWorld(sourceHip);
+    const sourceHeadPos = sourceWorld(sourceHead);
+    const sourcePitch = Math.atan2(
+      -(sourceHeadPos[2] - sourceHipPos[2]),
+      sourceHeadPos[1] - sourceHipPos[1]
+    ) * 180 / Math.PI;
+    // 源骨架面向 +Z，目标面向 -Z，同一个“前倾”在俯仰符号上相反。
+    const desiredPitch = -sourcePitch;
+    let applied = 0;
+    for (let i = 0; i < 2; i += 1) {
+      const targetWorld = nodeWorldPositions(vrm.json, pose);
+      const hips = targetWorld(humanoid.hips);
+      const head = targetWorld(humanoid.head);
+      const currentPitch = Math.atan2(-(head[2] - hips[2]), head[1] - hips[1]) * 180 / Math.PI;
+      const error = desiredPitch - currentPitch;
+      if (Math.abs(error) < 0.35) break;
+      const angle = Math.max(-0.2, Math.min(0.2, -error * Math.PI / 180));
+      rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [1, 0, 0], angle);
+      applied += angle;
+    }
+    // 胸腔俯仰会带着手臂一起前后转；把上臂反向转回来，保持已经对齐好的
+    // 手臂世界朝向不变，只修躯干/头部的前后倾。
+    if (Math.abs(applied) > 1e-6 && humanoid.leftUpperArm !== undefined && humanoid.rightUpperArm !== undefined) {
+      rotateBoneWorld(vrm.json, pose, math, humanoid.leftUpperArm, [1, 0, 0], -applied);
+      rotateBoneWorld(vrm.json, pose, math, humanoid.rightUpperArm, [1, 0, 0], -applied);
+    }
+  }
+
   function alignWalkTorsoLateral(sourceJson, sourcePose, vrm, humanoid, pose, math) {
     if (humanoid.spine === undefined || humanoid.hips === undefined || humanoid.head === undefined ||
         humanoid.neck === undefined || humanoid.leftShoulder === undefined ||
@@ -866,6 +901,7 @@
       rotateBoneLocal(pose, math, humanoid.rightLowerArm, [0, 1, 0], WALK_RIGHT_ELBOW_FLEX);
       rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [0, 0, 1], -WALK_TORSO_ROLL);
       rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [1, 0, 0], -WALK_TORSO_PITCH);
+      alignWalkTorsoPitch(sourceJson, sourcePose, vrm, humanoid, pose, math);
     }
 
     // 髋部按源动作起伏后，目标腿长和站距不同，脚会悬空；把最低脚踝拉回绑定高度。
