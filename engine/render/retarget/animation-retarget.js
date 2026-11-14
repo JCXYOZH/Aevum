@@ -881,30 +881,80 @@
     }
   }
 
-  // 世界方向对齐只固定肩→肘、肘→腕的位置，骨头自身的绕骨轴旋转仍来自
-  // 局部重定向。源上臂/前臂/手骨 -X 指向下一节，目标 +X，且前轴相反，
-  // 因此整条右臂用 R*Q*R（R 为绕 Y 180°）同步位置和扭转。
-  function alignRightArmOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math) {
-    const bones = [
-      ['rightUpperArm', 'RightArm'],
-      ['rightLowerArm', 'RightForeArm'],
-      ['rightHand', 'RightHand']
+  // 先把肩→肘、肘→腕方向精确对齐，再绕各骨轴补滚转：只套世界四元数
+  // 会被目标臂骨局部轴与 +X 的几度偏差带偏，单独 aim 又不控制自转。
+  function alignBoneRollWorld(json, pose, math, index, axis, sourceQuat, lateral) {
+    if (index === undefined) return;
+    const d = normalizeVector(axis);
+    if (!d) return;
+    const world = nodeWorldQuaternions(json, pose, math);
+    const targetQ = world(index);
+    const rotate = (q, v) => {
+      const [x, y, z, w] = q;
+      const tx = 2 * (y * v[2] - z * v[1]);
+      const ty = 2 * (z * v[0] - x * v[2]);
+      const tz = 2 * (x * v[1] - y * v[0]);
+      return [
+        v[0] + w * tx + (y * tz - z * ty),
+        v[1] + w * ty + (z * tx - x * tz),
+        v[2] + w * tz + (x * ty - y * tx)
+      ];
+    };
+    const targetLateral = rotate(targetQ, lateral);
+    const sourceLateral = runFacing(rotate(sourceQuat, lateral));
+    const dot = targetLateral[0] * sourceLateral[0] + targetLateral[1] * sourceLateral[1] +
+      targetLateral[2] * sourceLateral[2];
+    const cross = [
+      targetLateral[1] * sourceLateral[2] - targetLateral[2] * sourceLateral[1],
+      targetLateral[2] * sourceLateral[0] - targetLateral[0] * sourceLateral[2],
+      targetLateral[0] * sourceLateral[1] - targetLateral[1] * sourceLateral[0]
     ];
-    const sourceWorld = nodeWorldQuaternions(sourceJson, sourcePose, math);
+    const angle = Math.atan2(
+      cross[0] * d[0] + cross[1] * d[1] + cross[2] * d[2],
+      dot
+    );
+    if (Math.abs(angle) > 1e-4) rotateBoneWorld(json, pose, math, index, d, angle);
+  }
+
+  function alignRightArmOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math) {
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    const sourceQuats = nodeWorldQuaternions(sourceJson, sourcePose, math);
+    const upper = humanoid.rightUpperArm;
+    const lower = humanoid.rightLowerArm;
+    const hand = humanoid.rightHand;
+    const sourceUpper = sourceNodeIndex(sourceJson, 'RightArm');
+    const sourceLower = sourceNodeIndex(sourceJson, 'RightForeArm');
+    const sourceHand = sourceNodeIndex(sourceJson, 'RightHand');
+    if (upper === undefined || lower === undefined || hand === undefined ||
+        sourceUpper < 0 || sourceLower < 0 || sourceHand < 0) return;
+    const shoulder = sourceWorld(sourceUpper);
+    const elbow = sourceWorld(sourceLower);
+    const wrist = sourceWorld(sourceHand);
+    const upperDir = runFacing([elbow[0] - shoulder[0], elbow[1] - shoulder[1], elbow[2] - shoulder[2]]);
+    const lowerDir = runFacing([wrist[0] - elbow[0], wrist[1] - elbow[1], wrist[2] - elbow[2]]);
+    const targetWorld = nodeWorldPositions(vrm.json, pose);
+    const targetShoulder = targetWorld(upper);
+    const targetElbow = targetWorld(lower);
+    aimBoneWorld(vrm.json, pose, math, upper,
+      [targetElbow[0] - targetShoulder[0], targetElbow[1] - targetShoulder[1], targetElbow[2] - targetShoulder[2]],
+      upperDir);
+    alignBoneRollWorld(vrm.json, pose, math, upper, upperDir, sourceQuats(sourceUpper), [0, 1, 0]);
+    const nextWorld = nodeWorldPositions(vrm.json, pose);
+    const nextElbow = nextWorld(lower);
+    const nextWrist = nextWorld(hand);
+    aimBoneWorld(vrm.json, pose, math, lower,
+      [nextWrist[0] - nextElbow[0], nextWrist[1] - nextElbow[1], nextWrist[2] - nextElbow[2]],
+      lowerDir);
+    alignBoneRollWorld(vrm.json, pose, math, lower, lowerDir, sourceQuats(sourceLower), [0, 1, 0]);
     const turn = [0, 1, 0, 0];
-    for (const pair of bones) {
-      const targetIndex = humanoid[pair[0]];
-      const sourceIndex = sourceNodeIndex(sourceJson, pair[1]);
-      if (targetIndex === undefined || sourceIndex < 0) continue;
-      const turned = math.Q.mult(math.Q.create(), turn, sourceWorld(sourceIndex));
-      const desired = math.Q.mult(math.Q.create(), turned, turn);
-      const parent = vrm.json.nodes.findIndex(node => (node.children || []).indexOf(targetIndex) >= 0);
-      const world = nodeWorldQuaternions(vrm.json, pose, math);
-      const parentWorld = parent >= 0 ? world(parent) : [0, 0, 0, 1];
-      pose.rotation[targetIndex] = normalizeQuat(
-        math.Q.mult(math.Q.create(), inverseQuat(parentWorld), desired)
-      );
-    }
+    const turned = math.Q.mult(math.Q.create(), turn, sourceQuats(sourceHand));
+    const desiredHand = math.Q.mult(math.Q.create(), turned, turn);
+    const handParent = vrm.json.nodes.findIndex(node => (node.children || []).indexOf(hand) >= 0);
+    const handWorld = nodeWorldQuaternions(vrm.json, pose, math);
+    const handParentWorld = handParent >= 0 ? handWorld(handParent) : [0, 0, 0, 1];
+    pose.rotation[hand] = normalizeQuat(
+      math.Q.mult(math.Q.create(), inverseQuat(handParentWorld), desiredHand)
+    );
   }
 
   // 用多次小步反馈替代原跑步分支的单次 0.2 rad，避免把脊柱来回甩。
