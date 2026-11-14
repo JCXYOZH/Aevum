@@ -884,8 +884,8 @@
   // 先把肩→肘、肘→腕方向精确对齐，再绕各骨轴补滚转：只套世界四元数
   // 会被目标臂骨局部轴与 +X 的几度偏差带偏，单独 aim 又不控制自转。
   // 目标 VRM 朝 -Z，手臂骨局部 +Z 是背面、-Z 才是肘窝前向；源 Mixamo
-  // 朝 +Z，局部 +Z 是前向。整条右臂（上臂、前臂、手）按“目标 -Z ↔ 源
-  // +Z”翻转 180°，让肘窝和手背朝前、掌心朝后，大拇指抬到上方。
+  // 朝 +Z，局部 +Z 是前向。上臂、前臂按“目标 -Z ↔ 源 +Z”翻转 180°，
+  // 让肘窝和手臂正面转正；手掌仍保持源朝向，掌心朝前打招呼。
   function alignBoneRollWorld(json, pose, math, index, axis, sourceQuat, lateral, sourceLateralLocal) {
     if (index === undefined) return;
     const d = normalizeVector(axis);
@@ -953,8 +953,7 @@
       [0, 0, -1], [0, 0, 1]);
     const turn = [0, 1, 0, 0];
     const turned = math.Q.mult(math.Q.create(), turn, sourceQuats(sourceHand));
-    const desiredHandWorld = math.Q.mult(math.Q.create(), turned, turn);
-    const desiredHand = math.Q.mult(math.Q.create(), desiredHandWorld, [1, 0, 0, 0]);
+    const desiredHand = math.Q.mult(math.Q.create(), turned, turn);
     const handParent = vrm.json.nodes.findIndex(node => (node.children || []).indexOf(hand) >= 0);
     const handWorld = nodeWorldQuaternions(vrm.json, pose, math);
     const handParentWorld = handParent >= 0 ? handWorld(handParent) : [0, 0, 0, 1];
