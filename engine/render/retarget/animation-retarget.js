@@ -35,7 +35,11 @@
   // 走路手臂/躯干校正角：目标骨架的左右局部轴方向不同，单纯套源动作会
   // 让右臂外展、左臂摆幅被压小、躯干整体左倾。以下角度由 60 Hz 采样
   // 的肩、肘、腕和头/髋位置反推，只在 walk 生效。
-  const WALK_ARM_ADDUCT = 0.10;
+  const WALK_ARM_OUT_LEFT = 0.18;
+  const WALK_ARM_OUT_RIGHT = 0.0;
+  // 右前臂局部 Y 轴：把右肘从 40° 压回约 36.6°（源 35.5°），几乎不改变
+  // 腕部侧向位置，用来消除左右肘弯曲量不一致。
+  const WALK_RIGHT_ELBOW_FLEX = -0.06;
   const WALK_LEFT_FOREARM_ROLL = 0.26;
   const WALK_RIGHT_FOREARM_ROLL = 0.15;
   const WALK_TORSO_ROLL = 0.042;
@@ -451,10 +455,9 @@
     return pose.ik;
   }
 
-  function rotateArmWorld(json, humanoid, pose, math, angle) {
-    for (const bone of ['leftUpperArm', 'rightUpperArm']) {
-      rotateBoneWorld(json, pose, math, humanoid[bone], [0, 0, 1], angle);
-    }
+  function rotateArmWorld(json, humanoid, pose, math, leftAngle, rightAngle) {
+    rotateBoneWorld(json, pose, math, humanoid.leftUpperArm, [0, 0, 1], -leftAngle);
+    rotateBoneWorld(json, pose, math, humanoid.rightUpperArm, [0, 0, 1], rightAngle);
   }
 
   function rotateBoneWorld(json, pose, math, index, axis, angle) {
@@ -466,6 +469,13 @@
     const parentWorld = parent >= 0 ? world(parent) : [0, 0, 0, 1];
     const newWorld = normalizeQuat(math.Q.mult(math.Q.create(), corr, world(index)));
     pose.rotation[index] = normalizeQuat(math.Q.mult(math.Q.create(), inverseQuat(parentWorld), newWorld));
+  }
+
+  function rotateBoneLocal(pose, math, index, axis, angle) {
+    if (index === undefined) return;
+    const s = Math.sin(angle / 2);
+    const local = [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(angle / 2)];
+    pose.rotation[index] = normalizeQuat(math.Q.mult(math.Q.create(), local, pose.rotation[index]));
   }
 
   function armSagittal(json, pose, upper, elbow) {
@@ -740,13 +750,15 @@
       }
     }
 
-    // 走路时两条手臂在目标局部轴上的外展量不一致；绕世界 Z 轴给一个
-    // 共同内收角，把右臂收回、左臂稍微放开到同一侧向线。
+    // 走路时两条手臂在目标局部轴上的外展量不一致，而且共同内收会把双手
+    // 收进外套/裙摆。这里左右分别绕世界 Z 轴向外展开，先把左右腕放到
+    // 身体轮廓外，再让前臂校正把腕拉回同一侧向线。
     if (options && options.footClearance) {
       alignLeftArmSwing(sourceJson, sourcePose, vrm, humanoid, pose, math);
-      rotateArmWorld(vrm.json, humanoid, pose, math, -WALK_ARM_ADDUCT);
+      rotateArmWorld(vrm.json, humanoid, pose, math, WALK_ARM_OUT_LEFT, WALK_ARM_OUT_RIGHT);
       rotateBoneWorld(vrm.json, pose, math, humanoid.leftLowerArm, [0, 0, 1], -WALK_LEFT_FOREARM_ROLL);
       rotateBoneWorld(vrm.json, pose, math, humanoid.rightLowerArm, [0, 0, 1], -WALK_RIGHT_FOREARM_ROLL);
+      rotateBoneLocal(pose, math, humanoid.rightLowerArm, [0, 1, 0], WALK_RIGHT_ELBOW_FLEX);
       rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [0, 0, 1], -WALK_TORSO_ROLL);
       rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [1, 0, 0], -WALK_TORSO_PITCH);
     }

@@ -121,9 +121,7 @@
   let autoRotate = features.autoRotate.checked;
   let currentAction = 'idle';
   let loadToken = 0;
-  // 走路循环首尾源帧不完全重合；接缝处用一小段交叉淡化，避免每圈固定顿一下。
-  let walkLastPose = null;
-  let walkLoopBlend = null;
+  // 走路循环接缝由 walk clip 尾帧扩展处理，不再做 90 ms 全身交叉淡化。
   let walkLegFilter = Object.create(null);
 
   if (query.get('action') && CLIP_FOR[query.get('action')]) {
@@ -441,6 +439,13 @@
     stateMachine = null;
     if (!actionGLB) return;
     player = window.AEVUM.formats.GLTFAnimation.createPlayer(actionGLB);
+    // walk 片段最后一个关键帧与首帧很接近；播放器在到达 duration 时会直接
+    // 回绕，导致收尾帧永远显示不到，循环处会从倒数第二帧跳到首帧（左脚
+    // 约 90 mm）。把 walk 时长延长 1/30 s，给收尾帧留两帧采样余量，回绕
+    // 时只剩约 40 mm 的自然步进，不再需要 90 ms 全身交叉淡化。
+    const walkClip = player.clips.find(function (clip) { return clip.name === CLIP_FOR.walk; });
+    if (walkClip) walkClip.duration += 1 / 30;
+
     idlePlayer = window.AEVUM.formats.GLTFAnimation.createPlayer(actionGLB);
     if (idlePlayer.clips.some(function (clip) { return clip.name === 'idle'; })) {
       idlePlayer.setClip('idle').reset().setLoop(true).play();
@@ -471,8 +476,6 @@
     stateMachine.currentState = initial;
     currentAction = initial;
     walkLegFilter = Object.create(null);
-    walkLastPose = null;
-    walkLoopBlend = null;
     actionSelect.value = initial;
     if (hasClip(CLIP_FOR[initial])) {
       player.setClip(CLIP_FOR[initial]).reset().setLoop(true).play();
@@ -801,42 +804,6 @@
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   }
 
-  function clonePose(pose) {
-    if (!pose) return null;
-    const copy = { rotation: Object.create(null), translation: Object.create(null) };
-    Object.keys(pose.rotation || {}).forEach(function (key) {
-      const value = pose.rotation[key];
-      copy.rotation[key] = value ? value.slice() : value;
-    });
-    Object.keys(pose.translation || {}).forEach(function (key) {
-      const value = pose.translation[key];
-      copy.translation[key] = value ? value.slice() : value;
-    });
-    return copy;
-  }
-
-  function blendPose(target, from, weight) {
-    if (!target || !from) return;
-    Object.keys(target.rotation || {}).forEach(function (key) {
-      const a = target.rotation[key];
-      const b = from.rotation && from.rotation[key];
-      if (!a || !b) return;
-      const out = [0, 0, 0, 0];
-      math.Q.slerp(out, b, a, weight);
-      target.rotation[key] = out;
-    });
-    Object.keys(target.translation || {}).forEach(function (key) {
-      const a = target.translation[key];
-      const b = from.translation && from.translation[key];
-      if (!a || !b) return;
-      target.translation[key] = [
-        b[0] + (a[0] - b[0]) * weight,
-        b[1] + (a[1] - b[1]) * weight,
-        b[2] + (a[2] - b[2]) * weight
-      ];
-    });
-  }
-
   function frame(now) {
     const dt = Math.min(0.05, Math.max(0, (now - lastFrame) / 1000));
     lastFrame = now;
@@ -852,11 +819,8 @@
         if (current.type === 'vrm') {
           if (stateMachine && !paused) stateMachine.update(dt);
           if (player) {
-            let wrapped = false;
             if (!paused) {
-              const previousTime = player.time;
               player.update(dt);
-              wrapped = currentAction === 'walk' && previousTime > 0.05 && player.time < previousTime;
             }
             if (idlePlayer && !paused) idlePlayer.update(dt);
             const retargetOptions = {
@@ -885,22 +849,6 @@
                   target.rotation[index] = idleTarget.rotation[index];
                 }
               });
-            }
-            if (currentAction === 'walk') {
-              if (wrapped && walkLastPose) {
-                walkLoopBlend = { from: walkLastPose, elapsed: 0 };
-              }
-              if (walkLoopBlend) {
-                if (!paused) walkLoopBlend.elapsed += dt;
-                const phase = Math.min(1, walkLoopBlend.elapsed / 0.09);
-                const eased = phase * phase * (3 - 2 * phase);
-                blendPose(target, walkLoopBlend.from, eased);
-                if (phase >= 1) walkLoopBlend = null;
-              }
-              walkLastPose = clonePose(target);
-            } else {
-              walkLastPose = null;
-              walkLoopBlend = null;
             }
           } else {
             target = { rotation: {}, translation: { x: 0, y: 0, z: 0 } };
@@ -1079,8 +1027,6 @@
     const target = actionSelect.value;
     if (!stateMachine || !hasClip(CLIP_FOR[target])) return;
     currentAction = target;
-    walkLastPose = null;
-    walkLoopBlend = null;
     walkLegFilter = Object.create(null);
     stateMachine.setCondition('target', target);
   });
