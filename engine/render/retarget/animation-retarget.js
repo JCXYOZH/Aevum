@@ -33,6 +33,8 @@
   const WALK_LEFT_UPLEG_GAIN = 1.30;
   // 走路腿部低通时间常数：只在 walk 生效，压掉小腿在大腿接近伸直时的单帧弹动。
   const WALK_LEG_SMOOTH_TAU = 0.03;
+  // 走路固定内收角：只压站距，不做逐帧阈值修正，避免大腿局部 Z 单帧冲击。
+  const WALK_LEG_ADDUCT = 0.08;
 
   const MIXAMO_TO_VRM = {
     Hips: 'hips',
@@ -437,43 +439,22 @@
     return pose.ik;
   }
 
-  // keepLegsApart 只保证两脚不交叉，不限制最大站距；走路时目标腿的局部轴
-  // 会把脚踝带到髋外 120 mm 以上，源动作只有 50 mm 左右。这里把超出髋宽的
-  // 脚踝用大腿局部 Z 旋转收回，先收横向再抬脚，避免把脚抬到错误位置。
-  function limitWalkStance(vrm, humanoid, pose, math, maxFootX) {
-    if (humanoid.hips === undefined ||
-        humanoid.leftUpperLeg === undefined || humanoid.rightUpperLeg === undefined ||
-        humanoid.leftFoot === undefined || humanoid.rightFoot === undefined) return;
-    for (let iter = 0; iter < 3; iter += 1) {
-      const world = nodeWorldPositions(vrm.json, pose);
-      const hips = world(humanoid.hips);
-      const left = world(humanoid.leftFoot);
-      const right = world(humanoid.rightFoot);
-      const leftRel = left[0] - hips[0];
-      const rightRel = right[0] - hips[0];
-      const leftOut = Math.max(0, -maxFootX - leftRel);
-      const rightOut = Math.max(0, rightRel - maxFootX);
-      const need = Math.max(leftOut, rightOut);
-      if (need <= 1e-4) break;
-      const hipLeft = world(humanoid.leftUpperLeg);
-      const hipRight = world(humanoid.rightUpperLeg);
-      const legLength = (
-        Math.hypot(left[0] - hipLeft[0], left[1] - hipLeft[1], left[2] - hipLeft[2]) +
-        Math.hypot(right[0] - hipRight[0], right[1] - hipRight[1], right[2] - hipRight[2])
-      ) * 0.5;
-      const angle = Math.min(0.12, Math.asin(Math.min(1, need / Math.max(legLength, 0.2))));
-      const towardCenterLeft = [0, 0, Math.sin(angle / 2), Math.cos(angle / 2)];
-      const towardCenterRight = [0, 0, -Math.sin(angle / 2), Math.cos(angle / 2)];
-      if (leftOut > 0) {
-        pose.rotation[humanoid.leftUpperLeg] = normalizeQuat(
-          math.Q.mult(math.Q.create(), pose.rotation[humanoid.leftUpperLeg] || [0, 0, 0, 1], towardCenterLeft)
-        );
-      }
-      if (rightOut > 0) {
-        pose.rotation[humanoid.rightUpperLeg] = normalizeQuat(
-          math.Q.mult(math.Q.create(), pose.rotation[humanoid.rightUpperLeg] || [0, 0, 0, 1], towardCenterRight)
-        );
-      }
+  // 走路时目标腿的局部轴会把脚踝带到髋外 120 mm 以上，源动作只有 50 mm
+  // 左右。这里用固定角度把大腿向内侧收，不用逐帧阈值判断：固定偏移在相邻
+  // 帧之间不会产生局部 Z 冲击，也不会把脚踝横向轨迹改成二次折返。
+  function adductWalkLegs(humanoid, pose, math, angle) {
+    if (humanoid.leftUpperLeg === undefined || humanoid.rightUpperLeg === undefined) return;
+    const towardCenterLeft = [0, 0, Math.sin(angle / 2), Math.cos(angle / 2)];
+    const towardCenterRight = [0, 0, -Math.sin(angle / 2), Math.cos(angle / 2)];
+    if (pose.rotation[humanoid.leftUpperLeg]) {
+      pose.rotation[humanoid.leftUpperLeg] = normalizeQuat(
+        math.Q.mult(math.Q.create(), pose.rotation[humanoid.leftUpperLeg], towardCenterLeft)
+      );
+    }
+    if (pose.rotation[humanoid.rightUpperLeg]) {
+      pose.rotation[humanoid.rightUpperLeg] = normalizeQuat(
+        math.Q.mult(math.Q.create(), pose.rotation[humanoid.rightUpperLeg], towardCenterRight)
+      );
     }
   }
 
@@ -655,7 +636,9 @@
           const legGain = options && options.footClearance && semantic === 'LeftUpLeg'
             ? WALK_LEFT_UPLEG_GAIN
             : LEG_PITCH_GAIN;
-          delta = scaleQuatAngle([-delta[0], delta[1], delta[2], delta[3]], legGain);
+          // 腿只保留局部 X 俯仰：源大腿的局部 Z 位移为零，把 Y/Z 分量一起
+          // 压掉可避免目标局部轴把俯仰转成大腿 Z 单帧冲击。
+          delta = scaleQuatAngle([-delta[0], 0, 0, delta[3]], legGain);
         }
         // 左臂在目标骨架里与源骨架的局部 Z 轴相反，直接套用增量会把上臂抬到胸口。
         if (/^Left(Arm|ForeArm|Hand|Shoulder)/.test(semantic) && (!options || options.mirrorLeftArm !== false)) {
@@ -729,7 +712,7 @@
 
     keepLegsApart(vrm, humanoid, pose, math);
     if (options && options.footClearance) {
-      limitWalkStance(vrm, humanoid, pose, math, 0.085);
+      adductWalkLegs(humanoid, pose, math, WALK_LEG_ADDUCT);
       liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math);
       smoothWalkLegs(humanoid, pose, options.legSmoothState, options.dt, math);
     }
