@@ -30,7 +30,7 @@
   const LEG_PITCH_GAIN = 0.8;
   // 目标左大腿的局部轴比右腿更偏，0.8 会把左步幅压到源的六成；
   // 只补左大腿前摆，膝角仍由源腿和抬脚 IK 决定。
-  const WALK_LEFT_UPLEG_GAIN = 1.25;
+  const WALK_LEFT_UPLEG_GAIN = 1.30;
   // 走路腿部低通时间常数：只在 walk 生效，压掉小腿在大腿接近伸直时的单帧弹动。
   const WALK_LEG_SMOOTH_TAU = 0.03;
 
@@ -437,6 +437,46 @@
     return pose.ik;
   }
 
+  // keepLegsApart 只保证两脚不交叉，不限制最大站距；走路时目标腿的局部轴
+  // 会把脚踝带到髋外 120 mm 以上，源动作只有 50 mm 左右。这里把超出髋宽的
+  // 脚踝用大腿局部 Z 旋转收回，先收横向再抬脚，避免把脚抬到错误位置。
+  function limitWalkStance(vrm, humanoid, pose, math, maxFootX) {
+    if (humanoid.hips === undefined ||
+        humanoid.leftUpperLeg === undefined || humanoid.rightUpperLeg === undefined ||
+        humanoid.leftFoot === undefined || humanoid.rightFoot === undefined) return;
+    for (let iter = 0; iter < 3; iter += 1) {
+      const world = nodeWorldPositions(vrm.json, pose);
+      const hips = world(humanoid.hips);
+      const left = world(humanoid.leftFoot);
+      const right = world(humanoid.rightFoot);
+      const leftRel = left[0] - hips[0];
+      const rightRel = right[0] - hips[0];
+      const leftOut = Math.max(0, -maxFootX - leftRel);
+      const rightOut = Math.max(0, rightRel - maxFootX);
+      const need = Math.max(leftOut, rightOut);
+      if (need <= 1e-4) break;
+      const hipLeft = world(humanoid.leftUpperLeg);
+      const hipRight = world(humanoid.rightUpperLeg);
+      const legLength = (
+        Math.hypot(left[0] - hipLeft[0], left[1] - hipLeft[1], left[2] - hipLeft[2]) +
+        Math.hypot(right[0] - hipRight[0], right[1] - hipRight[1], right[2] - hipRight[2])
+      ) * 0.5;
+      const angle = Math.min(0.12, Math.asin(Math.min(1, need / Math.max(legLength, 0.2))));
+      const towardCenterLeft = [0, 0, Math.sin(angle / 2), Math.cos(angle / 2)];
+      const towardCenterRight = [0, 0, -Math.sin(angle / 2), Math.cos(angle / 2)];
+      if (leftOut > 0) {
+        pose.rotation[humanoid.leftUpperLeg] = normalizeQuat(
+          math.Q.mult(math.Q.create(), pose.rotation[humanoid.leftUpperLeg] || [0, 0, 0, 1], towardCenterLeft)
+        );
+      }
+      if (rightOut > 0) {
+        pose.rotation[humanoid.rightUpperLeg] = normalizeQuat(
+          math.Q.mult(math.Q.create(), pose.rotation[humanoid.rightUpperLeg] || [0, 0, 0, 1], towardCenterRight)
+        );
+      }
+    }
+  }
+
   // 待机和部分动作源本身会让左右脚换边。这里同时约束脚间距和膝盖位置：
   // 只保证两只脚分开不够，膝盖仍可能越过髋部中线，正面看就是腿交叉。
   function keepLegsApart(vrm, humanoid, pose, math) {
@@ -689,6 +729,7 @@
 
     keepLegsApart(vrm, humanoid, pose, math);
     if (options && options.footClearance) {
+      limitWalkStance(vrm, humanoid, pose, math, 0.085);
       liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math);
       smoothWalkLegs(humanoid, pose, options.legSmoothState, options.dt, math);
     }
