@@ -1,4 +1,4 @@
-#include "include/memoria/strata_memory.h"
+#include "memoria.h"
 
 #include <algorithm>
 #include <cmath>

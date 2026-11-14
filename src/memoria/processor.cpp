@@ -1,4 +1,4 @@
-#include "include/memoria/processor.h"
+#include "memoria.h"
 
 #include <torch/nn/functional.h>
 

@@ -1,4 +1,4 @@
-#include "include/memoria/model.h"
+#include "memoria.h"
 
 #include <algorithm>
 #include <cmath>

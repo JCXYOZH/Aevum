@@ -1,4 +1,4 @@
-#include "include/memoria/fixed_rms_norm.h"
+#include "memoria.h"
 
 namespace memoria {
 

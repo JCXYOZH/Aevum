@@ -11,20 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "include/memoria/chain_unit.h"
-#include "include/memoria/checkpoint.h"
-#include "include/memoria/embedding_layer.h"
-#include "include/memoria/fixed_rms_norm.h"
-#include "include/memoria/gated_valve.h"
-#include "include/memoria/generator.h"
-#include "include/memoria/model.h"
-#include "include/memoria/module_io.h"
-#include "include/memoria/processor.h"
-#include "include/memoria/strata_memory.h"
-#include "include/memoria/subnet.h"
-#include "include/memoria/text_dataset.h"
-#include "include/memoria/trainer.h"
-#include "include/memoria/tri_balancer.h"
+#include "memoria.h"
 
 namespace {
 

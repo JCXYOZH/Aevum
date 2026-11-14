@@ -47,7 +47,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - 看板与展示页共用 `styles/presence.css`，灵体在 rail 和 dock 各有位置。
 - 配色回到纸黄系（展示页与看板 token 已替换），保留深色终端块作为局部面板。
 - 中继、监控、串口桥接、内核入口都收在 `apps/` 下。
-- Memoria C++ 内核迁入 `src/memoria/`，头文件在 `src/memoria/include/memoria/`；源码用自身相对路径包含头文件，构建脚本不再额外添加 memoria include 根。
+- Memoria C++ 内核迁入 `src/memoria/`，头文件在 `src/memoria/include/memoria/`；统一入口为 `src/memoria/memoria.h`，模块内源码只包含该入口，构建脚本不再额外添加 memoria include 根。
 - Electron 桌面壳接入 `apps/desktop/`；`npm run dist:installer` 出 Inno Setup 安装包，`npm run dist:dir` 为免安装目录；安装包约 95 MB，产物不进 Git。
 - 3000 行公开语料入库；模型权重、构建产物、`node_modules` 明确忽略。
 

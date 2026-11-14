@@ -9,6 +9,7 @@
 ```text
 apps/                     桌面壳、监控、页面、中继：只负责调用与呈现
 src/memoria/*.cpp         计算：嵌入、门控、链、平衡、记忆、训练、生成
+src/memoria/memoria.h     统一入口；模块内源码只包含这一处
 src/memoria/include/memoria/*.h       公共接口；每个模块一个头文件
 scripts/                  构建、训练、生成、打包
 data/                     公开小语料；权重不在这里

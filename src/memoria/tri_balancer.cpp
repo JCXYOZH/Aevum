@@ -1,4 +1,4 @@
-#include "include/memoria/tri_balancer.h"
+#include "memoria.h"
 
 namespace memoria {
 

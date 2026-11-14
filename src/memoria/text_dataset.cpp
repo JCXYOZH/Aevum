@@ -1,4 +1,4 @@
-#include "include/memoria/text_dataset.h"
+#include "memoria.h"
 
 #include <algorithm>
 #include <cctype>

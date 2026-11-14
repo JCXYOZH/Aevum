@@ -1,4 +1,4 @@
-#include "include/memoria/generator.h"
+#include "memoria.h"
 
 #include <limits>
 #include <stdexcept>

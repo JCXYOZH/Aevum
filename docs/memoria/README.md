@@ -1,6 +1,6 @@
 # Memoria
 
-Memoria 是 Aevum 里负责“记忆方向”的模块，现在已经不只是空骨架：`src/memoria/` 是 C++（LibTorch）实现，`src/memoria/include/memoria/` 是对应头文件。
+Memoria 是 Aevum 里负责“记忆方向”的模块，现在已经不只是空骨架：`src/memoria/` 是 C++（LibTorch）实现，`src/memoria/include/memoria/` 是对应头文件，统一入口是 `src/memoria/memoria.h`。模块内源码只写 `#include "memoria.h"`，其他目录从 `src/memoria/memoria.h` 导入。
 
 ## 它是什么
 
