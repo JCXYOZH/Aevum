@@ -124,6 +124,7 @@
   // 走路循环首尾源帧不完全重合；接缝处用一小段交叉淡化，避免每圈固定顿一下。
   let walkLastPose = null;
   let walkLoopBlend = null;
+  let walkLegFilter = Object.create(null);
 
   if (query.get('action') && CLIP_FOR[query.get('action')]) {
     actionSelect.value = query.get('action');
@@ -469,6 +470,9 @@
     const initial = names.indexOf(currentAction) >= 0 ? currentAction : (names[0] || 'idle');
     stateMachine.currentState = initial;
     currentAction = initial;
+    walkLegFilter = Object.create(null);
+    walkLastPose = null;
+    walkLoopBlend = null;
     actionSelect.value = initial;
     if (hasClip(CLIP_FOR[initial])) {
       player.setClip(CLIP_FOR[initial]).reset().setLoop(true).play();
@@ -862,7 +866,10 @@
               // 待机手臂镜像左右；打招呼要保留右臂手势，不能镜像。
               symmetricArms: currentAction === 'idle',
               // 走路按源动作抬脚高度补足目标腿长差异，避免左脚在支撑相里拖地。
-              footClearance: currentAction === 'walk'
+              footClearance: currentAction === 'walk',
+              // 走路腿 IK 的单帧尖峰用 30 ms 低通削掉；状态跨帧保存。
+              dt: dt,
+              legSmoothState: currentAction === 'walk' ? walkLegFilter : null
             };
             const source = player.getPose();
             target = retarget(current.vrm, actionGLB.json, source, retargetOptions);
@@ -1074,6 +1081,7 @@
     currentAction = target;
     walkLastPose = null;
     walkLoopBlend = null;
+    walkLegFilter = Object.create(null);
     stateMachine.setCondition('target', target);
   });
 

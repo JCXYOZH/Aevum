@@ -31,6 +31,8 @@
   // 目标左大腿的局部轴比右腿更偏，0.8 会把左步幅压到源的六成；
   // 只补左大腿前摆，膝角仍由源腿和抬脚 IK 决定。
   const WALK_LEFT_UPLEG_GAIN = 1.25;
+  // 走路腿部低通时间常数：只在 walk 生效，压掉小腿在大腿接近伸直时的单帧弹动。
+  const WALK_LEG_SMOOTH_TAU = 0.03;
 
   const MIXAMO_TO_VRM = {
     Hips: 'hips',
@@ -377,6 +379,30 @@
     }
   }
 
+  // 两段腿 IK 在腿接近伸直时，脚踝抬一点就需要较大的膝角变化；
+  // 帧率越低，这个变化越容易看成一帧的“弹腿”。用固定的时间常数对
+  // 左右大腿/小腿局部旋转做低通，保留步幅，只削掉单帧尖峰。
+  function smoothWalkLegs(humanoid, pose, state, dt, math) {
+    if (!state || !(dt > 0)) return;
+    const alpha = 1 - Math.exp(-Math.min(0.05, dt) / WALK_LEG_SMOOTH_TAU);
+    const bones = ['leftUpperLeg', 'leftLowerLeg', 'rightUpperLeg', 'rightLowerLeg'];
+    for (let i = 0; i < bones.length; i += 1) {
+      const index = humanoid[bones[i]];
+      if (index === undefined) continue;
+      const current = pose.rotation[index];
+      if (!current) continue;
+      const previous = state[bones[i]];
+      if (!previous) {
+        state[bones[i]] = current.slice();
+        continue;
+      }
+      const out = math.Q.create();
+      math.Q.slerp(out, previous, current, alpha);
+      pose.rotation[index] = out;
+      state[bones[i]] = out;
+    }
+  }
+
   // 支撑脚在接触地面时锁定前后位置，髋部反向平移抵消滑步。
   // 状态跨帧保存在 ikState 中，支撑脚切换时重新取锚点。
   function lockSupportFoot(vrm, humanoid, pose, ikState, restGround) {
@@ -662,7 +688,10 @@
     }
 
     keepLegsApart(vrm, humanoid, pose, math);
-    if (options && options.footClearance) liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math);
+    if (options && options.footClearance) {
+      liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math);
+      smoothWalkLegs(humanoid, pose, options.legSmoothState, options.dt, math);
+    }
     return pose;
   }
 
