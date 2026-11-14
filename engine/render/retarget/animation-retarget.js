@@ -685,6 +685,53 @@
     return nodes.findIndex(node => sourceBoneName(node.name) === name);
   }
 
+  function basisToQuat(right, up, forward) {
+    const m00 = right[0], m01 = up[0], m02 = forward[0];
+    const m10 = right[1], m11 = up[1], m12 = forward[1];
+    const m20 = right[2], m21 = up[2], m22 = forward[2];
+    const trace = m00 + m11 + m22;
+    if (trace > 0) {
+      const s = Math.sqrt(trace + 1) * 2;
+      return normalizeQuat([(m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s, 0.25 * s]);
+    }
+    if (m00 > m11 && m00 > m22) {
+      const s = Math.sqrt(1 + m00 - m11 - m22) * 2;
+      return normalizeQuat([0.25 * s, (m01 + m10) / s, (m02 + m20) / s, (m21 - m12) / s]);
+    }
+    if (m11 > m22) {
+      const s = Math.sqrt(1 + m11 - m00 - m22) * 2;
+      return normalizeQuat([(m01 + m10) / s, 0.25 * s, (m12 + m21) / s, (m02 - m20) / s]);
+    }
+    const s = Math.sqrt(1 + m22 - m00 - m11) * 2;
+    return normalizeQuat([(m02 + m20) / s, (m12 + m21) / s, 0.25 * s, (m10 - m01) / s]);
+  }
+
+  // 头/颈没有可靠的下一级子骨，按源骨骼的三条世界轴整体拷贝朝向；
+  // 源骨架面向 +Z、目标面向 -Z，右轴和前轴都要取反。
+  function alignRunBoneOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math, targetName, sourceName) {
+    const targetIndex = humanoid[targetName];
+    const sourceIndex = sourceNodeIndex(sourceJson, sourceName);
+    if (targetIndex === undefined || sourceIndex < 0) return;
+    const sourceWorld = nodeWorldQuaternions(sourceJson, sourcePose, math);
+    const sourceQuat = sourceWorld(sourceIndex);
+    const sourceRight = rotateVector(sourceQuat, [1, 0, 0]);
+    const sourceUp = rotateVector(sourceQuat, [0, 1, 0]);
+    const sourceForward = rotateVector(sourceQuat, [0, 0, 1]);
+    const desiredRight = runFacing(sourceRight);
+    const desiredUp = runFacing(sourceUp);
+    const desiredFace = runFacing(sourceForward);
+    // 目标头骨的局部 +Z 是后脑，脸朝 -Z；basis 的 forward 轴对应局部 +Z，
+    // 所以要放“脸的相反方向”，否则头会整体转 180°。
+    const basisForward = [-desiredFace[0], desiredFace[1], -desiredFace[2]];
+    const desired = basisToQuat(desiredRight, desiredUp, basisForward);
+    const parent = vrm.json.nodes.findIndex(node => (node.children || []).indexOf(targetIndex) >= 0);
+    const world = nodeWorldQuaternions(vrm.json, pose, math);
+    const parentWorld = parent >= 0 ? world(parent) : [0, 0, 0, 1];
+    pose.rotation[targetIndex] = normalizeQuat(
+      math.Q.mult(math.Q.create(), inverseQuat(parentWorld), desired)
+    );
+  }
+
   // 源骨架面向 +Z，目标面向 -Z；同一动作在目标世界要绕 Y 转 180°。
   function runFacing(value) {
     return [-value[0], value[1], -value[2]];
@@ -848,15 +895,30 @@
       sourceHeadPos[1] - sourceHipPos[1]
     ) * 180 / Math.PI;
     const desiredPitch = -sourcePitch;
+    // 源跑步上身基本竖直（Hips→Head 横向角约 0.3°）；目标局部轴把
+    // 躯干带到左倾约 10°，正面的“歪着跑”主要来自这里。
+    const sourceLateral = Math.atan2(
+      sourceHeadPos[0] - sourceHipPos[0],
+      sourceHeadPos[1] - sourceHipPos[1]
+    ) * 180 / Math.PI;
+    const desiredLateral = -sourceLateral;
     for (let i = 0; i < RUN_TORSO_ITERS; i += 1) {
       const targetWorld = nodeWorldPositions(vrm.json, pose);
       const hips = targetWorld(humanoid.hips);
       const head = targetWorld(humanoid.head);
       const currentPitch = Math.atan2(-(head[2] - hips[2]), head[1] - hips[1]) * 180 / Math.PI;
-      const error = desiredPitch - currentPitch;
-      if (Math.abs(error) < 0.15) break;
-      const angle = Math.max(-0.12, Math.min(0.12, -error * Math.PI / 180));
-      rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [1, 0, 0], angle);
+      const currentLateral = Math.atan2(head[0] - hips[0], head[1] - hips[1]) * 180 / Math.PI;
+      const pitchError = desiredPitch - currentPitch;
+      const lateralError = desiredLateral - currentLateral;
+      if (Math.abs(pitchError) < 0.15 && Math.abs(lateralError) < 0.15) break;
+      if (Math.abs(pitchError) >= 0.15) {
+        const pitchAngle = Math.max(-0.12, Math.min(0.12, -pitchError * Math.PI / 180));
+        rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [1, 0, 0], pitchAngle);
+      }
+      if (Math.abs(lateralError) >= 0.15) {
+        const lateralAngle = Math.max(-0.1, Math.min(0.1, -lateralError * Math.PI / 180));
+        rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [0, 0, 1], lateralAngle);
+      }
     }
   }
 
@@ -1232,7 +1294,10 @@
     }
 
     if (options && options.runPose) {
+      // 先让躯干俯仰/横向对齐，再覆盖头部朝向。颈部保持源局部旋转，
+      // 不用目标不同的颈骨长度去强行拷贝世界朝向，否则头会被带向一侧。
       alignRunTorsoPitch(sourceJson, sourcePose, vrm, humanoid, pose, math);
+      alignRunBoneOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math, 'head', 'Head');
       alignRunArms(vrm, sourceJson, sourcePose, humanoid, pose, math);
       alignRunLegs(vrm, sourceJson, sourcePose, humanoid, pose, math);
       alignRunFeet(vrm, sourceJson, sourcePose, humanoid, pose, math);
