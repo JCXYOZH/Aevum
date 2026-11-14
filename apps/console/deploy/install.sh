@@ -34,7 +34,14 @@ BUILD_DIR="$APP_ROOT/build/linux"
 MODEL_EXE="$BUILD_DIR/memoria_gen_cpu"
 MODEL_DATA="$APP_ROOT/data/tinyshakespeare_3000.txt"
 WEB_ROOT="$APP_ROOT/apps/community/web"
+ENGINE_ROOT="$APP_ROOT/engine"
 PYTHON="$APP_ROOT/.venv/bin/python"
+NGINX_COMMON="/etc/nginx/aevum-console-common.conf"
+NGINX_HTTP="/etc/nginx/conf.d/aevum-console.conf"
+NGINX_TLS="/etc/nginx/conf.d/aevum-console-tls.conf"
+TLS_CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+TLS_KEY="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+TLS_ACTIVE="no"
 
 log "仓库根目录：$APP_ROOT"
 log "域名：$DOMAIN"
@@ -206,28 +213,36 @@ sleep 1
 
 # ---------------------------------------------------------------- 5 nginx
 log "写 nginx 配置"
+[ -d "$WEB_ROOT" ] || die "缺少静态目录：$WEB_ROOT"
+[ -f "$WEB_ROOT/index.html" ] || die "缺少首页：$WEB_ROOT/index.html"
+[ -f "$ENGINE_ROOT/validate.html" ] || die "缺少验证页：$ENGINE_ROOT/validate.html"
+
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@DOMAIN@|$DOMAIN|g" \
-    "$CONSOLE_DIR/deploy/nginx.conf" > /etc/nginx/conf.d/aevum-console.conf
+    "$CONSOLE_DIR/deploy/nginx-common.conf" > "$NGINX_COMMON"
+sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@DOMAIN@|$DOMAIN|g" \
+    "$CONSOLE_DIR/deploy/nginx.conf" > "$NGINX_HTTP"
+# 旧证书块先移除；证书存在时再写，避免 nginx -t 因证书缺失失败。
+rm -f "$NGINX_TLS"
 
 # nginx worker 通常不是 root。仓库目录若是 700，worker 连 index.html 都 stat 不到，
 # 就会返回 500，而 nginx -t 仍然是成功的。这里只补“可穿过 + 静态文件可读”，
 # 不递归打开整个仓库。
 log "修正静态目录权限"
-[ -d "$WEB_ROOT" ] || die "缺少静态目录：$WEB_ROOT"
-[ -f "$WEB_ROOT/index.html" ] || die "缺少首页：$WEB_ROOT/index.html"
-for dir in "$APP_ROOT" "$APP_ROOT/apps" "$APP_ROOT/apps/community" "$WEB_ROOT"; do
+for dir in "$APP_ROOT" "$APP_ROOT/apps" "$APP_ROOT/apps/community" "$WEB_ROOT" "$ENGINE_ROOT"; do
     [ -d "$dir" ] && chmod o+x "$dir" 2>/dev/null || true
 done
 chmod -R o+rX "$WEB_ROOT" 2>/dev/null || true
+chmod -R o+rX "$ENGINE_ROOT" 2>/dev/null || true
 
 # RHEL 系默认 SELinux 会拦 nginx 的 127.0.0.1 反代
 if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = "Enforcing" ]; then
     log "SELinux 处于 Enforcing，允许 nginx 连接本机回环"
     setsebool -P httpd_can_network_connect 1 || true
     chcon -R -t httpd_sys_content_t "$WEB_ROOT" 2>/dev/null || true
+    chcon -R -t httpd_sys_content_t "$ENGINE_ROOT" 2>/dev/null || true
 fi
 
-nginx -t || die "nginx 配置校验失败，先看 /etc/nginx/conf.d/aevum-console.conf"
+nginx -t || die "nginx 配置校验失败，先看 $NGINX_HTTP 和 $NGINX_COMMON"
 systemctl enable nginx >/dev/null 2>&1 || true
 systemctl reload nginx
 sleep 1
@@ -245,8 +260,25 @@ if [ "$WITH_TLS" = "yes" ]; then
         fi
     fi
     command -v certbot >/dev/null 2>&1 || die "certbot 不可用，先装 epel-release 再重跑"
-    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
-        -m "admin@${DOMAIN#*.}" --redirect
+    certbot certonly --nginx -d "$DOMAIN" --non-interactive --agree-tos \
+        --keep-until-expiring -m "admin@${DOMAIN#*.}"
+fi
+
+# 已有证书时自动启用 443，不再依赖 certbot 去改站点配置。
+if [ -f "$TLS_CERT" ] && [ -f "$TLS_KEY" ]; then
+    log "启用 443 TLS"
+    sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@DOMAIN@|$DOMAIN|g" \
+        "$CONSOLE_DIR/deploy/nginx-tls.conf" > "$NGINX_TLS"
+    if nginx -t; then
+        TLS_ACTIVE="yes"
+        systemctl reload nginx
+        sleep 1
+    else
+        rm -f "$NGINX_TLS"
+        die "443 配置校验失败，已恢复为仅 HTTP；先检查证书路径：$TLS_CERT"
+    fi
+else
+    log "未发现证书，保持 HTTP；需要 HTTPS 时用 --tls 重跑"
 fi
 
 # ---------------------------------------------------------------- 7 校验
@@ -266,6 +298,11 @@ check "8790 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8790'"
 check "看板健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8781/api/health"
 check "中继健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8790/v1/health"
 check "页面能取到 200"    "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN'"
+check "验证页能取到 200"  "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN'"
+check "验证页不是首页回退" "curl -fsS --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN' | grep -q '渲染引擎验证'"
+if [ "$TLS_ACTIVE" = "yes" ]; then
+    check "443 在监听" "ss -lnt | grep -q ':443'"
+fi
 
 if [ "$fail" -ne 0 ]; then
     cat >&2 <<'EOF'
@@ -284,10 +321,16 @@ EOF
 fi
 
 log "完成"
+if [ "$TLS_ACTIVE" = "yes" ]; then
+    SCHEME="https"
+else
+    SCHEME="http"
+fi
 cat <<EOF
-    访问：http${WITH_TLS:+s}://$DOMAIN/
-    看板：http${WITH_TLS:+s}://$DOMAIN/desktop
-    中继：http${WITH_TLS:+s}://$DOMAIN/v1/health
+    访问：$SCHEME://$DOMAIN/
+    看板：$SCHEME://$DOMAIN/desktop
+    验证页：$SCHEME://$DOMAIN/engine/validate.html?catalog=assets/models.local.yaml
+    中继：$SCHEME://$DOMAIN/v1/health
     页面上的灯变青绿、帧/格在涨，就说明 内核 → 桥接 → 前端 全通了。
     安全组只需要放行 80/443；5555、8765、8781、8790 不要对外开放。
 EOF
