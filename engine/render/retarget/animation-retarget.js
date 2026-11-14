@@ -31,6 +31,16 @@
   // 目标左大腿的局部轴比右腿更偏，0.8 会把左步幅压到源的六成；
   // 只补左大腿前摆，膝角仍由源腿和抬脚 IK 决定。
   const WALK_LEFT_UPLEG_GAIN = 1.30;
+  const WALK_RIGHT_LOWER_GAIN = 1.0;
+  // 走路手臂/躯干校正角：目标骨架的左右局部轴方向不同，单纯套源动作会
+  // 让右臂外展、左臂摆幅被压小、躯干整体左倾。以下角度由 60 Hz 采样
+  // 的肩、肘、腕和头/髋位置反推，只在 walk 生效。
+  const WALK_ARM_ADDUCT = 0.10;
+  const WALK_LEFT_FOREARM_ROLL = 0.26;
+  const WALK_RIGHT_FOREARM_ROLL = 0.15;
+  const WALK_TORSO_ROLL = 0.042;
+  const WALK_TORSO_PITCH = 0.10;
+  const WALK_LEFT_ARM_SWING_GAIN = 0.63;
   // 走路腿部低通时间常数：只在 walk 生效，压掉小腿在大腿接近伸直时的单帧弹动。
   const WALK_LEG_SMOOTH_TAU = 0.03;
   // 走路固定内收角：左右腿局部轴不同，分开给角，只压站距，不做逐帧阈值修正，
@@ -441,6 +451,39 @@
     return pose.ik;
   }
 
+  function rotateArmWorld(json, humanoid, pose, math, angle) {
+    for (const bone of ['leftUpperArm', 'rightUpperArm']) {
+      rotateBoneWorld(json, pose, math, humanoid[bone], [0, 0, 1], angle);
+    }
+  }
+
+  function rotateBoneWorld(json, pose, math, index, axis, angle) {
+    if (index === undefined) return;
+    const s = Math.sin(angle / 2);
+    const corr = [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(angle / 2)];
+    const world = nodeWorldQuaternions(json, pose, math);
+    const parent = json.nodes.findIndex(n => (n.children || []).includes(index));
+    const parentWorld = parent >= 0 ? world(parent) : [0, 0, 0, 1];
+    const newWorld = normalizeQuat(math.Q.mult(math.Q.create(), corr, world(index)));
+    pose.rotation[index] = normalizeQuat(math.Q.mult(math.Q.create(), inverseQuat(parentWorld), newWorld));
+  }
+
+  function armSagittal(json, pose, upper, elbow) {
+    const w = nodeWorldPositions(json, pose);
+    const a = w(upper), b = w(elbow);
+    return Math.atan2(b[2] - a[2], -(b[1] - a[1])) * 180 / Math.PI;
+  }
+
+  function alignLeftArmSwing(sourceJson, sourcePose, vrm, humanoid, pose, math) {
+    const sourceUpper = sourceJson.nodes.findIndex(n => /(?:^|:)LeftArm$/.test(n.name || ''));
+    const sourceElbow = sourceJson.nodes.findIndex(n => /(?:^|:)LeftForeArm$/.test(n.name || ''));
+    if (sourceUpper < 0 || sourceElbow < 0) return;
+    const sourceAngle = armSagittal(sourceJson, sourcePose, sourceUpper, sourceElbow);
+    const targetAngle = armSagittal(vrm.json, pose, humanoid.leftUpperArm, humanoid.leftLowerArm);
+    const diff = (sourceAngle - targetAngle) * Math.PI / 180;
+    rotateBoneWorld(vrm.json, pose, math, humanoid.leftUpperArm, [1, 0, 0], diff * WALK_LEFT_ARM_SWING_GAIN);
+  }
+
   // 走路时目标腿的局部轴会把脚踝带到髋外 120 mm 以上，源动作只有 50 mm
   // 左右。这里用固定角度把大腿向内侧收，不用逐帧阈值判断：固定偏移在相邻
   // 帧之间不会产生局部 Z 冲击，也不会把脚踝横向轨迹改成二次折返。
@@ -635,9 +678,11 @@
         // 源骨架面向 +Z、VRM 面向 -Z，腿的前后俯仰在局部 X 轴上要取反；
         // 取反后再按统一增益收幅度，避免把源动作的前后摆原样放大成甩腿。
         if (/^(Left|Right)(UpLeg|Leg)$/.test(semantic)) {
-          const legGain = options && options.footClearance && semantic === 'LeftUpLeg'
-            ? WALK_LEFT_UPLEG_GAIN
-            : LEG_PITCH_GAIN;
+          let legGain = LEG_PITCH_GAIN;
+          if (options && options.footClearance) {
+            if (semantic === 'LeftUpLeg') legGain = WALK_LEFT_UPLEG_GAIN;
+            else if (semantic === 'RightLeg') legGain = WALK_RIGHT_LOWER_GAIN;
+          }
           // 腿只保留局部 X 俯仰：源大腿的局部 Z 位移为零，把 Y/Z 分量一起
           // 压掉可避免目标局部轴把俯仰转成大腿 Z 单帧冲击。
           delta = scaleQuatAngle([-delta[0], 0, 0, delta[3]], legGain);
@@ -693,6 +738,17 @@
         if (!left) continue;
         pose.rotation[rightIndex] = normalizeQuat([left[0], -left[1], -left[2], left[3]]);
       }
+    }
+
+    // 走路时两条手臂在目标局部轴上的外展量不一致；绕世界 Z 轴给一个
+    // 共同内收角，把右臂收回、左臂稍微放开到同一侧向线。
+    if (options && options.footClearance) {
+      alignLeftArmSwing(sourceJson, sourcePose, vrm, humanoid, pose, math);
+      rotateArmWorld(vrm.json, humanoid, pose, math, -WALK_ARM_ADDUCT);
+      rotateBoneWorld(vrm.json, pose, math, humanoid.leftLowerArm, [0, 0, 1], -WALK_LEFT_FOREARM_ROLL);
+      rotateBoneWorld(vrm.json, pose, math, humanoid.rightLowerArm, [0, 0, 1], -WALK_RIGHT_FOREARM_ROLL);
+      rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [0, 0, 1], -WALK_TORSO_ROLL);
+      rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [1, 0, 0], -WALK_TORSO_PITCH);
     }
 
     // 髋部按源动作起伏后，目标腿长和站距不同，脚会悬空；把最低脚踝拉回绑定高度。
