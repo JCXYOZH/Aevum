@@ -419,6 +419,11 @@
           // 只有源动作真的把手抬到肩上方时才按方向对齐；平时的垂手仍用整帧对齐，
           // 否则待机手臂会被拉开。高度阈值来自契约。
           axisOffset = targetDir && sourceDir ? rotationBetween(targetDir, sourceDir) : [0, 0, 0, 1];
+        } else if (/^(Neck|Head)$/.test(semantic)) {
+          // 头/颈没有可靠的“下一级骨架方向”可用：目标 head 的第一个子节点常是
+          // 头发或饰件，按子节点方向对齐会把头带出 5° 左右的侧倾。直接套源动作的
+          // 局部增量，头的朝向由目标自己的颈—头轴决定。
+          axisOffset = [0, 0, 0, 1];
         } else if (/Shoulder/.test(semantic)) {
           // 肩骨保持目标休息姿态。源动作的肩部旋转直接套过来会把上臂抬到脸前，
           // 跑步和打招呼都受影响；手臂高度交给上臂/前臂处理。
