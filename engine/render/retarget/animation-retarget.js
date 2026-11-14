@@ -954,14 +954,15 @@
     const turn = [0, 1, 0, 0];
     const turned = math.Q.mult(math.Q.create(), turn, sourceQuats(sourceHand));
     const desiredHand = math.Q.mult(math.Q.create(), turned, turn);
-    // 打招呼时手腕在掌面内上抬，让大拇指离开地面；掌心仍朝前。
+    // 打招呼时手腕在掌面内上抬，再把手掌翻 180°，让掌面朝向转正。
     const wristLift = math.Q.fromAxisAngle(math.Q.create(), [0, 0, 1], Math.PI * 80 / 180);
     const liftedHand = math.Q.mult(math.Q.create(), wristLift, desiredHand);
+    const palmTurned = math.Q.mult(math.Q.create(), liftedHand, [1, 0, 0, 0]);
     const handParent = vrm.json.nodes.findIndex(node => (node.children || []).indexOf(hand) >= 0);
     const handWorld = nodeWorldQuaternions(vrm.json, pose, math);
     const handParentWorld = handParent >= 0 ? handWorld(handParent) : [0, 0, 0, 1];
     pose.rotation[hand] = normalizeQuat(
-      math.Q.mult(math.Q.create(), inverseQuat(handParentWorld), liftedHand)
+      math.Q.mult(math.Q.create(), inverseQuat(handParentWorld), palmTurned)
     );
   }
 
