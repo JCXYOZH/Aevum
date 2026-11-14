@@ -44,6 +44,9 @@
   const WALK_RIGHT_FOREARM_ROLL = 0.15;
   const WALK_TORSO_ROLL = 0.042;
   const WALK_TORSO_PITCH = 0.10;
+  // 源走路本身带约 1.8° 的后仰；目标模型脊柱休息曲线更明显，只对齐源
+  // 仍会看起来向后。给俯仰目标加一点前倾偏置，让上身落在髋部正上方。
+  const WALK_TORSO_PITCH_BIAS_DEG = 2.0;
   // 走路时源动作的肩线和骨盆是反向扭转的（源相对 yaw 约 20°），但目标
   // 的肩骨为了不干扰手臂被固定在休息姿态，胸腔又和骨盆同相，整段上身
   // 像一块板。这里按源肩线相对骨盆的 yaw 给 chest 加一个反向扭转。
@@ -543,7 +546,7 @@
       sourceHeadPos[1] - sourceHipPos[1]
     ) * 180 / Math.PI;
     // 源骨架面向 +Z，目标面向 -Z，同一个“前倾”在俯仰符号上相反。
-    const desiredPitch = -sourcePitch;
+    const desiredPitch = -sourcePitch + WALK_TORSO_PITCH_BIAS_DEG;
     let applied = 0;
     for (let i = 0; i < 2; i += 1) {
       const targetWorld = nodeWorldPositions(vrm.json, pose);
