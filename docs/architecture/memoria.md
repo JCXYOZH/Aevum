@@ -26,7 +26,7 @@ src/memoria               C++ 训练/生成；由 monitor 作为子进程拉起
 | 旧工作区 | 开源仓库 |
 | --- | --- |
 | `src/*.cpp` | `src/memoria/*.cpp` |
-| `include/memoria/*.h` | `include/memoria/*.h` |
+| `src/memoria/include/memoria/*.h` | `src/memoria/include/memoria/*.h` |
 | `apps/community/web` | `apps/community/web` |
 | `apps/console/monitor` | `apps/console/monitor` |
 | `apps/desktop` | `apps/desktop` |

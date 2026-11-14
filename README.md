@@ -29,7 +29,7 @@ Aevum 是社区自己的平台，不是某个产品的官网。它的目标是�
 | `engine/` | 独立渲染引擎：数学核心、PMX/VMD 解析、WebGL2 蒙皮渲染、VRM/Live2D；真实模型只在本地验证 | MMD/VRM/Live2D 可用 |
 | `apps/desktop/` | Electron 壳；`npm run dist:installer` 出 Inno Setup 安装包，`dist:dir` 出免安装目录 | 安装包已出 |
 | `src/memoria/` | Memoria C++ 内核：门控、链单元、三层平衡、分层记忆、训练、生成、检查点 | 可编译 |
-| `include/memoria/` | C++ 公共头文件；与 `src/memoria` 一一对应 | 可编译 |
+| `src/memoria/include/memoria/` | C++ 公共头文件；与 `src/memoria` 一一对应 | 可编译 |
 | `data/tinyshakespeare_3000.txt` | 3000 行公开语料，用于小模型冒烟训练；不是权重 | 已入库 |
 | `scripts/` | 构建、训练、生成、桌面栈、Linux 编译、桌面打包 | 可用 |
 | `src/fortuna/` | 内核方向：引导、内核、内存、调度、文件系统、网络、沙箱 | 空骨架 |
@@ -76,7 +76,7 @@ scripts\desktop.ps1 -Stop
 
 ## Memoria C++ 内核
 
-`src/memoria/` 是 C++（LibTorch）实现，`include/memoria/` 是对应头文件。当前默认单周期链路：
+`src/memoria/` 是 C++（LibTorch）实现，`src/memoria/include/memoria/` 是对应头文件。当前默认单周期链路：
 
 ```text
 embedding -> gated valve -> chain × 3 -> tri-balancer × 3

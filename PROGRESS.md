@@ -17,7 +17,7 @@
 | 监控服务 | `apps/console/monitor/desktop_server.py` | 已实现 | 读检查点、训练指标、错误码；起模型子进程 |
 | 串口桥接 | `apps/console/bridge/serial_bridge.py` | 已实现 | 串口帧转 WebSocket |
 | 内核 | `apps/console/kernel/` | 维护中 | 引导、状态机、错误码、80×25 单元格 |
-| Memoria C++ | `src/memoria/` + `include/memoria/` | 可编译 | 17 个 `.cpp`、15 个头文件；训练/生成/检查点 |
+| Memoria C++ | `src/memoria/` + `src/memoria/include/memoria/` | 可编译 | 17 个 `.cpp`、15 个头文件；训练/生成/检查点 |
 | 桌面壳 | `apps/desktop/` | 可打包 | Electron 窗口、拉起监控；`dist:installer` 出 Inno Setup，`dist:dir` 出目录 |
 | 训练语料 | `data/tinyshakespeare_3000.txt` | 已入库 | 3000 行公开文本，不包含权重 |
 | 模型权重 | 不入库 | 明确边界 | `.gitignore` 挡 `*.pt`、`*.safetensors`、`checkpoint*/`、`build/` |
@@ -47,7 +47,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - 看板与展示页共用 `styles/presence.css`，灵体在 rail 和 dock 各有位置。
 - 配色回到纸黄系（展示页与看板 token 已替换），保留深色终端块作为局部面板。
 - 中继、监控、串口桥接、内核入口都收在 `apps/` 下。
-- Memoria C++ 内核迁入 `src/memoria/`，头文件在 `include/memoria/`；构建脚本已改到新路径。
+- Memoria C++ 内核迁入 `src/memoria/`，头文件在 `src/memoria/include/memoria/`；构建脚本已改到新路径。
 - Electron 桌面壳接入 `apps/desktop/`；`npm run dist:installer` 出 Inno Setup 安装包，`npm run dist:dir` 为免安装目录；安装包约 95 MB，产物不进 Git。
 - 3000 行公开语料入库；模型权重、构建产物、`node_modules` 明确忽略。
 

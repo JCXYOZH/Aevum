@@ -147,7 +147,7 @@ COMMON_SOURCES=(
 INCLUDES=(
   "-I$MEMORIA_TORCH_ROOT/include"
   "-I$MEMORIA_TORCH_ROOT/include/torch/csrc/api/include"
-  "-I$ROOT/include"
+  "-I$ROOT/src/memoria/include"
 )
 CXXFLAGS=(
   "-std=$CXX_STANDARD"

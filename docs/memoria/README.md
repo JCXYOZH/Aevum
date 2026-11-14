@@ -1,6 +1,6 @@
 # Memoria
 
-Memoria 是 Aevum 里负责“记忆方向”的模块，现在已经不只是空骨架：`src/memoria/` 是 C++（LibTorch）实现，`include/memoria/` 是对应头文件。
+Memoria 是 Aevum 里负责“记忆方向”的模块，现在已经不只是空骨架：`src/memoria/` 是 C++（LibTorch）实现，`src/memoria/include/memoria/` 是对应头文件。
 
 ## 它是什么
 
@@ -40,7 +40,7 @@ embedding
 
 ## 与 Python 骨架的关系
 
-`src/memoria/` 下还保留着早期 Python 包的空目录（`core/`、`layers/`、`trainers/` 等），那是接口职责占位，当前不参与 C++ 构建。真正的可编译实现是 `src/memoria/*.cpp` 与 `include/memoria/*.h`。不要把空 Python 文件误当成已实现模块。
+`src/memoria/` 下还保留着早期 Python 包的空目录（`core/`、`layers/`、`trainers/` 等），那是接口职责占位，当前不参与 C++ 构建。真正的可编译实现是 `src/memoria/*.cpp` 与 `src/memoria/include/memoria/*.h`。不要把空 Python 文件误当成已实现模块。
 
 ## 权重边界
 
