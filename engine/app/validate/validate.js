@@ -816,7 +816,9 @@
               // 站立类动作保留目标模型自己的站姿，避免源 idle 的宽站距把腿带歪。
               neutralStance: currentAction === 'idle' || currentAction === 'greet',
               // 待机手臂镜像左右；打招呼要保留右臂手势，不能镜像。
-              symmetricArms: currentAction === 'idle'
+              symmetricArms: currentAction === 'idle',
+              // 走路按源动作抬脚高度补足目标腿长差异，避免左脚在支撑相里拖地。
+              footClearance: currentAction === 'walk'
             };
             const source = player.getPose();
             target = retarget(current.vrm, actionGLB.json, source, retargetOptions);

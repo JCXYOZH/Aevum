@@ -225,8 +225,143 @@
     };
   }
 
+  // 世界朝向只用于姿态修正，不参与蒙皮矩阵。
+  function nodeWorldQuaternions(json, pose, math) {
+    const nodes = json.nodes || [];
+    const parents = new Array(nodes.length).fill(-1);
+    for (let i = 0; i < nodes.length; i += 1) {
+      const children = nodes[i].children || [];
+      for (let c = 0; c < children.length; c += 1) parents[children[c]] = i;
+    }
+    const cache = new Array(nodes.length);
+    const world = function (index) {
+      if (cache[index]) return cache[index];
+      const node = nodes[index];
+      const local = normalizeQuat(
+        (pose && pose.rotation && pose.rotation[index]) || node.rotation || [0, 0, 0, 1]
+      );
+      const parent = parents[index];
+      cache[index] = parent >= 0
+        ? normalizeQuat(math.Q.mult(math.Q.create(), world(parent), local))
+        : local;
+      return cache[index];
+    };
+    return world;
+  }
+
   function needsAxisOffset(semantic) {
     return /Arm|Hand|Shoulder|UpLeg|Leg|Foot|Hips|Spine|Chest|Neck|Head/.test(semantic);
+  }
+
+  // 走路时目标腿长短、左右局部轴不同，直接按角度重定向会把左脚压在支撑相里。
+  // 这里以源动作的左右脚离地高度为参考，用两段腿 IK 把脚踝抬到对应高度，
+  // 脚的前后位置保持原样，不改变步幅节奏。
+  function liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math) {
+    if (humanoid.leftUpperLeg === undefined || humanoid.leftFoot === undefined ||
+        humanoid.rightUpperLeg === undefined || humanoid.rightFoot === undefined ||
+        humanoid.leftLowerLeg === undefined || humanoid.rightLowerLeg === undefined) return;
+    const targetRest = nodeWorldPositions(vrm.json);
+    const sourceRest = nodeWorldPositions(sourceJson);
+    const targetRestGround = Math.min(targetRest(humanoid.leftFoot)[1], targetRest(humanoid.rightFoot)[1]);
+    const sourceLeftFoot = sourceJson.nodes.findIndex(node => /LeftFoot$/.test(node.name || ''));
+    const sourceRightFoot = sourceJson.nodes.findIndex(node => /RightFoot$/.test(node.name || ''));
+    if (sourceLeftFoot < 0 || sourceRightFoot < 0) return;
+    const sourceLeftUpLeg = sourceJson.nodes.findIndex(node => /LeftUpLeg$/.test(node.name || ''));
+    const sourceRestGround = Math.min(sourceRest(sourceLeftFoot)[1], sourceRest(sourceRightFoot)[1]);
+    const targetWorld = nodeWorldPositions(vrm.json, pose);
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    const targetWorldQuat = nodeWorldQuaternions(vrm.json, pose, math);
+    const targetLeg = Math.hypot(
+      targetRest(humanoid.leftUpperLeg)[0] - targetRest(humanoid.leftFoot)[0],
+      targetRest(humanoid.leftUpperLeg)[1] - targetRest(humanoid.leftFoot)[1],
+      targetRest(humanoid.leftUpperLeg)[2] - targetRest(humanoid.leftFoot)[2]
+    );
+    const sourceLeg = sourceLeftUpLeg >= 0
+      ? Math.hypot(
+        sourceRest(sourceLeftUpLeg)[0] - sourceRest(sourceLeftFoot)[0],
+        sourceRest(sourceLeftUpLeg)[1] - sourceRest(sourceLeftFoot)[1],
+        sourceRest(sourceLeftUpLeg)[2] - sourceRest(sourceLeftFoot)[2]
+      )
+      : 0;
+    if (targetLeg <= 1e-4 || sourceLeg <= 1e-4) return;
+    const legScale = Math.min(1, targetLeg / sourceLeg);
+    const legs = [
+      [humanoid.leftUpperLeg, humanoid.leftLowerLeg, humanoid.leftFoot, sourceLeftFoot],
+      [humanoid.rightUpperLeg, humanoid.rightLowerLeg, humanoid.rightFoot, sourceRightFoot]
+    ];
+    for (let i = 0; i < legs.length; i += 1) {
+      const upper = legs[i][0], lower = legs[i][1], foot = legs[i][2], sourceFoot = legs[i][3];
+      const sourceClear = sourceWorld(sourceFoot)[1] - sourceRestGround;
+      if (sourceClear < 0.02) continue;
+      const targetClear = targetWorld(foot)[1] - targetRestGround;
+      const desired = Math.min(0.2, sourceClear * legScale);
+      const lift = desired - targetClear;
+      if (lift < 0.005) continue;
+      const knee = targetWorld(lower);
+      const ankle = targetWorld(foot);
+      const hip = targetWorld(upper);
+      const thigh = [knee[0] - hip[0], knee[1] - hip[1], knee[2] - hip[2]];
+      const shin = [ankle[0] - knee[0], ankle[1] - knee[1], ankle[2] - knee[2]];
+      const thighLength = Math.hypot(thigh[0], thigh[1], thigh[2]);
+      const shinLength = Math.hypot(shin[0], shin[1], shin[2]);
+      if (thighLength <= 1e-4 || shinLength <= 1e-4) continue;
+      const desiredAnkle = [ankle[0], ankle[1] + lift, ankle[2]];
+      const reach = [desiredAnkle[0] - hip[0], desiredAnkle[1] - hip[1], desiredAnkle[2] - hip[2]];
+      let distance = Math.hypot(reach[0], reach[1], reach[2]);
+      distance = Math.max(Math.abs(thighLength - shinLength) + 1e-3,
+        Math.min(thighLength + shinLength - 1e-3, distance));
+      const dir = normalizeQuat([reach[0] / (distance || 1), reach[1] / (distance || 1), reach[2] / (distance || 1), 0]);
+      const nextAnkle = [
+        hip[0] + dir[0] * distance,
+        hip[1] + dir[1] * distance,
+        hip[2] + dir[2] * distance
+      ];
+      const plane = [
+        thigh[1] * shin[2] - thigh[2] * shin[1],
+        thigh[2] * shin[0] - thigh[0] * shin[2],
+        thigh[0] * shin[1] - thigh[1] * shin[0]
+      ];
+      const planeLength = Math.hypot(plane[0], plane[1], plane[2]);
+      if (planeLength <= 1e-4) continue;
+      const normal = [plane[0] / planeLength, plane[1] / planeLength, plane[2] / planeLength];
+      const along = (thighLength * thighLength - shinLength * shinLength + distance * distance) /
+        (2 * distance);
+      const bend = Math.sqrt(Math.max(0, thighLength * thighLength - along * along));
+      const nextKnee = [
+        hip[0] + dir[0] * along + normal[0] * bend,
+        hip[1] + dir[1] * along + normal[1] * bend,
+        hip[2] + dir[2] * along + normal[2] * bend
+      ];
+      const nextShin = [nextAnkle[0] - nextKnee[0], nextAnkle[1] - nextKnee[1], nextAnkle[2] - nextKnee[2]];
+      const nextShinLength = Math.hypot(nextShin[0], nextShin[1], nextShin[2]) || 1;
+      const worldLower = targetWorldQuat(lower);
+      const worldUpper = targetWorldQuat(upper);
+      const parentIndex = (vrm.json.nodes.findIndex(node =>
+        (node.children || []).indexOf(upper) >= 0));
+      const parentWorld = parentIndex >= 0 ? nodeWorldQuaternions(vrm.json, pose, math)(parentIndex) : [0, 0, 0, 1];
+      const nextThigh = [nextKnee[0] - hip[0], nextKnee[1] - hip[1], nextKnee[2] - hip[2]];
+      const nextThighLength = Math.hypot(nextThigh[0], nextThigh[1], nextThigh[2]) || 1;
+      const upperFix = rotationBetween(
+        normalizeQuat([thigh[0] / thighLength, thigh[1] / thighLength, thigh[2] / thighLength, 0]),
+        normalizeQuat([nextThigh[0] / nextThighLength, nextThigh[1] / nextThighLength, nextThigh[2] / nextThighLength, 0])
+      );
+      const lowerFix = rotationBetween(
+        normalizeQuat([shin[0] / shinLength, shin[1] / shinLength, shin[2] / shinLength, 0]),
+        normalizeQuat([nextShin[0] / nextShinLength, nextShin[1] / nextShinLength, nextShin[2] / nextShinLength, 0])
+      );
+      const nextWorldUpper = normalizeQuat(
+        math.Q.mult(math.Q.create(), upperFix, worldUpper)
+      );
+      const nextWorldLower = normalizeQuat(
+        math.Q.mult(math.Q.create(), lowerFix, worldLower)
+      );
+      pose.rotation[upper] = normalizeQuat(
+        math.Q.mult(math.Q.create(), inverseQuat(parentWorld), nextWorldUpper)
+      );
+      pose.rotation[lower] = normalizeQuat(
+        math.Q.mult(math.Q.create(), inverseQuat(nextWorldUpper), nextWorldLower)
+      );
+    }
   }
 
   // 支撑脚在接触地面时锁定前后位置，髋部反向平移抵消滑步。
@@ -507,6 +642,7 @@
     }
 
     keepLegsApart(vrm, humanoid, pose, math);
+    if (options && options.footClearance) liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math);
     return pose;
   }
 
