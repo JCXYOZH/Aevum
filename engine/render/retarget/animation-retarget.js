@@ -839,9 +839,10 @@
       sourceWorld(sourceRightFoot), legScale);
   }
 
-  // 跑步手臂也按源肩-肘、肘-腕的世界方向对齐，而不是继续套局部旋转；
-  // 这样右臂不会在 16→18 帧从 -78° 跳到 +24°，左右摆幅也与源同侧一致。
-  function alignRunArms(vrm, sourceJson, sourcePose, humanoid, pose, math) {
+  // 手臂按源肩-肘、肘-腕的世界方向对齐，不继续套局部旋转。跑步用它
+  // 消除 16→18 帧的 -78°→+24° 跳变；打招呼用它消除上臂低 10°、
+  // 前臂多抬 23° 导致的右腕偏低和提前落臂。
+  function alignArmDirections(vrm, sourceJson, sourcePose, humanoid, pose, math) {
     const pairs = [
       [humanoid.leftUpperArm, humanoid.leftLowerArm, humanoid.leftHand, 'LeftArm', 'LeftForeArm', 'LeftHand'],
       [humanoid.rightUpperArm, humanoid.rightLowerArm, humanoid.rightHand, 'RightArm', 'RightForeArm', 'RightHand']
@@ -1298,11 +1299,18 @@
       // 不用目标不同的颈骨长度去强行拷贝世界朝向，否则头会被带向一侧。
       alignRunTorsoPitch(sourceJson, sourcePose, vrm, humanoid, pose, math);
       alignRunBoneOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math, 'head', 'Head');
-      alignRunArms(vrm, sourceJson, sourcePose, humanoid, pose, math);
+      alignArmDirections(vrm, sourceJson, sourcePose, humanoid, pose, math);
       alignRunLegs(vrm, sourceJson, sourcePose, humanoid, pose, math);
       alignRunFeet(vrm, sourceJson, sourcePose, humanoid, pose, math);
       alignRunGround(vrm, sourceJson, sourcePose, humanoid, pose, math);
       limitRunRightArmSpeed(vrm, humanoid, pose, options.armLimitState, options.dt, math);
+    }
+
+    // 打招呼本质是右臂手势，套局部轴会让上臂低约 10°、前臂多抬约 23°，
+    // 右腕整体低 79 mm 且提前 0.73 s 落到最低点。这里改用源肩→肘、
+    // 肘→腕的世界方向重解两臂；左臂随后由 idle 结果覆盖，不受影响。
+    if (options && options.greetPose) {
+      alignArmDirections(vrm, sourceJson, sourcePose, humanoid, pose, math);
     }
 
     // 髋部按源动作起伏后，目标腿长和站距不同，脚会悬空；把最低脚踝拉回绑定高度。

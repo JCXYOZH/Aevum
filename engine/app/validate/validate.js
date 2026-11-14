@@ -835,6 +835,8 @@
               footClearance: currentAction === 'walk',
               // 跑步单独用世界方向腿/臂解算和脚尖接地，不复用走路的局部轴修正。
               runPose: currentAction === 'run',
+              // 打招呼右臂按源肩→肘、肘→腕世界方向重解，避免右腕低 79 mm。
+              greetPose: currentAction === 'greet',
               // 走路腿 IK 的单帧尖峰用 30 ms 低通削掉；状态跨帧保存。
               dt: dt,
               legSmoothState: currentAction === 'walk' ? walkLegFilter : null,
