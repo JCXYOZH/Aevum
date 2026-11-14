@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "memoria.h"
+#include <include/aevum_core.h>
 
 namespace {
 

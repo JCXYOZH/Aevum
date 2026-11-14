@@ -13,8 +13,8 @@ apps/
 src/
   memoria            C++ 训练/生成内核；另有早期 Python 接口空目录
   fortuna / libertas / common / integrations   其他方向占位
-src/memoria/include/memoria       C++ 头文件
-src/memoria/memoria.h             统一入口；模块内源码只包含这一处
+src/memoria/include/       C++ 公共头文件
+src/memoria/include/aevum_core.h  统一公共入口；源码写 <include/aevum_core.h>
 scripts               构建、训练、生成、桌面栈、Linux、打包
 data                  公开语料；权重不进仓库
 docs                  设计、架构、使用、排障

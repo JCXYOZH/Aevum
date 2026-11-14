@@ -136,6 +136,7 @@ COMMON_SOURCES=(
   gated_valve
   strata_memory
   embedding_layer
+  metrics_calculator
   text_dataset
   checkpoint
   module_io
@@ -147,6 +148,7 @@ COMMON_SOURCES=(
 INCLUDES=(
   "-I$MEMORIA_TORCH_ROOT/include"
   "-I$MEMORIA_TORCH_ROOT/include/torch/csrc/api/include"
+  "-I$ROOT/src/memoria"
 )
 CXXFLAGS=(
   "-std=$CXX_STANDARD"

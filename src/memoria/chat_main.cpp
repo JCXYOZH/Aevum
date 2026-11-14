@@ -12,7 +12,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "memoria.h"
+#include <include/aevum_core.h>
 
 namespace {
 

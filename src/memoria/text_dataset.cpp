@@ -1,4 +1,4 @@
-#include "memoria.h"
+#include <include/aevum_core.h>
 
 #include <algorithm>
 #include <cctype>
