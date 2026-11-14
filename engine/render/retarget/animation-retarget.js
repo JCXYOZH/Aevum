@@ -28,6 +28,9 @@
   const GROUND_LIMIT = 0.5;
   // 腿前后摆共用的幅度增益：前摆和后摆同时收，不改变俯仰方向。
   const LEG_PITCH_GAIN = 0.8;
+  // 目标左大腿的局部轴比右腿更偏，0.8 会把左步幅压到源的六成；
+  // 只补左大腿前摆，膝角仍由源腿和抬脚 IK 决定。
+  const WALK_LEFT_UPLEG_GAIN = 1.25;
 
   const MIXAMO_TO_VRM = {
     Hips: 'hips',
@@ -294,7 +297,7 @@
       const sourceClear = sourceWorld(sourceFoot)[1] - sourceRestGround;
       if (sourceClear <= 0) continue;
       // 触地附近连续渐入渐出，避免在 20 mm 阈值上把修正量瞬间开关，造成单帧跳腿。
-      const ramp = Math.min(1, sourceClear / 0.05);
+      const ramp = Math.min(1, sourceClear / 0.02);
       const weight = ramp * ramp * (3 - 2 * ramp);
       const targetClear = targetWorld(foot)[1] - targetRestGround;
       const desired = Math.min(0.2, sourceClear * legScale * weight);
@@ -583,7 +586,10 @@
         // 源骨架面向 +Z、VRM 面向 -Z，腿的前后俯仰在局部 X 轴上要取反；
         // 取反后再按统一增益收幅度，避免把源动作的前后摆原样放大成甩腿。
         if (/^(Left|Right)(UpLeg|Leg)$/.test(semantic)) {
-          delta = scaleQuatAngle([-delta[0], delta[1], delta[2], delta[3]], LEG_PITCH_GAIN);
+          const legGain = options && options.footClearance && semantic === 'LeftUpLeg'
+            ? WALK_LEFT_UPLEG_GAIN
+            : LEG_PITCH_GAIN;
+          delta = scaleQuatAngle([-delta[0], delta[1], delta[2], delta[3]], legGain);
         }
         // 左臂在目标骨架里与源骨架的局部 Z 轴相反，直接套用增量会把上臂抬到胸口。
         if (/^Left(Arm|ForeArm|Hand|Shoulder)/.test(semantic) && (!options || options.mirrorLeftArm !== false)) {
@@ -639,7 +645,11 @@
       const posePos = nodeWorldPositions(vrm.json, pose);
       const restGround = Math.min(restPos(humanoid.leftFoot)[1], restPos(humanoid.rightFoot)[1]);
       const poseGround = Math.min(posePos(humanoid.leftFoot)[1], posePos(humanoid.rightFoot)[1]);
-      const offset = restGround - poseGround;
+      // 走路没有腾空期，只在下沉时抬髋；否则两只脚都被摆高时会把髋往下拉，
+      // 形成每步一次的上下弹。跑步保留双向接地修正。
+      const offset = options && options.footClearance
+        ? Math.max(0, restGround - poseGround)
+        : restGround - poseGround;
       const boundedOffset = Math.min(GROUND_LIMIT, Math.max(-GROUND_LIMIT, offset));
       if (Math.abs(boundedOffset) > 1e-4) {
         const current = pose.translation[hipsTargetIndex] ||
