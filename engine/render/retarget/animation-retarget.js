@@ -44,7 +44,14 @@
   const WALK_RIGHT_FOREARM_ROLL = 0.15;
   const WALK_TORSO_ROLL = 0.042;
   const WALK_TORSO_PITCH = 0.10;
-  const WALK_LEFT_ARM_SWING_GAIN = 0.63;
+  // 走路时源动作的肩线和骨盆是反向扭转的（源相对 yaw 约 20°），但目标
+  // 的肩骨为了不干扰手臂被固定在休息姿态，胸腔又和骨盆同相，整段上身
+  // 像一块板。这里按源肩线相对骨盆的 yaw 给 chest 加一个反向扭转。
+  const WALK_TORSO_YAW_GAIN = 0.95;
+  const WALK_LEFT_ARM_SWING_GAIN = 0.80;
+  // 右臂的局部轴和源镜像相反，完整差值在目标上会过冲成 100° 摆幅；
+  // 这里只补胸腔反扭造成的摆幅损失，保留源右臂的相位。
+  const WALK_RIGHT_ARM_SWING_GAIN = 0.20;
   // 走路腿部低通时间常数：只在 walk 生效，压掉小腿在大腿接近伸直时的单帧弹动。
   const WALK_LEG_SMOOTH_TAU = 0.03;
   // 走路固定内收角：左右腿局部轴不同，分开给角，只压站距，不做逐帧阈值修正，
@@ -478,6 +485,89 @@
     pose.rotation[index] = normalizeQuat(math.Q.mult(math.Q.create(), local, pose.rotation[index]));
   }
 
+  function jointYaw(world, left, right) {
+    return Math.atan2(world(right)[2] - world(left)[2], world(right)[0] - world(left)[0]) * 180 / Math.PI;
+  }
+
+  function wrapDegrees(value) {
+    let angle = value;
+    while (angle > 180) angle -= 360;
+    while (angle < -180) angle += 360;
+    return angle;
+  }
+
+  function alignWalkTorsoYaw(sourceJson, sourcePose, vrm, humanoid, pose, math) {
+    if (humanoid.chest === undefined) return;
+    if (humanoid.leftShoulder === undefined || humanoid.rightShoulder === undefined ||
+        humanoid.leftUpperLeg === undefined || humanoid.rightUpperLeg === undefined) return;
+    const sourceNodes = sourceJson.nodes || [];
+    const sourceShoulderL = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'LeftShoulder');
+    const sourceShoulderR = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'RightShoulder');
+    const sourceHipL = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'LeftUpLeg');
+    const sourceHipR = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'RightUpLeg');
+    if (sourceShoulderL < 0 || sourceShoulderR < 0 || sourceHipL < 0 || sourceHipR < 0) return;
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    const sourceRel = wrapDegrees(
+      jointYaw(sourceWorld, sourceShoulderL, sourceShoulderR) -
+      jointYaw(sourceWorld, sourceHipL, sourceHipR)
+    );
+    // 源骨架与 VRM 朝向相反，源的肩线相对骨盆 yaw 在目标里要取反。
+    const desiredRel = wrapDegrees(-sourceRel * WALK_TORSO_YAW_GAIN);
+    for (let i = 0; i < 2; i += 1) {
+      const targetWorld = nodeWorldPositions(vrm.json, pose);
+      const currentRel = wrapDegrees(
+        jointYaw(targetWorld, humanoid.leftShoulder, humanoid.rightShoulder) -
+        jointYaw(targetWorld, humanoid.leftUpperLeg, humanoid.rightUpperLeg)
+      );
+      const error = wrapDegrees(desiredRel - currentRel);
+      if (Math.abs(error) < 0.25) break;
+      const angle = Math.max(-0.3, Math.min(0.3, -error * Math.PI / 180));
+      rotateBoneWorld(vrm.json, pose, math, humanoid.chest, [0, 1, 0], angle);
+    }
+  }
+
+  // 源走路由髋部横移带动全身，但肩线/头部只保留约 1/3 的横向摆动；目标
+  // 目前肩线和头几乎跟着髋部平移。这里按源肩-髋、头-髋的横向偏移给 spine
+  // 和 neck 补反向侧倾，让上身稳定在支撑面上方。
+  function alignWalkTorsoLateral(sourceJson, sourcePose, vrm, humanoid, pose, math) {
+    if (humanoid.spine === undefined || humanoid.hips === undefined || humanoid.head === undefined ||
+        humanoid.neck === undefined || humanoid.leftShoulder === undefined ||
+        humanoid.rightShoulder === undefined) return;
+    const sourceNodes = sourceJson.nodes || [];
+    const sourceShoulderL = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'LeftShoulder');
+    const sourceShoulderR = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'RightShoulder');
+    const sourceHip = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'Hips');
+    const sourceHead = sourceNodes.findIndex((node) => sourceBoneName(node.name) === 'Head');
+    if (sourceShoulderL < 0 || sourceShoulderR < 0 || sourceHip < 0 || sourceHead < 0) return;
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    const sourceHipX = sourceWorld(sourceHip)[0];
+    const sourceShoulderX = (sourceWorld(sourceShoulderL)[0] + sourceWorld(sourceShoulderR)[0]) * 0.5;
+    const sourceHeadX = sourceWorld(sourceHead)[0];
+    const desiredShoulderOffset = sourceShoulderX - sourceHipX;
+    const desiredHeadOffset = sourceHeadX - sourceHipX;
+    for (let i = 0; i < 2; i += 1) {
+      const targetWorld = nodeWorldPositions(vrm.json, pose);
+      const hips = targetWorld(humanoid.hips);
+      const head = targetWorld(humanoid.head);
+      const torsoHeight = Math.max(0.6, head[1] - hips[1]);
+      const shoulderOffset = (targetWorld(humanoid.leftShoulder)[0] + targetWorld(humanoid.rightShoulder)[0]) * 0.5 - hips[0];
+      const error = desiredShoulderOffset - shoulderOffset;
+      if (Math.abs(error) < 0.0015) break;
+      const angle = Math.max(-0.05, Math.min(0.05, -error / torsoHeight));
+      rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [0, 0, 1], angle);
+    }
+    // 肩线稳定后，颈/头还要再补一次，让头部不跟着肩线左右甩。
+    for (let i = 0; i < 2; i += 1) {
+      const targetWorld = nodeWorldPositions(vrm.json, pose);
+      const hips = targetWorld(humanoid.hips);
+      const head = targetWorld(humanoid.head);
+      const error = (hips[0] + desiredHeadOffset) - head[0];
+      if (Math.abs(error) < 0.0015) break;
+      const angle = Math.max(-0.04, Math.min(0.04, -error / Math.max(0.3, head[1] - hips[1])));
+      rotateBoneWorld(vrm.json, pose, math, humanoid.neck, [0, 0, 1], angle);
+    }
+  }
+
   function armSagittal(json, pose, upper, elbow) {
     const w = nodeWorldPositions(json, pose);
     const a = w(upper), b = w(elbow);
@@ -485,6 +575,7 @@
   }
 
   function alignLeftArmSwing(sourceJson, sourcePose, vrm, humanoid, pose, math) {
+    if (humanoid.leftUpperArm === undefined || humanoid.leftLowerArm === undefined) return;
     const sourceUpper = sourceJson.nodes.findIndex(n => /(?:^|:)LeftArm$/.test(n.name || ''));
     const sourceElbow = sourceJson.nodes.findIndex(n => /(?:^|:)LeftForeArm$/.test(n.name || ''));
     if (sourceUpper < 0 || sourceElbow < 0) return;
@@ -492,6 +583,17 @@
     const targetAngle = armSagittal(vrm.json, pose, humanoid.leftUpperArm, humanoid.leftLowerArm);
     const diff = (sourceAngle - targetAngle) * Math.PI / 180;
     rotateBoneWorld(vrm.json, pose, math, humanoid.leftUpperArm, [1, 0, 0], diff * WALK_LEFT_ARM_SWING_GAIN);
+  }
+
+  function alignRightArmSwing(sourceJson, sourcePose, vrm, humanoid, pose, math) {
+    if (humanoid.rightUpperArm === undefined || humanoid.rightLowerArm === undefined) return;
+    const sourceUpper = sourceJson.nodes.findIndex(n => /(?:^|:)RightArm$/.test(n.name || ''));
+    const sourceElbow = sourceJson.nodes.findIndex(n => /(?:^|:)RightForeArm$/.test(n.name || ''));
+    if (sourceUpper < 0 || sourceElbow < 0) return;
+    const sourceAngle = armSagittal(sourceJson, sourcePose, sourceUpper, sourceElbow);
+    const targetAngle = armSagittal(vrm.json, pose, humanoid.rightUpperArm, humanoid.rightLowerArm);
+    const diff = wrapDegrees(sourceAngle - targetAngle) * Math.PI / 180;
+    rotateBoneWorld(vrm.json, pose, math, humanoid.rightUpperArm, [1, 0, 0], diff * WALK_RIGHT_ARM_SWING_GAIN);
   }
 
   // 走路时目标腿的局部轴会把脚踝带到髋外 120 mm 以上，源动作只有 50 mm
@@ -754,7 +856,10 @@
     // 收进外套/裙摆。这里左右分别绕世界 Z 轴向外展开，先把左右腕放到
     // 身体轮廓外，再让前臂校正把腕拉回同一侧向线。
     if (options && options.footClearance) {
+      alignWalkTorsoYaw(sourceJson, sourcePose, vrm, humanoid, pose, math);
+      alignWalkTorsoLateral(sourceJson, sourcePose, vrm, humanoid, pose, math);
       alignLeftArmSwing(sourceJson, sourcePose, vrm, humanoid, pose, math);
+      alignRightArmSwing(sourceJson, sourcePose, vrm, humanoid, pose, math);
       rotateArmWorld(vrm.json, humanoid, pose, math, WALK_ARM_OUT_LEFT, WALK_ARM_OUT_RIGHT);
       rotateBoneWorld(vrm.json, pose, math, humanoid.leftLowerArm, [0, 0, 1], -WALK_LEFT_FOREARM_ROLL);
       rotateBoneWorld(vrm.json, pose, math, humanoid.rightLowerArm, [0, 0, 1], -WALK_RIGHT_FOREARM_ROLL);
