@@ -23,7 +23,20 @@
     throw new Error('Aevum math core is not loaded');
   }
 
-  // 重定向内部的数值边界集中在这里，避免散落在各分支里。
+  // 统一宏注册表：动作的时序、权重和骨骼修正都声明在这里，页面与重定向
+  // 只按名字读取，不再各自维护一套常量。
+  const MACROS = {
+    greet: {
+      stages: [
+        { id: 'down', label: '垂手', duration: 1.0, from: 0, to: 0 },
+        { id: 'lift', label: '抬到过渡位', duration: 0.35, from: 0, to: 0.25 },
+        { id: 'hold', label: '停住', duration: 0.5, from: 0.25, to: 0.25 },
+        { id: 'raise', label: '抬到平举', duration: 0.3, from: 0.25, to: 0.4 },
+        { id: 'wave', label: '抬到挥手位', duration: 0.3, from: 0.4, to: 1.0 }
+      ],
+      rightArm: { lowerArmZ: 50, lowerArmY: 100 }
+    }
+  };
   const ARM_RAISE_HEIGHT = 0.08;
   const GROUND_LIMIT = 0.5;
   // 腿前后摆共用的幅度增益：前摆和后摆同时收，不改变俯仰方向。
@@ -883,9 +896,9 @@
 
   // 先把肩→肘、肘→腕方向精确对齐，再绕各骨轴补滚转：只套世界四元数
   // 会被目标臂骨局部轴与 +X 的几度偏差带偏，单独 aim 又不控制自转。
-  // 目标 VRM 朝 -Z，上臂/前臂骨局部 +Z 是背面、-Z 才是前向；源 Mixamo
-  // 朝 +Z，局部 +Z 是前向。上臂、前臂都按“目标 -Z ↔ 源 +Z”翻 180°，
-  // 修正前臂反向前；手部再在掌面内上抬，让拇指离开地面。
+  // 目标 VRM 朝 -Z，上臂骨局部 +Z 是背面、-Z 才是肘窝前向；源 Mixamo
+  // 朝 +Z，局部 +Z 是前向。上臂按“目标 -Z ↔ 源 +Z”翻 180°，前臂再
+  // 单独翻回；手部在掌面内上抬后再翻 180°。
   function alignBoneRollWorld(json, pose, math, index, axis, sourceQuat, lateral, sourceLateralLocal) {
     if (index === undefined) return;
     const d = normalizeVector(axis);
@@ -919,51 +932,104 @@
     if (Math.abs(angle) > 1e-4) rotateBoneWorld(json, pose, math, index, d, angle);
   }
 
+  // 世界方向对齐只固定肩→肘、肘→腕的位置，骨头自身的绕骨轴旋转仍来自
+  // 局部重定向。源上臂/前臂/手骨 -X 指向下一节，目标 +X，且前轴相反，
+  // 因此整条右臂用 R*Q*R（R 为绕 Y 180°）同步位置和扭转。
   function alignRightArmOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math) {
-    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
-    const sourceQuats = nodeWorldQuaternions(sourceJson, sourcePose, math);
+    const shoulder = humanoid.rightShoulder;
     const upper = humanoid.rightUpperArm;
-    const lower = humanoid.rightLowerArm;
-    const hand = humanoid.rightHand;
-    const sourceUpper = sourceNodeIndex(sourceJson, 'RightArm');
-    const sourceLower = sourceNodeIndex(sourceJson, 'RightForeArm');
-    const sourceHand = sourceNodeIndex(sourceJson, 'RightHand');
-    if (upper === undefined || lower === undefined || hand === undefined ||
-        sourceUpper < 0 || sourceLower < 0 || sourceHand < 0) return;
-    const shoulder = sourceWorld(sourceUpper);
-    const elbow = sourceWorld(sourceLower);
-    const wrist = sourceWorld(sourceHand);
-    const upperDir = runFacing([elbow[0] - shoulder[0], elbow[1] - shoulder[1], elbow[2] - shoulder[2]]);
-    const lowerDir = runFacing([wrist[0] - elbow[0], wrist[1] - elbow[1], wrist[2] - elbow[2]]);
-    const targetWorld = nodeWorldPositions(vrm.json, pose);
-    const targetShoulder = targetWorld(upper);
-    const targetElbow = targetWorld(lower);
-    aimBoneWorld(vrm.json, pose, math, upper,
-      [targetElbow[0] - targetShoulder[0], targetElbow[1] - targetShoulder[1], targetElbow[2] - targetShoulder[2]],
-      upperDir);
-    alignBoneRollWorld(vrm.json, pose, math, upper, upperDir, sourceQuats(sourceUpper),
-      [0, 0, -1], [0, 0, 1]);
-    const nextWorld = nodeWorldPositions(vrm.json, pose);
-    const nextElbow = nextWorld(lower);
-    const nextWrist = nextWorld(hand);
-    aimBoneWorld(vrm.json, pose, math, lower,
-      [nextWrist[0] - nextElbow[0], nextWrist[1] - nextElbow[1], nextWrist[2] - nextElbow[2]],
-      lowerDir);
-    alignBoneRollWorld(vrm.json, pose, math, lower, lowerDir, sourceQuats(sourceLower),
-      [0, 0, -1], [0, 0, 1]);
+    if (shoulder !== undefined && upper !== undefined) {
+      // 肩骨同样 29.3°，这版按反方向转：不再朝源镜像，而是把当前肩方向往回拧。
+      const sourceShoulder = sourceNodeIndex(sourceJson, 'RightShoulder');
+      const sourceArm = sourceNodeIndex(sourceJson, 'RightArm');
+      if (sourceShoulder >= 0 && sourceArm >= 0) {
+        const sourcePositions = nodeWorldPositions(sourceJson, sourcePose);
+        const sourceS = sourcePositions(sourceShoulder);
+        const sourceA = sourcePositions(sourceArm);
+        const desired = normalizeVector([
+          -(sourceA[0] - sourceS[0]),
+          sourceA[1] - sourceS[1],
+          -(sourceA[2] - sourceS[2])
+        ]);
+        const positions = nodeWorldPositions(vrm.json, pose);
+        const targetS = positions(shoulder);
+        const targetA = positions(upper);
+        const current = normalizeVector([
+          targetA[0] - targetS[0],
+          targetA[1] - targetS[1],
+          targetA[2] - targetS[2]
+        ]);
+        if (current && desired) {
+          // 朝源镜像方向补，角度在上次 29.3° 基础上加大到 1.5 倍（约 44°）。
+          const dot = current[0] * desired[0] + current[1] * desired[1] + current[2] * desired[2];
+          const axis = normalizeVector(cross(current, desired));
+          const angle = Math.min(Math.PI, Math.acos(Math.max(-1, Math.min(1, dot))) * 1.5);
+          if (axis) {
+            const sa = Math.sin(angle), ca = Math.cos(angle);
+            const target = normalizeVector([
+              current[0] * ca + (axis[1] * current[2] - axis[2] * current[1]) * sa,
+              current[1] * ca + (axis[2] * current[0] - axis[0] * current[2]) * sa,
+              current[2] * ca + (axis[0] * current[1] - axis[1] * current[0]) * sa
+            ]);
+            aimBoneWorld(vrm.json, pose, math, shoulder, current, target);
+          }
+        }
+      }
+    }
+    const bones = [
+      ['rightUpperArm', 'RightArm'],
+      ['rightLowerArm', 'RightForeArm'],
+      ['rightHand', 'RightHand']
+    ];
+    const sourceWorld = nodeWorldQuaternions(sourceJson, sourcePose, math);
     const turn = [0, 1, 0, 0];
-    const turned = math.Q.mult(math.Q.create(), turn, sourceQuats(sourceHand));
-    const desiredHand = math.Q.mult(math.Q.create(), turned, turn);
-    // 打招呼时手腕在掌面内上抬，再把手掌翻 180°，让掌面朝向转正。
-    const wristLift = math.Q.fromAxisAngle(math.Q.create(), [0, 0, 1], Math.PI * 80 / 180);
-    const liftedHand = math.Q.mult(math.Q.create(), wristLift, desiredHand);
-    const palmTurned = math.Q.mult(math.Q.create(), liftedHand, [1, 0, 0, 0]);
-    const handParent = vrm.json.nodes.findIndex(node => (node.children || []).indexOf(hand) >= 0);
-    const handWorld = nodeWorldQuaternions(vrm.json, pose, math);
-    const handParentWorld = handParent >= 0 ? handWorld(handParent) : [0, 0, 0, 1];
-    pose.rotation[hand] = normalizeQuat(
-      math.Q.mult(math.Q.create(), inverseQuat(handParentWorld), palmTurned)
-    );
+    for (const pair of bones) {
+      const targetIndex = humanoid[pair[0]];
+      const sourceIndex = sourceNodeIndex(sourceJson, pair[1]);
+      if (targetIndex === undefined || sourceIndex < 0) continue;
+      const turned = math.Q.mult(math.Q.create(), turn, sourceWorld(sourceIndex));
+      const desired = math.Q.mult(math.Q.create(), turned, turn);
+      const parent = vrm.json.nodes.findIndex(node => (node.children || []).indexOf(targetIndex) >= 0);
+      const world = nodeWorldQuaternions(vrm.json, pose, math);
+      const parentWorld = parent >= 0 ? world(parent) : [0, 0, 0, 1];
+      pose.rotation[targetIndex] = normalizeQuat(
+        math.Q.mult(math.Q.create(), inverseQuat(parentWorld), desired)
+      );
+    }
+    // VRM 0.0 与 Mixamo/glTF 的坐标手性不同：官方 Mixamo 转换对 VRM0 会把
+    // 四元数的 x/z 取反。三根骨都设完再统一取反，避免先改上臂影响前臂的父级。
+    if (vrm.specVersion === '0.0' || vrm.specVersion === '0') {
+      for (const pair of bones) {
+        const index = humanoid[pair[0]];
+        if (index === undefined) continue;
+        const q = pose.rotation[index];
+        pose.rotation[index] = [-q[0], q[1], -q[2], q[3]];
+      }
+    }
+    // 右前臂以肘为支点，按宏注册表的 Z/Y 角旋转。
+    if (humanoid.rightLowerArm !== undefined) {
+      const halfZ = (MACROS.greet.rightArm.lowerArmZ * Math.PI / 180) / 2;
+      const halfY = (MACROS.greet.rightArm.lowerArmY * Math.PI / 180) / 2;
+      const rotZ = [0, 0, Math.sin(halfZ), Math.cos(halfZ)];
+      const rotY = [0, Math.sin(halfY), 0, Math.cos(halfY)];
+      pose.rotation[humanoid.rightLowerArm] = normalizeQuat(
+        math.Q.mult(
+          math.Q.create(),
+          pose.rotation[humanoid.rightLowerArm],
+          math.Q.mult(math.Q.create(), rotZ, rotY)
+        )
+      );
+    }
+    // 前臂/手腕的扭转不全部压在一个关节上：模型自带 zHandTwist_R（肘与腕之间的
+    // 扭转辅助骨），按常见的 copy rotation + influence 0.5 把一半绕骨轴扭转分给它，
+    // 避免前臂蒙皮在肘/腕处折成三角形。
+    const twistIndex = vrm.json.nodes.findIndex(node => node.name === 'zHandTwist_R');
+    if (twistIndex >= 0 && humanoid.rightHand !== undefined) {
+      const hand = pose.rotation[humanoid.rightHand];
+      const angle = 2 * Math.atan2(hand[0], hand[3]);
+      const half = angle * 0.5;
+      pose.rotation[twistIndex] = [Math.sin(half), 0, 0, Math.cos(half)];
+    }
   }
 
   // 用多次小步反馈替代原跑步分支的单次 0.2 rad，避免把脊柱来回甩。
@@ -1286,8 +1352,8 @@
           // 局部增量，头的朝向由目标自己的颈—头轴决定。
           axisOffset = [0, 0, 0, 1];
         } else if (/Shoulder/.test(semantic)) {
-          // 肩骨保持目标休息姿态。源动作的肩部旋转直接套过来会把上臂抬到脸前，
-          // 跑步和打招呼都受影响；手臂高度交给上臂/前臂处理。
+          // 肩骨保持目标休息姿态。蒙皮统计里 Right shoulder 只有 489 个顶点，
+          // 肩部外观主要由 Chest 和 Right arm 控制；手臂朝向交给上臂/前臂。
           axisOffset = [0, 0, 0, 1];
         } else if (/Arm|Hand/.test(semantic)) {
           axisOffset = frameOffset(limbFrame(sourceJson, i), limbFrame(vrm.json, targetIndex));
@@ -1397,6 +1463,13 @@
       alignRightArmOrientation(vrm, sourceJson, sourcePose, humanoid, pose, math);
     }
 
+    // 站立类动作（不走、不跑、不打招呼）的垂手也按世界方向对齐：
+    // 目标右臂局部轴比左臂偏 20° 以上，只靠局部增量会让右手/前臂垂偏。
+    if (options && options.neutralStance && !options.footClearance &&
+        !options.runPose && !options.greetPose) {
+      alignArmDirections(vrm, sourceJson, sourcePose, humanoid, pose, math);
+    }
+
     // 髋部按源动作起伏后，目标腿长和站距不同，脚会悬空；把最低脚踝拉回绑定高度。
     if (!(options && options.runPose) && hipsTargetIndex !== undefined &&
         humanoid.leftFoot !== undefined && humanoid.rightFoot !== undefined) {
@@ -1431,7 +1504,7 @@
     return pose;
   }
 
-  const api = { retargetPose, MIXAMO_TO_VRM, nodeWorldPositions };
+  const api = { retargetPose, MIXAMO_TO_VRM, nodeWorldPositions, macroRegistry: MACROS };
   if (!root.AEVUM) root.AEVUM = {};
   if (!root.AEVUM.render) root.AEVUM.render = {};
   root.AEVUM.render.AnimationRetarget = api;

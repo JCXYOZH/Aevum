@@ -20,6 +20,7 @@
   const statBones = document.getElementById('statBones');
   const statTris = document.getElementById('statTris');
   const statFps = document.getElementById('statFps');
+  const greetPhase = document.getElementById('greetPhase');
   const live2dState = document.getElementById('live2dState');
   const live2dHint = document.getElementById('live2dHint');
   const emotionSelect = document.getElementById('emotionSelect');
@@ -46,6 +47,33 @@
 
   // 与 demo 页一致：源片段首帧不是落地相位，跑步/走路先截到接触段。
   const START_OFFSET = { walk: 0.08, run: 0.12, greet: 1.0 };
+  // 统一宏注册表由 animation-retarget.js 提供，页面只按名字读取阶段与权重。
+  const greetMacro = window.AEVUM.render.AnimationRetarget.macroRegistry.greet;
+  const greetTotalSeconds = greetMacro.stages.reduce(function (sum, stage) {
+    return sum + stage.duration;
+  }, 0);
+
+  function greetMacroAt(elapsed) {
+    let start = 0;
+    for (let i = 0; i < greetMacro.stages.length; i++) {
+      const stage = greetMacro.stages[i];
+      const end = start + stage.duration;
+      if (elapsed < end) {
+        const progress = stage.duration > 0
+          ? Math.min(1, Math.max(0, (elapsed - start) / stage.duration))
+          : 1;
+        return {
+          index: i + 1,
+          stage: stage,
+          weight: stage.from + (stage.to - stage.from) * progress,
+          start: start,
+          end: end
+        };
+      }
+      start = end;
+    }
+    return { index: greetMacro.stages.length + 1, stage: { id: 'source', label: '播放源片段' }, weight: 1, start: greetTotalSeconds, end: greetTotalSeconds };
+  }
 
   const features = {
     texture: document.getElementById('optTexture'),
@@ -104,6 +132,7 @@
   let actionGLB = null;
   let player = null;
   let idlePlayer = null;
+  let greetElapsed = 0;
   let stateMachine = null;
   let yaw = 16 * Math.PI / 180;
   if (query.has('yaw')) {
@@ -467,6 +496,7 @@
       }
     }
     stateMachine.onStateChange = function (target) {
+      greetElapsed = 0;
       const clip = CLIP_FOR[target];
       if (!clip || !hasClip(clip)) return;
       player.setClip(clip).reset().setLoop(true).play();
@@ -806,6 +836,19 @@
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   }
 
+  function updateGreetPhase() {
+    if (!greetPhase) return;
+    if (currentAction !== 'greet') {
+      greetPhase.textContent = 'greet：未选择';
+      return;
+    }
+    const state = greetMacroAt(greetElapsed);
+    greetPhase.textContent = 'greet 阶段：' + state.index + ' ' + state.stage.label +
+      ' · ' + greetElapsed.toFixed(2) + 's' +
+      ' · 权重 ' + Math.round(state.weight * 100) + '%' +
+      (paused ? ' · 暂停' : '');
+  }
+
   function frame(now) {
     const dt = Math.min(0.05, Math.max(0, (now - lastFrame) / 1000));
     lastFrame = now;
@@ -822,7 +865,11 @@
           if (stateMachine && !paused) stateMachine.update(dt);
           if (player) {
             if (!paused) {
-              player.update(dt);
+              if (currentAction === 'greet') greetElapsed += dt;
+              // 垂手 1 s → 平举 0.35 s → 停 0.5 s → 抬到挥手位 0.3 s，之后片段才开始。
+              const holdGreeting = currentAction === 'greet' &&
+                greetElapsed < greetTotalSeconds;
+              if (!holdGreeting) player.update(dt);
             }
             if (idlePlayer && !paused) idlePlayer.update(dt);
             const retargetOptions = {
@@ -847,13 +894,27 @@
             // 打招呼只让右臂跟 greeting 动作，左臂借 idle 的结果；
             // 否则源片段的左臂会一直横在身体侧面，看起来像 T-pose。
             if (currentAction === 'greet' && idlePlayer) {
-              const idleTarget = retarget(current.vrm, actionGLB.json, idlePlayer.getPose(), retargetOptions);
+              const idleOptions = Object.assign({}, retargetOptions, { greetPose: false });
+              const idleTarget = retarget(current.vrm, actionGLB.json, idlePlayer.getPose(), idleOptions);
               const humanoid = {};
               (current.vrm.humanBones || []).forEach(function (bone) { humanoid[bone.bone] = bone.node; });
               ['leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand'].forEach(function (bone) {
                 const index = humanoid[bone];
                 if (index !== undefined && idleTarget.rotation[index]) {
                   target.rotation[index] = idleTarget.rotation[index];
+                }
+              });
+              // 阶段、权重全部来自统一宏注册表。
+              const greetBlend = greetMacroAt(greetElapsed).weight;
+              ['rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand'].forEach(function (bone) {
+                const index = humanoid[bone];
+                if (index === undefined || !idleTarget.rotation[index] || !target.rotation[index]) return;
+                if (greetBlend <= 0) {
+                  target.rotation[index] = idleTarget.rotation[index];
+                } else if (greetBlend < 1) {
+                  const out = math.Q.create();
+                  math.Q.slerp(out, idleTarget.rotation[index], target.rotation[index], greetBlend);
+                  target.rotation[index] = out;
                 }
               });
             }
@@ -877,6 +938,7 @@
       statFps.textContent = Math.round(fpsFrames * 1000 / (now - fpsTime));
       fpsFrames = 0;
       fpsTime = now;
+      updateGreetPhase();
     }
     requestAnimationFrame(frame);
   }
