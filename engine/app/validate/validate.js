@@ -833,10 +833,12 @@
               symmetricArms: currentAction === 'idle',
               // 走路按源动作抬脚高度补足目标腿长差异，避免左脚在支撑相里拖地。
               footClearance: currentAction === 'walk',
+              // 跑步单独用世界方向腿/臂解算和脚尖接地，不复用走路的局部轴修正。
+              runPose: currentAction === 'run',
               // 走路腿 IK 的单帧尖峰用 30 ms 低通削掉；状态跨帧保存。
               dt: dt,
               legSmoothState: currentAction === 'walk' ? walkLegFilter : null,
-              armLimitState: currentAction === 'walk' ? walkArmLimit : null
+              armLimitState: (currentAction === 'walk' || currentAction === 'run') ? walkArmLimit : null
             };
             const source = player.getPose();
             target = retarget(current.vrm, actionGLB.json, source, retargetOptions);

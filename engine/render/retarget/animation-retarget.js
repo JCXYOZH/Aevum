@@ -73,6 +73,12 @@
   // 避免大腿局部 Z 单帧冲击。
   const WALK_LEG_ADDUCT_LEFT = 0.048;
   const WALK_LEG_ADDUCT_RIGHT = 0.112;
+  // 跑步单独解算：源动作左右腿在目标局部轴上相位错位（目标左腿与源右腿
+  // 相关 0.90），不能再按局部旋转逐骨套用。这里直接用源脚相对髋的世界
+  // 位置做两段腿 IK，保证左对左、右对右，并保留源动作的腾空期。
+  const RUN_TORSO_ITERS = 8;
+  const RUN_ARM_MAX_DEG_PER_SEC = 800;
+  const RUN_GROUND_LIMIT = 0.5;
 
   const MIXAMO_TO_VRM = {
     Hips: 'hips',
@@ -656,6 +662,280 @@
     return Math.atan2(b[2] - a[2], -(b[1] - a[1])) * 180 / Math.PI;
   }
 
+  // 把一段骨骼的世界方向对准目标方向；比绕固定轴补角更稳定，
+  // 不会在腿/臂接近伸直时因为叉积方向翻转产生单帧弹跳。
+  function aimBoneWorld(json, pose, math, index, currentDir, desiredDir) {
+    if (index === undefined) return;
+    const current = normalizeVector(currentDir);
+    const desired = normalizeVector(desiredDir);
+    if (!current || !desired) return;
+    const fix = rotationBetween(
+      [current[0], current[1], current[2], 0],
+      [desired[0], desired[1], desired[2], 0]
+    );
+    const world = nodeWorldQuaternions(json, pose, math);
+    const parent = json.nodes.findIndex(node => (node.children || []).indexOf(index) >= 0);
+    const parentWorld = parent >= 0 ? world(parent) : [0, 0, 0, 1];
+    const nextWorld = normalizeQuat(math.Q.mult(math.Q.create(), fix, world(index)));
+    pose.rotation[index] = normalizeQuat(math.Q.mult(math.Q.create(), inverseQuat(parentWorld), nextWorld));
+  }
+
+  function sourceNodeIndex(sourceJson, name) {
+    const nodes = sourceJson.nodes || [];
+    return nodes.findIndex(node => sourceBoneName(node.name) === name);
+  }
+
+  // 源骨架面向 +Z，目标面向 -Z；同一动作在目标世界要绕 Y 转 180°。
+  function runFacing(value) {
+    return [-value[0], value[1], -value[2]];
+  }
+
+  function segmentDirection(from, to) {
+    const value = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+    return normalizeVector(value) || [0, -1, 0];
+  }
+
+  // 跑步腿链用源脚相对源髋的位置驱动目标两段腿 IK。源和目标腿长不同，
+  // 只按腿长比例缩放，不改变源动作的前后相位、站距和腾空高度。
+  function solveRunLeg(vrm, humanoid, pose, math, upper, lower, foot, sourceHip, sourceKnee, sourceAnkle, legScale) {
+    const world = nodeWorldPositions(vrm.json, pose);
+    const hip = world(upper);
+    const knee = world(lower);
+    const ankle = world(foot);
+    const thighLength = Math.hypot(knee[0] - hip[0], knee[1] - hip[1], knee[2] - hip[2]);
+    const shinLength = Math.hypot(ankle[0] - knee[0], ankle[1] - knee[1], ankle[2] - knee[2]);
+    if (thighLength <= 1e-4 || shinLength <= 1e-4) return;
+    const relative = runFacing([
+      sourceAnkle[0] - sourceHip[0],
+      sourceAnkle[1] - sourceHip[1],
+      sourceAnkle[2] - sourceHip[2]
+    ]);
+    const desiredAnkle = [
+      hip[0] + relative[0] * legScale,
+      hip[1] + relative[1] * legScale,
+      hip[2] + relative[2] * legScale
+    ];
+    const reach = [desiredAnkle[0] - hip[0], desiredAnkle[1] - hip[1], desiredAnkle[2] - hip[2]];
+    let distance = Math.hypot(reach[0], reach[1], reach[2]);
+    distance = Math.max(Math.abs(thighLength - shinLength) + 1e-3,
+      Math.min(thighLength + shinLength - 1e-3, distance));
+    const dir = normalizeVector(reach) || [0, -1, 0];
+    const clampedAnkle = [hip[0] + dir[0] * distance, hip[1] + dir[1] * distance, hip[2] + dir[2] * distance];
+    // 膝盖弯折方向从源膝盖相对髋-踝连线的偏移取，投影到目标连线上；
+    // 退化时用前方，避免腿伸直时膝盖突然翻到另一侧。
+    const sourceLine = segmentDirection(sourceHip, sourceAnkle);
+    const sourceAlong = (sourceKnee[0] - sourceHip[0]) * sourceLine[0] +
+      (sourceKnee[1] - sourceHip[1]) * sourceLine[1] +
+      (sourceKnee[2] - sourceHip[2]) * sourceLine[2];
+    const sourcePole = runFacing([
+      sourceKnee[0] - sourceHip[0] - sourceLine[0] * sourceAlong,
+      sourceKnee[1] - sourceHip[1] - sourceLine[1] * sourceAlong,
+      sourceKnee[2] - sourceHip[2] - sourceLine[2] * sourceAlong
+    ]);
+    let pole = normalizeVector(sourcePole) || [0, 0, -1];
+    const along = (thighLength * thighLength - shinLength * shinLength + distance * distance) /
+      (2 * distance);
+    const bend = Math.sqrt(Math.max(0, thighLength * thighLength - along * along));
+    const alongDir = [dir[0] * along, dir[1] * along, dir[2] * along];
+    const poleOnPlane = normalizeVector([
+      pole[0] - dir[0] * (pole[0] * dir[0] + pole[1] * dir[1] + pole[2] * dir[2]),
+      pole[1] - dir[1] * (pole[0] * dir[0] + pole[1] * dir[1] + pole[2] * dir[2]),
+      pole[2] - dir[2] * (pole[0] * dir[0] + pole[1] * dir[1] + pole[2] * dir[2])
+    ]) || [0, 0, -1];
+    const desiredKnee = [
+      hip[0] + alongDir[0] + poleOnPlane[0] * bend,
+      hip[1] + alongDir[1] + poleOnPlane[1] * bend,
+      hip[2] + alongDir[2] + poleOnPlane[2] * bend
+    ];
+    aimBoneWorld(vrm.json, pose, math, upper, [knee[0] - hip[0], knee[1] - hip[1], knee[2] - hip[2]],
+      [desiredKnee[0] - hip[0], desiredKnee[1] - hip[1], desiredKnee[2] - hip[2]]);
+    const nextWorld = nodeWorldPositions(vrm.json, pose);
+    const nextKnee = nextWorld(lower);
+    const nextAnkle = nextWorld(foot);
+    aimBoneWorld(vrm.json, pose, math, lower,
+      [nextAnkle[0] - nextKnee[0], nextAnkle[1] - nextKnee[1], nextAnkle[2] - nextKnee[2]],
+      [clampedAnkle[0] - nextKnee[0], clampedAnkle[1] - nextKnee[1], clampedAnkle[2] - nextKnee[2]]);
+  }
+
+  function alignRunLegs(vrm, sourceJson, sourcePose, humanoid, pose, math) {
+    if (humanoid.leftUpperLeg === undefined || humanoid.rightUpperLeg === undefined ||
+        humanoid.leftLowerLeg === undefined || humanoid.rightLowerLeg === undefined ||
+        humanoid.leftFoot === undefined || humanoid.rightFoot === undefined) return;
+    const sourceLeftUpLeg = sourceNodeIndex(sourceJson, 'LeftUpLeg');
+    const sourceRightUpLeg = sourceNodeIndex(sourceJson, 'RightUpLeg');
+    const sourceLeftLeg = sourceNodeIndex(sourceJson, 'LeftLeg');
+    const sourceRightLeg = sourceNodeIndex(sourceJson, 'RightLeg');
+    const sourceLeftFoot = sourceNodeIndex(sourceJson, 'LeftFoot');
+    const sourceRightFoot = sourceNodeIndex(sourceJson, 'RightFoot');
+    if (sourceLeftUpLeg < 0 || sourceRightUpLeg < 0 || sourceLeftLeg < 0 ||
+        sourceRightLeg < 0 || sourceLeftFoot < 0 || sourceRightFoot < 0) return;
+    const targetRest = nodeWorldPositions(vrm.json);
+    const sourceRest = nodeWorldPositions(sourceJson);
+    const targetLegLength = Math.hypot(
+      targetRest(humanoid.leftUpperLeg)[0] - targetRest(humanoid.leftFoot)[0],
+      targetRest(humanoid.leftUpperLeg)[1] - targetRest(humanoid.leftFoot)[1],
+      targetRest(humanoid.leftUpperLeg)[2] - targetRest(humanoid.leftFoot)[2]
+    );
+    const sourceLegLength = Math.hypot(
+      sourceRest(sourceLeftUpLeg)[0] - sourceRest(sourceLeftFoot)[0],
+      sourceRest(sourceLeftUpLeg)[1] - sourceRest(sourceLeftFoot)[1],
+      sourceRest(sourceLeftUpLeg)[2] - sourceRest(sourceLeftFoot)[2]
+    );
+    if (targetLegLength <= 1e-4 || sourceLegLength <= 1e-4) return;
+    const legScale = targetLegLength / sourceLegLength;
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    solveRunLeg(vrm, humanoid, pose, math, humanoid.leftUpperLeg, humanoid.leftLowerLeg,
+      humanoid.leftFoot, sourceWorld(sourceLeftUpLeg), sourceWorld(sourceLeftLeg),
+      sourceWorld(sourceLeftFoot), legScale);
+    solveRunLeg(vrm, humanoid, pose, math, humanoid.rightUpperLeg, humanoid.rightLowerLeg,
+      humanoid.rightFoot, sourceWorld(sourceRightUpLeg), sourceWorld(sourceRightLeg),
+      sourceWorld(sourceRightFoot), legScale);
+  }
+
+  // 跑步手臂也按源肩-肘、肘-腕的世界方向对齐，而不是继续套局部旋转；
+  // 这样右臂不会在 16→18 帧从 -78° 跳到 +24°，左右摆幅也与源同侧一致。
+  function alignRunArms(vrm, sourceJson, sourcePose, humanoid, pose, math) {
+    const pairs = [
+      [humanoid.leftUpperArm, humanoid.leftLowerArm, humanoid.leftHand, 'LeftArm', 'LeftForeArm', 'LeftHand'],
+      [humanoid.rightUpperArm, humanoid.rightLowerArm, humanoid.rightHand, 'RightArm', 'RightForeArm', 'RightHand']
+    ];
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    for (const pair of pairs) {
+      const upper = pair[0], lower = pair[1], hand = pair[2];
+      const sourceUpper = sourceNodeIndex(sourceJson, pair[3]);
+      const sourceLower = sourceNodeIndex(sourceJson, pair[4]);
+      const sourceHand = sourceNodeIndex(sourceJson, pair[5]);
+      if (upper === undefined || lower === undefined || sourceUpper < 0 ||
+          sourceLower < 0 || sourceHand < 0) continue;
+      const targetWorld = nodeWorldPositions(vrm.json, pose);
+      const shoulder = targetWorld(upper);
+      const elbow = targetWorld(lower);
+      const sourceShoulder = sourceWorld(sourceUpper);
+      const sourceElbow = sourceWorld(sourceLower);
+      const sourceWrist = sourceWorld(sourceHand);
+      aimBoneWorld(vrm.json, pose, math, upper,
+        [elbow[0] - shoulder[0], elbow[1] - shoulder[1], elbow[2] - shoulder[2]],
+        runFacing([
+          sourceElbow[0] - sourceShoulder[0],
+          sourceElbow[1] - sourceShoulder[1],
+          sourceElbow[2] - sourceShoulder[2]
+        ]));
+      const nextWorld = nodeWorldPositions(vrm.json, pose);
+      const nextElbow = nextWorld(lower);
+      const nextWrist = nextWorld(hand);
+      aimBoneWorld(vrm.json, pose, math, lower,
+        [nextWrist[0] - nextElbow[0], nextWrist[1] - nextElbow[1], nextWrist[2] - nextElbow[2]],
+        runFacing([
+          sourceWrist[0] - sourceElbow[0],
+          sourceWrist[1] - sourceElbow[1],
+          sourceWrist[2] - sourceElbow[2]
+        ]));
+    }
+  }
+
+  // 跑步躯干只对齐 Hips→Head 的世界俯仰，不继承走路的 2° 前倾偏置。
+  // 用多次小步反馈替代原跑步分支的单次 0.2 rad，避免把脊柱来回甩。
+  function alignRunTorsoPitch(sourceJson, sourcePose, vrm, humanoid, pose, math) {
+    if (humanoid.spine === undefined || humanoid.hips === undefined || humanoid.head === undefined) return;
+    const sourceHip = sourceNodeIndex(sourceJson, 'Hips');
+    const sourceHead = sourceNodeIndex(sourceJson, 'Head');
+    if (sourceHip < 0 || sourceHead < 0) return;
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    const sourceHipPos = sourceWorld(sourceHip);
+    const sourceHeadPos = sourceWorld(sourceHead);
+    const sourcePitch = Math.atan2(
+      -(sourceHeadPos[2] - sourceHipPos[2]),
+      sourceHeadPos[1] - sourceHipPos[1]
+    ) * 180 / Math.PI;
+    const desiredPitch = -sourcePitch;
+    for (let i = 0; i < RUN_TORSO_ITERS; i += 1) {
+      const targetWorld = nodeWorldPositions(vrm.json, pose);
+      const hips = targetWorld(humanoid.hips);
+      const head = targetWorld(humanoid.head);
+      const currentPitch = Math.atan2(-(head[2] - hips[2]), head[1] - hips[1]) * 180 / Math.PI;
+      const error = desiredPitch - currentPitch;
+      if (Math.abs(error) < 0.15) break;
+      const angle = Math.max(-0.12, Math.min(0.12, -error * Math.PI / 180));
+      rotateBoneWorld(vrm.json, pose, math, humanoid.spine, [1, 0, 0], angle);
+    }
+  }
+
+  // 脚掌方向用踝→脚尖的世界方向对齐，脚尖不再外撇/内扣；这一步必须在
+  // 腿 IK 之后，脚尖落点才跟脚踝一致。
+  function alignRunFeet(vrm, sourceJson, sourcePose, humanoid, pose, math) {
+    const pairs = [
+      [humanoid.leftFoot, humanoid.leftToes, 'LeftFoot', 'LeftToeBase'],
+      [humanoid.rightFoot, humanoid.rightToes, 'RightFoot', 'RightToeBase']
+    ];
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    for (const pair of pairs) {
+      const foot = pair[0], toes = pair[1];
+      const sourceFoot = sourceNodeIndex(sourceJson, pair[2]);
+      const sourceToes = sourceNodeIndex(sourceJson, pair[3]);
+      if (foot === undefined || toes === undefined || sourceFoot < 0 || sourceToes < 0) continue;
+      const targetWorld = nodeWorldPositions(vrm.json, pose);
+      aimBoneWorld(vrm.json, pose, math, foot,
+        [targetWorld(toes)[0] - targetWorld(foot)[0],
+          targetWorld(toes)[1] - targetWorld(foot)[1],
+          targetWorld(toes)[2] - targetWorld(foot)[2]],
+        runFacing([
+          sourceWorld(sourceToes)[0] - sourceWorld(sourceFoot)[0],
+          sourceWorld(sourceToes)[1] - sourceWorld(sourceFoot)[1],
+          sourceWorld(sourceToes)[2] - sourceWorld(sourceFoot)[2]
+        ]));
+    }
+  }
+
+  // 跑步接地按脚尖高度算，并保留源动作的腾空期：源最低脚尖离地多少，
+  // 目标最低脚尖也离地多少；不再每帧把脚踝强行压回地面。
+  function alignRunGround(vrm, sourceJson, sourcePose, humanoid, pose, math) {
+    if (humanoid.hips === undefined) return;
+    const targetToes = [humanoid.leftToes, humanoid.rightToes].filter(index => index !== undefined);
+    if (!targetToes.length) return;
+    const sourceToes = [
+      sourceNodeIndex(sourceJson, 'LeftToeBase'),
+      sourceNodeIndex(sourceJson, 'RightToeBase')
+    ].filter(index => index >= 0);
+    if (!sourceToes.length) return;
+    const targetRest = nodeWorldPositions(vrm.json);
+    const sourceRest = nodeWorldPositions(sourceJson);
+    const targetGround = Math.min(...targetToes.map(index => targetRest(index)[1]));
+    const sourceGround = Math.min(...sourceToes.map(index => sourceRest(index)[1]));
+    const targetWorld = nodeWorldPositions(vrm.json, pose);
+    const sourceWorld = nodeWorldPositions(sourceJson, sourcePose);
+    const targetClear = Math.min(...targetToes.map(index => targetWorld(index)[1])) - targetGround;
+    const sourceClear = Math.min(...sourceToes.map(index => sourceWorld(index)[1])) - sourceGround;
+    const sourceHip = sourceNodeIndex(sourceJson, 'Hips');
+    if (sourceHip < 0) return;
+    const scale = targetRest(humanoid.hips)[1] /
+      Math.max(1e-6, Math.abs(sourceRest(sourceHip)[1]));
+    const desiredClear = Math.max(0, sourceClear * scale);
+    const offset = Math.min(RUN_GROUND_LIMIT, Math.max(-RUN_GROUND_LIMIT, desiredClear - targetClear));
+    if (Math.abs(offset) < 1e-4) return;
+    const current = pose.translation[humanoid.hips] ||
+      (vrm.json.nodes[humanoid.hips].translation || [0, 0, 0]).slice();
+    pose.translation[humanoid.hips] = [current[0], current[1] + offset, current[2]];
+  }
+
+  function limitRunRightArmSpeed(vrm, humanoid, pose, state, dt, math) {
+    if (!state || !(dt > 0)) return;
+    if (humanoid.rightUpperArm === undefined || humanoid.rightLowerArm === undefined) return;
+    const current = armSagittal(vrm.json, pose, humanoid.rightUpperArm, humanoid.rightLowerArm);
+    const previous = state.rightArmSagittal;
+    if (previous === undefined) {
+      state.rightArmSagittal = current;
+      return;
+    }
+    const maxStep = RUN_ARM_MAX_DEG_PER_SEC * Math.min(0.05, dt);
+    const delta = current - previous;
+    const limited = Math.max(-maxStep, Math.min(maxStep, delta));
+    if (Math.abs(delta - limited) > 1e-4) {
+      rotateBoneWorld(vrm.json, pose, math, humanoid.rightUpperArm, [1, 0, 0], (delta - limited) * Math.PI / 180);
+    }
+    state.rightArmSagittal = previous + limited;
+  }
+
+
   function alignLeftArmSwing(sourceJson, sourcePose, vrm, humanoid, pose, math) {
     if (humanoid.leftUpperArm === undefined || humanoid.leftLowerArm === undefined) return;
     const sourceUpper = sourceJson.nodes.findIndex(n => /(?:^|:)LeftArm$/.test(n.name || ''));
@@ -951,8 +1231,18 @@
       alignWalkTorsoPitch(sourceJson, sourcePose, vrm, humanoid, pose, math);
     }
 
+    if (options && options.runPose) {
+      alignRunTorsoPitch(sourceJson, sourcePose, vrm, humanoid, pose, math);
+      alignRunArms(vrm, sourceJson, sourcePose, humanoid, pose, math);
+      alignRunLegs(vrm, sourceJson, sourcePose, humanoid, pose, math);
+      alignRunFeet(vrm, sourceJson, sourcePose, humanoid, pose, math);
+      alignRunGround(vrm, sourceJson, sourcePose, humanoid, pose, math);
+      limitRunRightArmSpeed(vrm, humanoid, pose, options.armLimitState, options.dt, math);
+    }
+
     // 髋部按源动作起伏后，目标腿长和站距不同，脚会悬空；把最低脚踝拉回绑定高度。
-    if (hipsTargetIndex !== undefined && humanoid.leftFoot !== undefined && humanoid.rightFoot !== undefined) {
+    if (!(options && options.runPose) && hipsTargetIndex !== undefined &&
+        humanoid.leftFoot !== undefined && humanoid.rightFoot !== undefined) {
       const restPos = nodeWorldPositions(vrm.json, null);
       const posePos = nodeWorldPositions(vrm.json, pose);
       const restGround = Math.min(restPos(humanoid.leftFoot)[1], restPos(humanoid.rightFoot)[1]);
@@ -973,7 +1263,7 @@
       }
     }
 
-    keepLegsApart(vrm, humanoid, pose, math);
+    if (!(options && options.runPose)) keepLegsApart(vrm, humanoid, pose, math);
     if (options && options.footClearance) {
       adductWalkLegs(humanoid, pose, math, WALK_LEG_ADDUCT_LEFT, WALK_LEG_ADDUCT_RIGHT);
       liftSwingFeet(vrm, sourceJson, humanoid, pose, sourcePose, math);
