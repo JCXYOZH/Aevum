@@ -325,27 +325,23 @@
       const gl = this.gl;
       const textures = [];
       const white = this._createSolidTexture(255, 255, 255, 255);
-      for (let i = 0; i < urls.length; i++) {
-        if (!urls[i]) {
+      // 先并行取回所有贴图源，再按原顺序逐张上传，保证材质索引和贴图数组一致。
+      const sources = await Promise.all(urls.map(url => this._loadTextureSource(url)));
+      for (let i = 0; i < sources.length; i++) {
+        const source = sources[i];
+        if (!source) {
           textures.push(white);
           continue;
         }
         try {
-          let texture;
           // PMX 的 UV 以左上角为原点，默认不翻转；TGA 浏览器不能解码，走自解码。
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, this.options.flipY !== false);
-          if (/\.tga(?:[?#]|$)/i.test(urls[i])) {
-            const response = await fetch(urls[i]);
-            if (!response.ok) throw new Error('Texture fetch failed: ' + urls[i]);
-            const decoded = getTGA().decodeTGA(await response.arrayBuffer());
-            texture = gl.createTexture();
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, decoded.width, decoded.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, decoded.data);
+          const texture = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          if (source.kind === 'tga') {
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, source.width, source.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, source.data);
           } else {
-            const image = await this._loadImage(urls[i]);
-            texture = gl.createTexture();
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source.image);
           }
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -353,11 +349,28 @@
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
           textures.push(texture);
         } catch (error) {
-          console.warn('PMX texture load failed:', urls[i], error);
+          console.warn('PMX texture upload failed:', urls[i], error);
           textures.push(white);
         }
       }
       return textures;
+    }
+
+    async _loadTextureSource(url) {
+      if (!url) return null;
+      try {
+        if (/\.tga(?:[?#]|$)/i.test(url)) {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error('Texture fetch failed: ' + url);
+          const decoded = getTGA().decodeTGA(await response.arrayBuffer());
+          return { kind: 'tga', width: decoded.width, height: decoded.height, data: decoded.data };
+        }
+        const image = await this._loadImage(url);
+        return { kind: 'image', image: image };
+      } catch (error) {
+        console.warn('PMX texture load failed:', url, error);
+        return null;
+      }
     }
 
     _loadImage(url) {

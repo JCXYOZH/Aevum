@@ -1093,15 +1093,14 @@ class OrbLive2DRenderer {
     if(!target.drawables && drawables) target.drawables = drawables;
     if(!target.parameters && parameters) target.parameters = parameters;
 
-    // 加载纹理
-    const textures = [];
+    // 加载纹理：所有图片并行请求，数组顺序仍与 FileReferences.Textures 一致。
     const textureFiles = config.FileReferences ? config.FileReferences.Textures : config.textures;
+    let textures = [];
     if(textureFiles && textureFiles.length) {
-      for(let i = 0; i < textureFiles.length; i++) {
-        _log('加载纹理 ' + (i+1) + '/' + textureFiles.length + ': ' + textureFiles[i]);
-        const tex = await _loadTexture(this.gl, baseUrl + textureFiles[i]);
-        textures.push(tex);
-      }
+      textures = await Promise.all(textureFiles.map((file, i) => {
+        _log('加载纹理 ' + (i+1) + '/' + textureFiles.length + ': ' + file);
+        return _loadTexture(this.gl, baseUrl + file);
+      }));
     }
 
     this.model = new OrbLive2DModel(this.gl, target, textures, config);

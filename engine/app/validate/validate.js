@@ -518,17 +518,20 @@
       let renderer;
       let descriptor;
       if (modelDef.type === 'vrm') {
+        // 模型和动作库互不依赖，先同时发起，避免 38 MB 模型下载完才去拿动作库。
+        const actionPromise = loadActionLibrary().catch(function (error) {
+          return { error: error };
+        });
         const response = await fetch(modelDef.url);
         if (!response.ok) throw new Error('模型加载失败 ' + response.status + ' · ' + modelDef.url);
         const vrm = window.AEVUM.formats.parseVRM(await response.arrayBuffer());
         if (token !== loadToken) return;
-        try {
-          await loadActionLibrary();
-        } catch (error) {
-          actionGLB = null;
-          showToast('动作库不可用，先显示绑定姿态：' + error.message, true);
-        }
+        const actionResult = await actionPromise;
         if (token !== loadToken) return;
+        if (actionResult && actionResult.error) {
+          actionGLB = null;
+          showToast('动作库不可用，先显示绑定姿态：' + actionResult.error.message, true);
+        }
         renderer = new window.AEVUM.render.VRMRenderer(canvas);
         renderer.viewYaw = yaw;
         renderer.zoom = zoom;
