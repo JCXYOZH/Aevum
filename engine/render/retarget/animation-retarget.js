@@ -27,7 +27,7 @@
   const ARM_RAISE_HEIGHT = 0.08;
   const GROUND_LIMIT = 0.5;
   // 腿前后摆共用的幅度增益：前摆和后摆同时收，不改变俯仰方向。
-  const LEG_PITCH_GAIN = 0.2;
+  const LEG_PITCH_GAIN = 0.8;
 
   const MIXAMO_TO_VRM = {
     Hips: 'hips',
@@ -426,19 +426,16 @@
         }
         // 行向量约定下，把源动作先转成相对休息姿态的增量，再对齐局部轴、套回目标休息姿态。
         let delta = math.Q.mult(math.Q.create(), animated, inverseQuat(sourceRest));
-        // VRM 默认面向 -Z，Mixamo 面向 +Z；只改 rest 的 axisOffset 不会翻转动画里的前后摆动。
-        // 腿的前后俯仰在局部 X 轴上：翻转方向后按 LEG_PITCH_GAIN 收幅度，避免甩腿过头。
+        // 源骨架面向 +Z、VRM 面向 -Z，腿的前后俯仰在局部 X 轴上要取反；
+        // 取反后再按统一增益收幅度，避免把源动作的前后摆原样放大成甩腿。
         if (/^(Left|Right)(UpLeg|Leg)$/.test(semantic)) {
           delta = scaleQuatAngle([-delta[0], delta[1], delta[2], delta[3]], LEG_PITCH_GAIN);
         }
-        // 腿的前后摆动由局部 X 轴决定；镜像 x/y 会把大腿俯仰翻成反方向，
-        // 表现为“后腿在前、整个人斜着”。这里保留原始增量，只交给 axisOffset 处理静止朝向。
         // 左臂在目标骨架里与源骨架的局部 Z 轴相反，直接套用增量会把上臂抬到胸口。
         if (/^Left(Arm|ForeArm|Hand|Shoulder)/.test(semantic) && (!options || options.mirrorLeftArm !== false)) {
           delta[0] = -delta[0];
           delta[2] = -delta[2];
         }
-        // 腿部前后方向以动作文件为准，不做深度翻转。
         const conjugated = math.Q.mult(math.Q.create(), axisOffset, delta);
         const aligned = math.Q.mult(math.Q.create(), conjugated, inverseQuat(axisOffset));
         pose.rotation[targetIndex] = normalizeQuat(math.Q.mult(math.Q.create(), aligned, targetRest));
