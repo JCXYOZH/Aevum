@@ -7,7 +7,11 @@
   const debugCtx = debugCanvas.getContext('2d');
   const toast = document.getElementById('toast');
   const modelSelect = document.getElementById('modelSelect');
+  const formatSelect = document.getElementById('formatSelect');
   const actionSelect = document.getElementById('actionSelect');
+  const actionHint = document.getElementById('actionHint');
+  const catalogMeta = document.getElementById('catalogMeta');
+  const modelMeta = document.getElementById('modelMeta');
   const yawRange = document.getElementById('yawRange');
   const zoomRange = document.getElementById('zoomRange');
   const yawValue = document.getElementById('yawValue');
@@ -16,16 +20,23 @@
   const statBones = document.getElementById('statBones');
   const statTris = document.getElementById('statTris');
   const statFps = document.getElementById('statFps');
+  const live2dState = document.getElementById('live2dState');
+  const live2dHint = document.getElementById('live2dHint');
+  const emotionSelect = document.getElementById('emotionSelect');
+  const emotionValue = document.getElementById('emotionValue');
+  const coverageGrid = document.getElementById('coverageGrid');
   const math = window.AEVUM.math;
   const retarget = window.AEVUM.render.AnimationRetarget.retargetPose;
   const ActionStateMachine = window.AEVUM.action.Core.ActionStateMachine;
   const query = new URLSearchParams(location.search);
 
-  // 模型清单只从外部 JSON 读取，页面和代码里不保存具体模型路径。
+  // 模型清单只从外部 YAML 读取，页面和代码里不保存具体模型路径。
   let MODELS = Object.create(null);
-  let catalogOrder = [];
+  let allModels = [];
   let actionLibraryUrl = '';
+  let catalogUrl = 'models.yaml';
 
+  const TYPE_LABELS = { vrm: 'VRM', pmx: 'PMX', live2d: 'Live2D' };
   const CLIP_FOR = {
     idle: 'idle',
     walk: 'walk',
@@ -44,11 +55,11 @@
     outline: document.getElementById('optOutline'),
     wireframe: document.getElementById('optWireframe'),
     bones: document.getElementById('optBones'),
-    ground: document.getElementById('optGround'),
     grid: document.getElementById('optGrid'),
     autoRotate: document.getElementById('optAutoRotate'),
     visible: document.getElementById('optVisible'),
-    paused: document.getElementById('optPaused')
+    paused: document.getElementById('optPaused'),
+    ground: document.getElementById('optGround')
   };
 
   const FEATURE_LABELS = {
@@ -59,12 +70,31 @@
     outline: '描边',
     wireframe: '线框',
     bones: '骨骼',
-    ground: '接地',
     grid: '地面网格',
     autoRotate: '自动旋转',
     visible: '显示模型',
-    paused: '暂停动作'
+    paused: '暂停动作',
+    ground: '接地'
   };
+
+  const FEATURE_GROUPS = [
+    { master: 'masterMaterial', label: '材质与光照', keys: ['texture', 'light', 'toon', 'sphere', 'outline'] },
+    { master: 'masterDebug', label: '网格与调试', keys: ['wireframe', 'bones', 'grid', 'visible'] },
+    { master: 'masterMotion', label: '姿态与动作', keys: ['ground', 'paused'] }
+  ];
+
+  const COVERAGE = [
+    { key: 'math', label: 'math / 数学', test: function (root) { return Boolean(root.math); } },
+    { key: 'formats', label: 'formats / 格式解析', test: function (root) { return Boolean(root.formats); } },
+    { key: 'render', label: 'render / 渲染', test: function (root) { return Boolean(root.render); } },
+    { key: 'animation', label: 'animation / 动画', test: function (root) { return Boolean(root.action); } },
+    { key: 'graphics', label: 'graphics / 图形', test: function (root) { return Boolean(root.graphics); } },
+    { key: 'core', label: 'core / 核心', test: function (root) { return Boolean(root.core); } },
+    { key: 'loaders', label: 'loaders / 加载', test: function (root) { return Boolean(root.loaders); } },
+    { key: 'character', label: 'character / 角色', test: function (root) { return Boolean(root.character); } },
+    { key: 'world', label: 'world / 世界', test: function (root) { return Boolean(root.world); } },
+    { key: 'legacy', label: 'legacy / 旧 Orb', test: function (root) { return Boolean(root.legacy); } }
+  ];
 
   for (const key of Object.keys(features)) {
     if (query.has(key)) features[key].checked = query.get(key) !== '0';
@@ -86,15 +116,26 @@
   let lastFrame = performance.now();
   let fpsFrames = 0;
   let fpsTime = performance.now();
-  let modelVisible = true;
-  let paused = false;
-  let autoRotate = false;
+  let modelVisible = features.visible.checked;
+  let paused = features.paused.checked;
+  let autoRotate = features.autoRotate.checked;
   let currentAction = 'idle';
   let loadToken = 0;
 
   if (query.get('action') && CLIP_FOR[query.get('action')]) {
     actionSelect.value = query.get('action');
     currentAction = query.get('action');
+  }
+  if (query.get('format') && ['vrm', 'pmx', 'live2d'].includes(query.get('format'))) {
+    formatSelect.value = query.get('format');
+  }
+  if (query.get('emotion')) {
+    emotionSelect.value = query.get('emotion');
+    emotionValue.textContent = emotionSelect.value;
+  }
+  if (query.has('zoom')) {
+    const value = parseFloat(query.get('zoom'));
+    if (Number.isFinite(value)) zoom = clamp(value, 0.5, 2.5);
   }
 
   function clamp(value, min, max) {
@@ -115,7 +156,7 @@
   function parseCatalogYaml(source) {
     const result = { models: [] };
     let inModels = false;
-    let current = null;
+    let currentModel = null;
     for (const raw of String(source).split(/\r?\n/)) {
       const line = raw.replace(/\t/g, '  ');
       if (!line.trim() || line.trim().startsWith('#')) continue;
@@ -126,7 +167,7 @@
         if (!pair) continue;
         if (pair[1] === 'models') {
           inModels = true;
-          current = null;
+          currentModel = null;
           result.models = [];
           continue;
         }
@@ -139,18 +180,18 @@
         const body = text.slice(2).trim();
         const pair = body.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
         if (pair) {
-          current = {};
-          result.models.push(current);
-          current[pair[1]] = parseYamlValue(pair[2]);
+          currentModel = {};
+          result.models.push(currentModel);
+          currentModel[pair[1]] = parseYamlValue(pair[2]);
         } else {
-          current = null;
+          currentModel = null;
           result.models.push(parseYamlValue(body));
         }
         continue;
       }
-      if (!current) continue;
+      if (!currentModel) continue;
       const pair = text.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-      if (pair) current[pair[1]] = parseYamlValue(pair[2]);
+      if (pair) currentModel[pair[1]] = parseYamlValue(pair[2]);
     }
     return result;
   }
@@ -167,7 +208,7 @@
     const lower = file.toLowerCase();
     if (lower === 'model.vrm') return 'VRM 模型';
     if (lower === 'model3.json') return 'Live2D 模型';
-    const name = file.replace(/\.(vrm|pmx|json)$/i, '');
+    const name = file.replace(/\.model3\.json$/i, '').replace(/\.(vrm|pmx|json)$/i, '');
     return name || file;
   }
 
@@ -187,32 +228,80 @@
     };
   }
 
+  function normalizeCatalogUrl(value) {
+    let text = String(value || '').trim();
+    try {
+      text = decodeURIComponent(text);
+    } catch (error) {
+      // 保留原始字符串，下面仍按路径安全处理。
+    }
+    text = text.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (text.startsWith('engine/')) text = text.slice('engine/'.length);
+    return text || 'models.yaml';
+  }
+
+  function typeLabel(type) {
+    return TYPE_LABELS[type] || type;
+  }
+
   function applyCatalog(json) {
     const list = Array.isArray(json.models) ? json.models : [];
+    allModels = list.map(normalizeModelEntry).filter(Boolean);
     MODELS = Object.create(null);
-    catalogOrder = [];
+    for (const item of allModels) MODELS[item.id] = item;
     actionLibraryUrl = json.actions || '';
-    modelSelect.textContent = '';
-    for (const raw of list) {
-      const item = normalizeModelEntry(raw);
-      if (!item) continue;
-      MODELS[item.id] = item;
-      catalogOrder.push(item.id);
-      const option = document.createElement('option');
-      option.value = item.id;
-      option.textContent = item.label;
-      modelSelect.appendChild(option);
-    }
-    if (!catalogOrder.length) throw new Error('模型清单中没有可用条目');
-    const requested = query.get('model');
-    modelSelect.value = requested && MODELS[requested] ? requested : catalogOrder[0];
+    catalogMeta.textContent = '清单：' + catalogUrl + ' · ' + allModels.length + ' 个模型';
+    if (!allModels.length) throw new Error('模型清单中没有可用条目');
+    refreshModelOptions(query.get('model'));
   }
 
   async function loadCatalogData() {
-    const catalogUrl = query.get('catalog') || 'models.yaml';
+    catalogUrl = normalizeCatalogUrl(query.get('catalog') || 'models.yaml');
+    catalogMeta.textContent = '清单：加载中…';
     const response = await fetch(catalogUrl, { cache: 'no-store' });
-    if (!response.ok) throw new Error('模型清单加载失败：' + response.status);
+    if (!response.ok) throw new Error('模型清单加载失败：' + response.status + ' · ' + catalogUrl);
     applyCatalog(parseCatalogYaml(await response.text()));
+  }
+
+  function refreshModelOptions(preferredKey) {
+    const filter = formatSelect.value;
+    const list = filter ? allModels.filter(function (item) { return item.type === filter; }) : allModels;
+    modelSelect.textContent = '';
+    if (!list.length) {
+      const empty = document.createElement('option');
+      empty.textContent = filter ? '当前格式没有模型' : '清单中没有模型';
+      empty.disabled = true;
+      modelSelect.appendChild(empty);
+      modelMeta.textContent = '类型：-';
+      return null;
+    }
+    const groups = [];
+    for (const type of ['vrm', 'pmx', 'live2d']) {
+      const items = list.filter(function (item) { return item.type === type; });
+      if (!items.length) continue;
+      const group = document.createElement('optgroup');
+      group.label = typeLabel(type);
+      for (const item of items) {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = item.label;
+        group.appendChild(option);
+      }
+      modelSelect.appendChild(group);
+      groups.push(type);
+    }
+    if (!groups.length) {
+      const empty = document.createElement('option');
+      empty.textContent = '没有可显示的模型格式';
+      empty.disabled = true;
+      modelSelect.appendChild(empty);
+      return null;
+    }
+    const requested = preferredKey && list.some(function (item) { return item.id === preferredKey; })
+      ? preferredKey
+      : list[0].id;
+    modelSelect.value = requested;
+    return requested;
   }
 
   function showToast(message, isError) {
@@ -243,13 +332,14 @@
   }
 
   function rendererOptions(renderer) {
+    if (!renderer || !renderer.options) return;
     renderer.options.texture = features.texture.checked;
     renderer.options.light = features.light.checked;
-    renderer.options.toon = features.toon.checked;
-    renderer.options.sphere = features.sphere.checked;
-    renderer.options.outline = features.outline.checked;
     renderer.options.wireframe = features.wireframe.checked;
-    renderer.options.flipY = query.get('flip') === '1';
+    if ('toon' in renderer.options) renderer.options.toon = features.toon.checked;
+    if ('sphere' in renderer.options) renderer.options.sphere = features.sphere.checked;
+    if ('outline' in renderer.options) renderer.options.outline = features.outline.checked;
+    if ('flipY' in renderer.options) renderer.options.flipY = query.get('flip') === '1';
   }
 
   function syncFeatureState() {
@@ -258,23 +348,53 @@
     autoRotate = features.autoRotate.checked;
   }
 
-  function updateReadout(renderer, descriptor) {
+  function updateReadout(renderer, descriptor, modelDef) {
     const rendererNames = { vrm: 'VRM', pmx: 'PMX', live2d: 'Live2D' };
     statRenderer.textContent = rendererNames[descriptor.type] || descriptor.type;
     statBones.textContent = String(descriptor.bones || '-');
     statTris.textContent = descriptor.triangles ? descriptor.triangles.toLocaleString() : '-';
+    if (modelDef) {
+      const typeText = typeLabel(descriptor.type);
+      const label = String(modelDef.label || '');
+      const prefix = label.toLowerCase().indexOf(typeText.toLowerCase()) === 0
+        ? ''
+        : typeText + ' · ';
+      modelMeta.textContent = prefix + label + ' · ' +
+        (descriptor.bones || '-') + ' 骨骼 · ' +
+        (descriptor.triangles ? descriptor.triangles.toLocaleString() : '-') + ' 三角面';
+    }
     if (renderer && descriptor.type !== 'live2d') rendererOptions(renderer);
+  }
+
+  function setDisabled(key, disabled) {
+    const row = document.querySelector('[data-feature="' + key + '"]');
+    if (row) row.classList.toggle('is-disabled', disabled);
+    if (features[key]) features[key].disabled = disabled;
+  }
+
+  function setCameraAvailability(type) {
+    const isLive2D = type === 'live2d';
+    yawRange.disabled = isLive2D;
+    zoomRange.disabled = isLive2D;
+  }
+
+  function setLive2dAvailability(type) {
+    const isLive2D = type === 'live2d';
+    live2dState.textContent = isLive2D ? '已启用' : '未选择';
+    live2dState.classList.toggle('is-on', isLive2D);
+    live2dHint.textContent = isLive2D
+      ? '当前是 Live2D 模型，可以直接触发眨眼、挥手、点头、摇头和情绪。'
+      : '选择 Live2D 模型后，这组控件才会启用。';
+    for (const button of document.querySelectorAll('[data-live2d-action]')) {
+      button.disabled = !isLive2D;
+    }
+    emotionSelect.disabled = !isLive2D;
   }
 
   function setFeatureAvailability(type) {
     const isHumanoid = type === 'vrm';
     const isPmx = type === 'pmx';
     const isLive2D = type === 'live2d';
-    const setDisabled = function (key, disabled) {
-      const row = document.querySelector('[data-feature="' + key + '"]');
-      if (row) row.classList.toggle('is-disabled', disabled);
-      if (features[key]) features[key].disabled = disabled;
-    };
     setDisabled('bones', !isHumanoid);
     setDisabled('ground', !isHumanoid);
     // toon / sphere / outline 是 PMX 材质特性，VRM 下不显示为可用。
@@ -283,12 +403,28 @@
     ['texture', 'light', 'wireframe', 'grid', 'autoRotate', 'visible', 'paused'].forEach(function (key) {
       setDisabled(key, isLive2D);
     });
-    actionSelect.disabled = !isHumanoid;
+    actionSelect.disabled = !isHumanoid || !player || !player.clips || !player.clips.length;
+    actionHint.textContent = isHumanoid ? '从动作库读取' : (isPmx ? 'PMX 使用程序化待机' : 'Live2D 使用自带动作');
+    setCameraAvailability(type);
+    setLive2dAvailability(type);
+    syncMasterStates();
+  }
+
+  function syncMasterStates() {
+    for (const group of FEATURE_GROUPS) {
+      const master = document.getElementById(group.master);
+      if (!master) continue;
+      const enabled = group.keys.filter(function (key) { return !features[key].disabled; });
+      const checked = enabled.filter(function (key) { return features[key].checked; });
+      master.disabled = enabled.length === 0;
+      master.checked = enabled.length > 0 && checked.length === enabled.length;
+      master.indeterminate = checked.length > 0 && checked.length < enabled.length;
+    }
   }
 
   async function loadActionLibrary() {
     if (actionGLB) return actionGLB;
-    if (!actionLibraryUrl) throw new Error('模型清单未配置 actions');
+    if (!actionLibraryUrl) return null;
     const response = await fetch(actionLibraryUrl);
     if (!response.ok) throw new Error('动作库加载失败 ' + response.status);
     actionGLB = window.AEVUM.formats.parseGLB(await response.arrayBuffer());
@@ -296,6 +432,10 @@
   }
 
   function setupActionPlayer(vrm) {
+    player = null;
+    idlePlayer = null;
+    stateMachine = null;
+    if (!actionGLB) return;
     player = window.AEVUM.formats.GLTFAnimation.createPlayer(actionGLB);
     idlePlayer = window.AEVUM.formats.GLTFAnimation.createPlayer(actionGLB);
     if (idlePlayer.clips.some(function (clip) { return clip.name === 'idle'; })) {
@@ -337,15 +477,28 @@
     return Boolean(player && player.clips.some(function (clip) { return clip.name === name; }));
   }
 
+  function updateActionAvailability() {
+    actionSelect.disabled = !(current && current.type === 'vrm' && player && player.clips && player.clips.length);
+    if (current && current.type === 'vrm' && player) {
+      const names = Object.keys(CLIP_FOR).filter(function (name) { return hasClip(CLIP_FOR[name]); });
+      actionHint.textContent = names.length ? '从动作库读取' : '动作库没有匹配片段';
+    }
+  }
+
   async function loadModel(key) {
     const token = ++loadToken;
-    const modelDef = MODELS[key] || MODELS[Object.keys(MODELS)[0]];
+    if (!key) {
+      showToast('没有可加载的模型', true);
+      return;
+    }
+    const modelDef = MODELS[key] || allModels[0];
     if (!modelDef) throw new Error('模型清单为空');
     const previous = current;
     current = null;
     player = null;
     idlePlayer = null;
     stateMachine = null;
+    actionGLB = null;
     modelVisible = features.visible.checked;
     setFeatureAvailability(modelDef.type);
     showToast('正在加载 ' + modelDef.label + '…');
@@ -359,15 +512,22 @@
       }
       live2dCanvas.style.display = 'none';
       canvas.style.visibility = 'visible';
+      emotionSelect.value = 'neutral';
+      emotionValue.textContent = 'neutral';
 
       let renderer;
       let descriptor;
       if (modelDef.type === 'vrm') {
         const response = await fetch(modelDef.url);
-        if (!response.ok) throw new Error('模型加载失败 ' + response.status);
+        if (!response.ok) throw new Error('模型加载失败 ' + response.status + ' · ' + modelDef.url);
         const vrm = window.AEVUM.formats.parseVRM(await response.arrayBuffer());
         if (token !== loadToken) return;
-        await loadActionLibrary();
+        try {
+          await loadActionLibrary();
+        } catch (error) {
+          actionGLB = null;
+          showToast('动作库不可用，先显示绑定姿态：' + error.message, true);
+        }
         if (token !== loadToken) return;
         renderer = new window.AEVUM.render.VRMRenderer(canvas);
         renderer.viewYaw = yaw;
@@ -382,7 +542,7 @@
         current = { key: key, type: 'vrm', modelDef: modelDef, renderer: renderer, vrm: vrm };
       } else if (modelDef.type === 'pmx') {
         const response = await fetch(modelDef.url);
-        if (!response.ok) throw new Error('模型加载失败 ' + response.status);
+        if (!response.ok) throw new Error('模型加载失败 ' + response.status + ' · ' + modelDef.url);
         const buffer = await response.arrayBuffer();
         if (token !== loadToken) return;
         const parsed = new window.PMXParser().parse(buffer);
@@ -411,13 +571,17 @@
           triangles: 0
         };
         current = { key: key, type: 'live2d', modelDef: modelDef, renderer: renderer };
+        if (renderer.setEmotion) renderer.setEmotion(emotionSelect.value);
       } else {
         throw new Error('不支持的模型类型：' + modelDef.type);
       }
 
-      updateReadout(renderer, descriptor);
+      updateReadout(renderer, descriptor, modelDef);
       setFeatureAvailability(modelDef.type);
-      showToast(modelDef.label + ' · ' + (descriptor.bones || '-') + ' 骨骼 · ' + (descriptor.triangles ? descriptor.triangles.toLocaleString() : '-') + ' 三角面');
+      updateActionAvailability();
+      syncMasterStates();
+      showToast(modelDef.label + ' · ' + (descriptor.bones || '-') + ' 骨骼 · ' +
+        (descriptor.triangles ? descriptor.triangles.toLocaleString() : '-') + ' 三角面');
       yaw = Number(yawRange.value) * Math.PI / 180;
       zoom = Number(zoomRange.value);
       modelSelect.value = key;
@@ -425,6 +589,9 @@
       current = null;
       live2dCanvas.style.display = 'none';
       canvas.style.visibility = 'visible';
+      setFeatureAvailability('');
+      setLive2dAvailability(false);
+      modelMeta.textContent = '类型：-';
       showToast('加载失败：' + error.message, true);
       console.error(error);
     }
@@ -647,7 +814,8 @@
             });
             // 打招呼只让右臂跟 greeting 动作，左臂借 idle 的结果；
             // 否则源片段的左臂会一直横在身体侧面，看起来像 T-pose。
-            if (currentAction === 'greet' && idlePlayer) {              const idleTarget = retarget(current.vrm, actionGLB.json, idlePlayer.getPose(), {
+            if (currentAction === 'greet' && idlePlayer) {
+              const idleTarget = retarget(current.vrm, actionGLB.json, idlePlayer.getPose(), {
                 ikState: features.ground.checked ? { foot: null, anchor: null, ground: null } : null
               });
               const humanoid = {};
@@ -663,9 +831,6 @@
             target = { rotation: {}, translation: { x: 0, y: 0, z: 0 } };
           }
           renderer.render(now / 1000, target.rotation, { translation: target.translation });
-          if (features.ground.checked) {
-            // 接地开关由重定向的 ikState 生效，渲染器本身只负责绘制。
-          }
         } else {
           const pose = window.AEVUM.render.makeIdlePose(current.parsed, paused ? 0 : now / 1000);
           renderer.render(paused ? 0 : now / 1000, pose);
@@ -686,17 +851,150 @@
     requestAnimationFrame(frame);
   }
 
+  function runtimeFeatureChanged(key) {
+    if (key === 'visible' && !features.visible.checked) clearView();
+    if (current && current.type !== 'live2d' && current.renderer) {
+      rendererOptions(current.renderer);
+    }
+    syncFeatureState();
+    syncMasterStates();
+  }
+
   function bindFeature(key) {
     features[key].addEventListener('change', function () {
-      if (!current || !current.renderer || current.type === 'live2d') return;
-      rendererOptions(current.renderer);
-      syncFeatureState();
-      if (key === 'visible' && !features.visible.checked) clearView();
+      runtimeFeatureChanged(key);
       showToast((features[key].checked ? '开启：' : '关闭：') + FEATURE_LABELS[key]);
     });
   }
 
+  function bindMaster(group) {
+    const master = document.getElementById(group.master);
+    if (!master) return;
+    master.addEventListener('change', function () {
+      const enabled = group.keys.filter(function (key) { return !features[key].disabled; });
+      const next = master.checked;
+      for (const key of enabled) features[key].checked = next;
+      runtimeFeatureChanged(enabled[0] || 'texture');
+      showToast((next ? '开启：' : '关闭：') + group.label);
+      syncMasterStates();
+    });
+  }
+
+  function selectModelFromFilter() {
+    const key = refreshModelOptions(modelSelect.value);
+    if (!key) {
+      showToast('当前格式没有可用模型', true);
+      return;
+    }
+    loadModel(key);
+  }
+
+  function live2dAction(action) {
+    if (!current || current.type !== 'live2d' || !current.renderer) {
+      showToast('只有 Live2D 模型支持这个操作', true);
+      return;
+    }
+    const renderer = current.renderer;
+    if (action === 'blink') renderer.triggerBlink();
+    if (action === 'wave') renderer.triggerWave('right');
+    if (action === 'nod') renderer.triggerNod();
+    if (action === 'shake') renderer.triggerShake();
+    showToast('Live2D：' + ({ blink: '眨眼', wave: '挥手', nod: '点头', shake: '摇头' })[action]);
+  }
+
+  function renderCoverage() {
+    const root = window.AEVUM || {};
+    coverageGrid.textContent = '';
+    let onCount = 0;
+    for (const item of COVERAGE) {
+      const on = item.test(root);
+      if (on) onCount += 1;
+      const row = document.createElement('div');
+      row.className = 'coverage-item' + (on ? ' is-on' : '');
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.setAttribute('aria-hidden', 'true');
+      const text = document.createElement('span');
+      text.textContent = item.label;
+      row.appendChild(dot);
+      row.appendChild(text);
+      coverageGrid.appendChild(row);
+    }
+    const note = document.querySelector('.coverage-note');
+    if (note) {
+      note.textContent = '已接入 ' + onCount + ' / ' + COVERAGE.length +
+        ' 类；只列当前验证页实际接入的分类，未接入的分类不伪造开关。';
+    }
+  }
+
+  function buildShareUrl() {
+    const params = new URLSearchParams();
+    params.set('catalog', catalogUrl);
+    if (current) params.set('model', current.key);
+    if (formatSelect.value) params.set('format', formatSelect.value);
+    if (current && current.type === 'vrm') params.set('action', currentAction);
+    params.set('yaw', String(Math.round(yaw * 180 / Math.PI)));
+    params.set('zoom', zoom.toFixed(2));
+    for (const key of Object.keys(features)) {
+      params.set(key, features[key].checked ? '1' : '0');
+    }
+    if (current && current.type === 'live2d') params.set('emotion', emotionSelect.value);
+    return location.origin + location.pathname + '?' + params.toString();
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', 'readonly');
+      area.style.position = 'fixed';
+      area.style.top = '0';
+      area.style.left = '0';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      let copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } catch (error) {
+        copied = false;
+      }
+      document.body.removeChild(area);
+      if (copied) resolve();
+      else reject(new Error('copy failed'));
+    });
+  }
+
+  async function copyShareUrl() {
+    const url = buildShareUrl();
+    try {
+      await copyText(url);
+      showToast('已复制当前验证链接');
+    } catch (error) {
+      showToast('复制失败，请手动复制：' + url, true);
+    }
+  }
+
+  async function refreshCatalog() {
+    showToast('正在刷新模型清单…');
+    try {
+      await loadCatalogData();
+      const key = current && MODELS[current.key] ? current.key : modelSelect.value;
+      if (key) await loadModel(key);
+      showToast('清单已刷新：' + allModels.length + ' 个模型');
+    } catch (error) {
+      showToast('刷新失败：' + error.message, true);
+      console.error(error);
+    }
+  }
+
   for (const key of Object.keys(features)) bindFeature(key);
+  for (const group of FEATURE_GROUPS) bindMaster(group);
+
+  formatSelect.addEventListener('change', selectModelFromFilter);
 
   modelSelect.addEventListener('change', function () {
     loadModel(modelSelect.value);
@@ -707,6 +1005,20 @@
     if (!stateMachine || !hasClip(CLIP_FOR[target])) return;
     currentAction = target;
     stateMachine.setCondition('target', target);
+  });
+
+  for (const button of document.querySelectorAll('[data-live2d-action]')) {
+    button.addEventListener('click', function () {
+      live2dAction(button.getAttribute('data-live2d-action'));
+    });
+  }
+
+  emotionSelect.addEventListener('change', function () {
+    emotionValue.textContent = emotionSelect.value;
+    if (current && current.type === 'live2d' && current.renderer) {
+      current.renderer.setEmotion(emotionSelect.value);
+      showToast('Live2D 情绪：' + emotionSelect.value);
+    }
   });
 
   yawRange.addEventListener('input', function () {
@@ -761,17 +1073,31 @@
     features.bones.checked = false;
     features.autoRotate.checked = false;
     features.paused.checked = false;
-    syncFeatureState();
-    if (current && current.type !== 'live2d' && current.renderer) rendererOptions(current.renderer);
+    emotionSelect.value = 'neutral';
+    emotionValue.textContent = 'neutral';
+    if (current && current.type === 'live2d' && current.renderer) current.renderer.setEmotion('neutral');
+    runtimeFeatureChanged('texture');
+    showToast('开关已重置');
   });
+
+  document.getElementById('refreshCatalog').addEventListener('click', refreshCatalog);
+  document.getElementById('copyLink').addEventListener('click', copyShareUrl);
 
   window.addEventListener('resize', function () {
     resizeCanvas();
     if (current && current.type === 'live2d') current.renderer.resize();
   });
+
   resizeCanvas();
+  setFeatureAvailability('');
+  setLive2dAvailability(false);
+  renderCoverage();
   loadCatalogData()
-    .then(function () { return loadModel(modelSelect.value); })
+    .then(function () {
+      const key = modelSelect.value;
+      if (key) return loadModel(key);
+      throw new Error('模型清单为空');
+    })
     .catch(function (error) {
       console.error(error);
       showToast(error.message || String(error), true);

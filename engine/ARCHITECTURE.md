@@ -343,8 +343,11 @@ models:
 
 | 手段 | 用途 |
 | --- | --- |
-| `validate.html` 左侧开关 | 单独关闭贴图、光照、toon、sphere、outline、线框、骨骼、接地 |
+| `validate.html` 左侧分组开关 | 按模型与格式、材质与光照、网格与调试、姿态与动作、相机分组；VRM / PMX / Live2D 自动启用对应项 |
+| `validate.html?format=vrm\|pmx\|live2d` | 只显示指定格式的模型 |
+| `validate.html?catalog=assets/models.local.yaml` | 指向外部 YAML 清单；路径末尾误带的 `\` 会自动归一化 |
 | `validate.html?flip=1` | 对照 PMX 贴图 UV 的 Y 方向 |
+| `validate.html` Live2D 交互 | 眨眼、挥手、点头、摇头、情绪选择，只对 Live2D 模型启用 |
 | 浏览器控制台 | 解析、着色器、纹理和模型加载错误 |
 | `node --check <file>` | 单文件语法检查；拆分文件必须逐个检查 |
 

@@ -40,9 +40,9 @@ engine/
 python -m http.server 8766 --directory D:\Aevum
 ```
 
-渲染验证：`http://127.0.0.1:8766/engine/validate.html`。左侧模型下拉由 `engine/models.yaml` 的 `models` 路径列表生成，格式按后缀自动判断；模型切换用 `?model=<清单里的路径>`，动作可用 `?action=idle|walk|run|greet`，模型清单可用 `?catalog=<url>` 指向另一份 YAML。
+渲染验证：`http://127.0.0.1:8766/engine/validate.html`。左侧按“模型与格式 / 材质与光照 / 网格与调试 / 姿态与动作 / 相机”分组；模型下拉由清单的 `models` 路径列表生成，格式按后缀自动判断。模型切换用 `?model=<清单里的路径>`，格式筛选用 `?format=vrm|pmx|live2d`，动作可用 `?action=idle|walk|run|greet`，模型清单用 `?catalog=<url>` 指向另一份 YAML；`catalog` 末尾误带的 `\` 会自动归一化。
 
-Live2D 也在这个验证页里选择，不再单独提供页面。模型路径只写在清单里，页面和 JS 不保存具体模型路径；`models.yaml` 当前是演示路径，换成自己的模型即可。
+Live2D 也在这个验证页里选择，不再单独提供页面；选中 Live2D 后会启用眨眼、挥手、点头、摇头和情绪选择，其余网格/材质开关按模型类型自动禁用。模型路径只写在清单里，页面和 JS 不保存具体模型路径；`models.yaml` 当前是演示路径，换成自己的模型即可。
 
 ## 边界
 
