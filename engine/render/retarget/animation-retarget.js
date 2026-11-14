@@ -368,6 +368,7 @@
     };
     const orderedIndices = sourceNodes.map((_, index) => index)
       .sort((a, b) => depth(a) - depth(b) || a - b);
+    const neutralStance = Boolean(options && options.neutralStance);
     for (const i of orderedIndices) {
       const semantic = sourceBoneName(sourceNodes[i].name);
       const targetBone = MIXAMO_TO_VRM[semantic];
@@ -379,8 +380,11 @@
       if (/(Thumb|Index|Middle|Ring|Pinky)/.test(semantic)) continue;
 
       const animated = sourcePose.rotation && sourcePose.rotation[i];
+      // 站立类动作（待机、打招呼）保留目标骨架自己的站姿：源 idle 是宽站距，
+      // 直接套到窄站距模型上会把一条腿外展、头部带偏；行走/跑步不启用。
+      const lowerBody = /^(Hips|Left(UpLeg|Leg|Foot)|Right(UpLeg|Leg|Foot))$/.test(semantic);
       // 脚趾没有下一级子骨骼，方向由脚掌带动；只给脚掌做方向对齐。
-      if (animated && !/Toe/.test(semantic)) {
+      if (animated && !/Toe/.test(semantic) && !(neutralStance && lowerBody)) {
         const sourceRest = sourceNodes[i].rotation || [0, 0, 0, 1];
         const targetRest = vrm.json.nodes[targetIndex].rotation || [0, 0, 0, 1];
         const targetDir = needsAxisOffset(semantic) ? childDirection(vrm.json, targetIndex) : null;

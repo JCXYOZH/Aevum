@@ -811,16 +811,17 @@
           if (player) {
             if (!paused) player.update(dt);
             if (idlePlayer && !paused) idlePlayer.update(dt);
+            const retargetOptions = {
+              ikState: features.ground.checked ? { foot: null, anchor: null, ground: null } : null,
+              // 站立类动作保留目标模型自己的站姿，避免源 idle 的宽站距把腿带歪。
+              neutralStance: currentAction === 'idle' || currentAction === 'greet'
+            };
             const source = player.getPose();
-            target = retarget(current.vrm, actionGLB.json, source, {
-              ikState: features.ground.checked ? { foot: null, anchor: null, ground: null } : null
-            });
+            target = retarget(current.vrm, actionGLB.json, source, retargetOptions);
             // 打招呼只让右臂跟 greeting 动作，左臂借 idle 的结果；
             // 否则源片段的左臂会一直横在身体侧面，看起来像 T-pose。
             if (currentAction === 'greet' && idlePlayer) {
-              const idleTarget = retarget(current.vrm, actionGLB.json, idlePlayer.getPose(), {
-                ikState: features.ground.checked ? { foot: null, anchor: null, ground: null } : null
-              });
+              const idleTarget = retarget(current.vrm, actionGLB.json, idlePlayer.getPose(), retargetOptions);
               const humanoid = {};
               (current.vrm.humanBones || []).forEach(function (bone) { humanoid[bone.bone] = bone.node; });
               ['leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand'].forEach(function (bone) {
