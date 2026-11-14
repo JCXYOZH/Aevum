@@ -883,7 +883,11 @@
 
   // 先把肩→肘、肘→腕方向精确对齐，再绕各骨轴补滚转：只套世界四元数
   // 会被目标臂骨局部轴与 +X 的几度偏差带偏，单独 aim 又不控制自转。
-  function alignBoneRollWorld(json, pose, math, index, axis, sourceQuat, lateral) {
+  // 目标 VRM 朝 -Z，上臂骨局部 +Z 是背面、-Z 才是肘窝前向；源 Mixamo
+  // 朝 +Z，局部 +Z 是前向。上臂滚转按“目标 -Z ↔ 源 +Z”对齐，否则手能
+  // 摆对，肘窝会转 180°，看起来像手肘反了。前臂滚转仍按 Y，保留已对齐
+  // 的手掌和手背装饰方向。
+  function alignBoneRollWorld(json, pose, math, index, axis, sourceQuat, lateral, sourceLateralLocal) {
     if (index === undefined) return;
     const d = normalizeVector(axis);
     if (!d) return;
@@ -901,13 +905,13 @@
       ];
     };
     const targetLateral = rotate(targetQ, lateral);
-    const sourceLateral = runFacing(rotate(sourceQuat, lateral));
-    const dot = targetLateral[0] * sourceLateral[0] + targetLateral[1] * sourceLateral[1] +
-      targetLateral[2] * sourceLateral[2];
+    const sourceLateralWorld = runFacing(rotate(sourceQuat, sourceLateralLocal || lateral));
+    const dot = targetLateral[0] * sourceLateralWorld[0] + targetLateral[1] * sourceLateralWorld[1] +
+      targetLateral[2] * sourceLateralWorld[2];
     const cross = [
-      targetLateral[1] * sourceLateral[2] - targetLateral[2] * sourceLateral[1],
-      targetLateral[2] * sourceLateral[0] - targetLateral[0] * sourceLateral[2],
-      targetLateral[0] * sourceLateral[1] - targetLateral[1] * sourceLateral[0]
+      targetLateral[1] * sourceLateralWorld[2] - targetLateral[2] * sourceLateralWorld[1],
+      targetLateral[2] * sourceLateralWorld[0] - targetLateral[0] * sourceLateralWorld[2],
+      targetLateral[0] * sourceLateralWorld[1] - targetLateral[1] * sourceLateralWorld[0]
     ];
     const angle = Math.atan2(
       cross[0] * d[0] + cross[1] * d[1] + cross[2] * d[2],
@@ -938,7 +942,8 @@
     aimBoneWorld(vrm.json, pose, math, upper,
       [targetElbow[0] - targetShoulder[0], targetElbow[1] - targetShoulder[1], targetElbow[2] - targetShoulder[2]],
       upperDir);
-    alignBoneRollWorld(vrm.json, pose, math, upper, upperDir, sourceQuats(sourceUpper), [0, 1, 0]);
+    alignBoneRollWorld(vrm.json, pose, math, upper, upperDir, sourceQuats(sourceUpper),
+      [0, 0, -1], [0, 0, 1]);
     const nextWorld = nodeWorldPositions(vrm.json, pose);
     const nextElbow = nextWorld(lower);
     const nextWrist = nextWorld(hand);
