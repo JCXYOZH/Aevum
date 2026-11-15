@@ -17,7 +17,7 @@ class ModelEnginePromptContext(object):
         # 确保单例只初始化一次
         if hasattr(self, '_initialized') and self._initialized:
             if logger:
-                logger.info(" 模型引擎已初始化，跳过重复初始化")
+                logger.info("模型引擎已初始化，跳过重复初始化")
             return
         self.memory_system = memory_system
         self.user_manager = user_manager or UserManager()  # 如果未传入则创建默认
@@ -65,7 +65,7 @@ class ModelEnginePromptContext(object):
                     if tunnel_cfg.get("enabled", False):
                         result = self.ssh_tunnel.start()
                         if result.get("success"):
-                            print(f" SSH隧道已连接: {result.get('socks_proxy','')}")
+                            print(f"SSH隧道已连接: {result.get('socks_proxy','')}")
                             # 同步设置web_search代理
                             try:
                                 from libertas.tools.legacy_mrhua.web_search import set_proxy as _ws_set_proxy
@@ -73,9 +73,9 @@ class ModelEnginePromptContext(object):
                             except Exception:
                                 pass
                         else:
-                            print(f" SSH隧道启动失败: {result.get('error','')}")
+                            print(f"SSH隧道启动失败: {result.get('error','')}")
             except Exception as e:
-                print(f" SSH隧道配置加载失败: {e}")
+                print(f"SSH隧道配置加载失败: {e}")
 
         self.model = None
         self.tokenizer = None
@@ -142,7 +142,7 @@ class ModelEnginePromptContext(object):
         self._prompt_config_loaded = True  # 标记人格配置已从磁盘加载，防止 _enhance_system_prompt 中的 reset() 覆盖
         self._initialized = True
         if logger:
-            logger.info(f" 终极花先生模型引擎初始化完成 - 设备: {self.device}")
+            logger.info(f"终极花先生模型引擎初始化完成 - 设备: {self.device}")
     def _get_thinking_config(self, key: str, default=None):
         """
         从用户规则中读取思考配置，若不存在则返回全局配置或默认值。
