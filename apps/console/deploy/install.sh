@@ -64,9 +64,12 @@ if command -v apt-get >/dev/null 2>&1; then
 elif command -v dnf >/dev/null 2>&1; then
     PKG_FAMILY="rpm"
     dnf install -y nginx qemu-kvm python3 python3-pip iproute curl >/dev/null
+    # RHEL 8/9 的默认 python3 可能是 3.6/3.9；有 3.11 时顺手装上，供下面的选择器使用。
+    dnf install -y python3.11 python3.11-pip >/dev/null 2>&1 || true
 elif command -v yum >/dev/null 2>&1; then
     PKG_FAMILY="rpm"
     yum install -y nginx qemu-kvm python3 python3-pip iproute curl >/dev/null
+    yum install -y python3.11 python3.11-pip >/dev/null 2>&1 || true
 else
     die "只支持 apt / dnf / yum 的系统，请手动装 nginx、qemu、python3 后重跑"
 fi
@@ -90,7 +93,7 @@ log "QEMU：$QEMU_BIN"
 
 # ---------------------------------------------------------------- 2 Python
 # 优先使用显式指定的解释器或已有 venv；新机器上如果都没有，就在仓库根目录
-# 建一个只装 websockets 的 .venv（不装 torch，模型生成器是可选的）。
+# 建一个只装 websockets/pyyaml 的 .venv（不装 torch，模型生成器是可选的）。
 log "选择 Python 环境"
 
 PYTHON=""
