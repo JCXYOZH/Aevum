@@ -75,17 +75,17 @@ from libertas.identity.auth_manager import AuthManager
 
 - 源目录真实 Python 文件 5 个，已全部迁入。
 - macOS AppleDouble 垃圾文件 `._model_engine.py` 未迁入。
-- 拆分后 `legacy_mrhua` 共 35 个 `.py`：
-  - `model_engine/`：18 个模块
+- 拆分后 `legacy_mrhua` 共 36 个 `.py`：
+  - `model_engine/`：19 个模块（含公共依赖 `_shared.py`）
   - `model_engine_expansion/`：6 个模块
   - `prompt_engine/`：3 个模块
   - `prompt_engine_expansion/`：5 个模块
   - `schemas.py`：317 行，保持单文件
-- 32 个文件不超过 500 行；3 个文件因单个方法体过大仍超过 500 行：
-  - `model_engine/methods_10.py`：含 `generate_stream`
-  - `model_engine/methods_6.py`：含 `_call_cloud_api_stream`
-  - `model_engine/methods_12.py`：含 `_retrieve_related_memories`
-- `ModelEngine` 的 107 个方法全部保留，组合为 `ModelEnginePart1..15 + ModelEngineBase`。
+- 33 个文件不超过 500 行；3 个文件因单个方法体过大仍超过 500 行：
+  - `model_engine/generation_stream.py`：含 `generate_stream`
+  - `model_engine/cloud_stream.py`：含 `_call_cloud_api_stream`
+  - `model_engine/memory_retrieval.py`：含 `_retrieve_related_memories`
+- `ModelEngine` 的 107 个方法全部保留，组合为 `ModelEnginePromptContext`、`ModelEnginePromptSettings`、`ModelEngineMessageSafety`、`ModelEngineCloudAPI`、`ModelEngineToolRetry`、`ModelEngineCloudStream`、`ModelEngineModelLifecycle`、`ModelEngineModelLoadFallback`、`ModelEngineGeneration`、`ModelEngineGenerationStream`、`ModelEnginePromptBuilder`、`ModelEngineMemoryRetrieval`、`ModelEngineSearchHelpers`、`ModelEngineWebTools`、`ModelEngineResponseProcessing` 与 `ModelEngineBase`。
 - 旧 `..core.*`、`..tools.*`、`..interfaces.web` 导入已改为 Aevum 路径：
   - `get_compliance_engine` 映射为 `get_compliance_system`
   - `DataManager` 映射为 `DataDirectoryManager`

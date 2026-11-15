@@ -1,107 +1,11 @@
-# models/model_engine.py
-# 模型引擎：负责本地/云端模型的加载、推理、流式生成
-# 支持量化加载（4bit/8bit）、CPU/GPU 混合、自动降级
-import os
-import sys
-import json
-import time
-import math
-import random
-import threading
-import hashlib
-import re
-from collections import deque, OrderedDict
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable
-try:
-    import jieba
-except ImportError:
-    jieba = None
-
-# 尝试导入 transformers 相关
-try:
-    import torch
-except ImportError:
-    torch = None
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, TextIteratorStreamer
-    try:
-        from transformers import logging as _transformers_logging
-        logger = _transformers_logging.get_logger(__name__)
-    except Exception:
-        logger = None
-except ImportError:
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    GenerationConfig = None
-    TextIteratorStreamer = None
-    logger = None
-
-# 兜底：纯云端安装（未安装 transformers）时 logger 会是 None，
-# 会让下面所有 logger.warning/info 抛 AttributeError，把真正的错误盖掉。
-if logger is None:
-    import logging as _std_logging
-    logger = _std_logging.getLogger(__name__)
-
-# 尝试导入 bitsandbytes（量化）
-# bitsandbytes 与某些 torch 版本不兼容时，可能在导入阶段抛出 AttributeError
-# （例如 module 'torch' has no attribute 'library'），这不应导致整个模型引擎无法加载。
-bitsandbytes = None
-bitsandbytes_import_error = None
-try:
-    import bitsandbytes
-except Exception as exc:  # noqa: BLE001 - optional dependency may fail under incompatible envs
-    bitsandbytes_import_error = exc
-    bitsandbytes = None
-    if logger is not None:
-        logger.warning("bitsandbytes 不可用，跳过 8-bit/4-bit 量化: %s", exc)
-
-# 尝试导入 llama-cpp-python（GGUF格式支持，加载速度快3-5倍，显存占用小）
-# 某些 Windows / 打包环境下，llama_cpp 的原生库路径可能不存在，导致 FileNotFoundError
-# 或其他加载错误；这不应让整个 MrHua 在启动时崩溃。
-LlamaCpp = None
-_llama_cpp_available = False
-llama_cpp_import_error = None
-try:
-    from llama_cpp import Llama as LlamaCpp
-    _llama_cpp_available = True
-except Exception as exc:  # noqa: BLE001 - optional native dependency may fail on missing DLLs
-    llama_cpp_import_error = exc
-    LlamaCpp = None
-    _llama_cpp_available = False
-    if logger is not None:
-        logger.warning("llama_cpp 不可用，GGUF 模型加载已禁用: %s", exc)
-
-# 尝试导入 requests（云端调用）
-try:
-    import requests
-except ImportError:
-    requests = None
-
-# SSH隧道管理器
-try:
-    from libertas.network.ssh_tunnel import SSHTunnelManager
-except Exception:
-    SSHTunnelManager = None
-
-# 隐私脱敏引擎
-try:
-    from libertas.security.privacy import PrivacySanitizer
-except Exception:
-    PrivacySanitizer = None
-
-# 导入用户管理（用于规则加载）
-from libertas.identity.user import UserManager
-from libertas.tools.batch_executor import extract_tasks_from_reply, BatchExecutor
-from libertas.foundation.config import get_data_dir
+from ._shared import *  # noqa: F401,F403
 
 # ==================== 模型LRU缓存 ====================
 from .model_cache import *  # noqa: F401,F403
 from .core import *  # noqa: F401,F403
-from .methods_1 import *  # noqa: F401,F403
+from .prompt_context import *  # noqa: F401,F403
 
-class ModelEnginePart2(object):
+class ModelEnginePromptSettings(object):
     def _switch_memory_for_active_user(self):
         """根据当前活跃用户切换记忆目录：主用户用MemorySystem，子用户用users目录。
         返回 True 表示发生了目录切换（用户切换），False 表示目录未变。"""
@@ -158,10 +62,10 @@ class ModelEnginePart2(object):
                 if hasattr(self.memory_system, '_cognitive_network') and self.memory_system._cognitive_network:
                     self.memory_system._cognitive_network.reset()
                     self.memory_system._cognitive_network._initialize_cognitive_network()
-                print(f"🔄 已切换记忆目录: {sub_dir}")
+                print(f" 已切换记忆目录: {sub_dir}")
             return switched
         except Exception as e:
-            print(f"⚠️ 切换记忆目录失败: {e}")
+            print(f" 切换记忆目录失败: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -468,9 +372,9 @@ class ModelEnginePart2(object):
                 '相关记忆信息：',
                 '--- 以下是相关历史安全扫描',
                 '--- 请根据上述记录回答',
-                '📚 最近的记忆记录：',
-                '📝 相关普通记忆：',
-                '📋 当前对话中的扫描摘要：',
+                ' 最近的记忆记录：',
+                ' 相关普通记忆：',
+                ' 当前对话中的扫描摘要：',
             ]):
                 skip = True
                 continue

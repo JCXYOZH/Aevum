@@ -1,112 +1,16 @@
-# models/model_engine.py
-# 模型引擎：负责本地/云端模型的加载、推理、流式生成
-# 支持量化加载（4bit/8bit）、CPU/GPU 混合、自动降级
-import os
-import sys
-import json
-import time
-import math
-import random
-import threading
-import hashlib
-import re
-from collections import deque, OrderedDict
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable
-try:
-    import jieba
-except ImportError:
-    jieba = None
-
-# 尝试导入 transformers 相关
-try:
-    import torch
-except ImportError:
-    torch = None
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, TextIteratorStreamer
-    try:
-        from transformers import logging as _transformers_logging
-        logger = _transformers_logging.get_logger(__name__)
-    except Exception:
-        logger = None
-except ImportError:
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    GenerationConfig = None
-    TextIteratorStreamer = None
-    logger = None
-
-# 兜底：纯云端安装（未安装 transformers）时 logger 会是 None，
-# 会让下面所有 logger.warning/info 抛 AttributeError，把真正的错误盖掉。
-if logger is None:
-    import logging as _std_logging
-    logger = _std_logging.getLogger(__name__)
-
-# 尝试导入 bitsandbytes（量化）
-# bitsandbytes 与某些 torch 版本不兼容时，可能在导入阶段抛出 AttributeError
-# （例如 module 'torch' has no attribute 'library'），这不应导致整个模型引擎无法加载。
-bitsandbytes = None
-bitsandbytes_import_error = None
-try:
-    import bitsandbytes
-except Exception as exc:  # noqa: BLE001 - optional dependency may fail under incompatible envs
-    bitsandbytes_import_error = exc
-    bitsandbytes = None
-    if logger is not None:
-        logger.warning("bitsandbytes 不可用，跳过 8-bit/4-bit 量化: %s", exc)
-
-# 尝试导入 llama-cpp-python（GGUF格式支持，加载速度快3-5倍，显存占用小）
-# 某些 Windows / 打包环境下，llama_cpp 的原生库路径可能不存在，导致 FileNotFoundError
-# 或其他加载错误；这不应让整个 MrHua 在启动时崩溃。
-LlamaCpp = None
-_llama_cpp_available = False
-llama_cpp_import_error = None
-try:
-    from llama_cpp import Llama as LlamaCpp
-    _llama_cpp_available = True
-except Exception as exc:  # noqa: BLE001 - optional native dependency may fail on missing DLLs
-    llama_cpp_import_error = exc
-    LlamaCpp = None
-    _llama_cpp_available = False
-    if logger is not None:
-        logger.warning("llama_cpp 不可用，GGUF 模型加载已禁用: %s", exc)
-
-# 尝试导入 requests（云端调用）
-try:
-    import requests
-except ImportError:
-    requests = None
-
-# SSH隧道管理器
-try:
-    from libertas.network.ssh_tunnel import SSHTunnelManager
-except Exception:
-    SSHTunnelManager = None
-
-# 隐私脱敏引擎
-try:
-    from libertas.security.privacy import PrivacySanitizer
-except Exception:
-    PrivacySanitizer = None
-
-# 导入用户管理（用于规则加载）
-from libertas.identity.user import UserManager
-from libertas.tools.batch_executor import extract_tasks_from_reply, BatchExecutor
-from libertas.foundation.config import get_data_dir
+from ._shared import *  # noqa: F401,F403
 
 # ==================== 模型LRU缓存 ====================
 from .model_cache import *  # noqa: F401,F403
 from .core import *  # noqa: F401,F403
-from .methods_1 import *  # noqa: F401,F403
-from .methods_2 import *  # noqa: F401,F403
-from .methods_3 import *  # noqa: F401,F403
-from .methods_4 import *  # noqa: F401,F403
-from .methods_5 import *  # noqa: F401,F403
-from .methods_6 import *  # noqa: F401,F403
+from .prompt_context import *  # noqa: F401,F403
+from .prompt_settings import *  # noqa: F401,F403
+from .message_safety import *  # noqa: F401,F403
+from .cloud_api import *  # noqa: F401,F403
+from .tool_retry import *  # noqa: F401,F403
+from .cloud_stream import *  # noqa: F401,F403
 
-class ModelEnginePart7(object):
+class ModelEngineModelLifecycle(object):
     def _cuda_usable(self) -> bool:
         cached = getattr(self, "_cuda_probe_ok", None)
         if cached is not None:
@@ -147,11 +51,11 @@ class ModelEnginePart7(object):
         # 先确认 GPU 真能用。不可用就直接走 CPU，避免在 5 级 GPU 策略上反复撞
         # 同一个粘性 CUDA 错误（既浪费时间，也掩盖真正原因）。
         if not self._cuda_usable():
-            logger.warning("⏭️  跳过全部 GPU 加载策略，直接使用 CPU：" + self.get_cuda_diagnosis())
+            logger.warning("  跳过全部 GPU 加载策略，直接使用 CPU：" + self.get_cuda_diagnosis())
             if self._attempt_CPU_mode():
-                print("✅ 模型已用 CPU 加载成功（GPU 不可用，自动降级）")
+                print(" 模型已用 CPU 加载成功（GPU 不可用，自动降级）")
                 return True
-            print("❌ CPU 加载也失败了，请检查模型文件是否完整")
+            print(" CPU 加载也失败了，请检查模型文件是否完整")
             return False
         # 优化：预读取模型config，提前知道架构信息和文件格式
         self._current_model_info = self._pre_read_model_config(self.model_path)
@@ -162,7 +66,7 @@ class ModelEnginePart7(object):
         # 尝试 MPS（Apple Silicon）
         if torch and hasattr(torch, "backends") and getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
             device = "mps"
-            print("🍎 尝试使用 Apple MPS 加速加载...")
+            print(" 尝试使用 Apple MPS 加速加载...")
             try:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_path,
@@ -177,31 +81,31 @@ class ModelEnginePart7(object):
                     self.tokenizer.pad_token = self.tokenizer.eos_token
                 self.model.eval()
                 self.model_loading_status = "已加载"
-                print(f"✅ 模型加载成功，设备: {device}")
+                print(f" 模型加载成功，设备: {device}")
                 return True
             except Exception as e:
-                print(f"⚠️ MPS 加载失败: {e}")
+                print(f" MPS 加载失败: {e}")
 
         if quant_mode == "4bit":
-            print("🎯 配置指定 4-bit 量化加载")
+            print(" 配置指定 4-bit 量化加载")
             if self._attempt_4bit_quantization():
                 return True
-            print("❌ 4-bit 量化加载失败")
+            print(" 4-bit 量化加载失败")
             return False
         elif quant_mode == "8bit":
-            print("🎯 配置指定 8-bit 量化加载")
+            print(" 配置指定 8-bit 量化加载")
             if self._attempt_8bit_quantization():
                 return True
-            print("❌ 8-bit 量化加载失败")
+            print(" 8-bit 量化加载失败")
             return False
         elif quant_mode == "none":
-            print("🎯 配置指定不使用量化，原生精度加载")
+            print(" 配置指定不使用量化，原生精度加载")
             if self._attempt_original_mixed_loading():
                 return True
-            print("❌ 原生精度加载失败")
+            print(" 原生精度加载失败")
             return False
 
-        print("🎯 自动量化模式，按优先级尝试加载")
+        print(" 自动量化模式，按优先级尝试加载")
         # GGUF格式优先（加载快3-5倍，显存小）
         strategies = []
         if self._current_model_info.get("is_gguf"):
@@ -234,7 +138,7 @@ class ModelEnginePart7(object):
                     self._is_gguf_model = cached["is_gguf"]
                     self._gguf_llm = cached["gguf_llm"]
                     self.model_loading_status = "已加载"
-                    print(f"⚡ 从缓存加载模型: {candidate_path}")
+                    print(f" 从缓存加载模型: {candidate_path}")
                     return True
 
         if self.model is not None:
@@ -292,13 +196,13 @@ class ModelEnginePart7(object):
                         return True
                 except Exception as exc:
                     last_error = exc
-                    print(f"⚠️ 模型路径 {candidate_path} 加载失败: {exc}")
+                    print(f" 模型路径 {candidate_path} 加载失败: {exc}")
                 self.model = None
                 self.tokenizer = None
 
             self.model_loading_status = "加载失败"
             if last_error is not None:
-                print(f"❌ 所有本地模型候选路径均失败，最后错误: {last_error}")
+                print(f" 所有本地模型候选路径均失败，最后错误: {last_error}")
             return False
         finally:
             with self._load_lock:
@@ -310,7 +214,7 @@ class ModelEnginePart7(object):
         # 如果已经是当前模型，直接返回
         if self.model_path == model_path and self.model is not None:
             return True
-        print(f"🔄 切换模型: {model_path}")
+        print(f" 切换模型: {model_path}")
         self.model_path = model_path
         self.model = None
         self.tokenizer = None
@@ -379,7 +283,7 @@ class ModelEnginePart7(object):
                     if qtype.lower() in gguf_filename.lower():
                         info["gguf_quant_type"] = qtype
                         break
-                logger.info(f"📋 模型预读取(GGUF文件): {gguf_filename}, {file_size_gb}GB, 量化={info.get('gguf_quant_type', 'unknown')}")
+                logger.info(f" 模型预读取(GGUF文件): {gguf_filename}, {file_size_gb}GB, 量化={info.get('gguf_quant_type', 'unknown')}")
                 return info
             # 情况2：路径是目录，读取config.json
             config_file = os.path.join(model_path, "config.json")
@@ -421,7 +325,7 @@ class ModelEnginePart7(object):
                     if qtype.lower() in gguf_files[0].lower():
                         info["gguf_quant_type"] = qtype
                         break
-            logger.info(f"📋 模型预读取: {info['model_type']}, {info['num_hidden_layers']}层, "
+            logger.info(f" 模型预读取: {info['model_type']}, {info['num_hidden_layers']}层, "
                        f"{info['total_size_gb']}GB, 格式={info['preferred_format']}"
                        + (f", GGUF量化={info.get('gguf_quant_type', 'unknown')}" if info.get('is_gguf') else ""))
             return info
@@ -434,10 +338,10 @@ class ModelEnginePart7(object):
             try:
                 time.sleep(2)  # 等2秒，让程序先启动完成
                 if self.model is None and not self._loading_in_progress:
-                    logger.info("🚀 后台预加载模型启动...")
+                    logger.info(" 后台预加载模型启动...")
                     self.load_model()
                     if self.model is not None:
-                        logger.info("✅ 后台预加载模型完成")
+                        logger.info(" 后台预加载模型完成")
             except Exception as e:
                 logger.warning(f"后台预加载失败: {e}")
         thread = threading.Thread(target=_preload_worker, daemon=True, name="model_preload")

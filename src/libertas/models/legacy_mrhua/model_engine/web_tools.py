@@ -1,119 +1,23 @@
-# models/model_engine.py
-# 模型引擎：负责本地/云端模型的加载、推理、流式生成
-# 支持量化加载（4bit/8bit）、CPU/GPU 混合、自动降级
-import os
-import sys
-import json
-import time
-import math
-import random
-import threading
-import hashlib
-import re
-from collections import deque, OrderedDict
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable
-try:
-    import jieba
-except ImportError:
-    jieba = None
-
-# 尝试导入 transformers 相关
-try:
-    import torch
-except ImportError:
-    torch = None
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, TextIteratorStreamer
-    try:
-        from transformers import logging as _transformers_logging
-        logger = _transformers_logging.get_logger(__name__)
-    except Exception:
-        logger = None
-except ImportError:
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    GenerationConfig = None
-    TextIteratorStreamer = None
-    logger = None
-
-# 兜底：纯云端安装（未安装 transformers）时 logger 会是 None，
-# 会让下面所有 logger.warning/info 抛 AttributeError，把真正的错误盖掉。
-if logger is None:
-    import logging as _std_logging
-    logger = _std_logging.getLogger(__name__)
-
-# 尝试导入 bitsandbytes（量化）
-# bitsandbytes 与某些 torch 版本不兼容时，可能在导入阶段抛出 AttributeError
-# （例如 module 'torch' has no attribute 'library'），这不应导致整个模型引擎无法加载。
-bitsandbytes = None
-bitsandbytes_import_error = None
-try:
-    import bitsandbytes
-except Exception as exc:  # noqa: BLE001 - optional dependency may fail under incompatible envs
-    bitsandbytes_import_error = exc
-    bitsandbytes = None
-    if logger is not None:
-        logger.warning("bitsandbytes 不可用，跳过 8-bit/4-bit 量化: %s", exc)
-
-# 尝试导入 llama-cpp-python（GGUF格式支持，加载速度快3-5倍，显存占用小）
-# 某些 Windows / 打包环境下，llama_cpp 的原生库路径可能不存在，导致 FileNotFoundError
-# 或其他加载错误；这不应让整个 MrHua 在启动时崩溃。
-LlamaCpp = None
-_llama_cpp_available = False
-llama_cpp_import_error = None
-try:
-    from llama_cpp import Llama as LlamaCpp
-    _llama_cpp_available = True
-except Exception as exc:  # noqa: BLE001 - optional native dependency may fail on missing DLLs
-    llama_cpp_import_error = exc
-    LlamaCpp = None
-    _llama_cpp_available = False
-    if logger is not None:
-        logger.warning("llama_cpp 不可用，GGUF 模型加载已禁用: %s", exc)
-
-# 尝试导入 requests（云端调用）
-try:
-    import requests
-except ImportError:
-    requests = None
-
-# SSH隧道管理器
-try:
-    from libertas.network.ssh_tunnel import SSHTunnelManager
-except Exception:
-    SSHTunnelManager = None
-
-# 隐私脱敏引擎
-try:
-    from libertas.security.privacy import PrivacySanitizer
-except Exception:
-    PrivacySanitizer = None
-
-# 导入用户管理（用于规则加载）
-from libertas.identity.user import UserManager
-from libertas.tools.batch_executor import extract_tasks_from_reply, BatchExecutor
-from libertas.foundation.config import get_data_dir
+from ._shared import *  # noqa: F401,F403
 
 # ==================== 模型LRU缓存 ====================
 from .model_cache import *  # noqa: F401,F403
 from .core import *  # noqa: F401,F403
-from .methods_1 import *  # noqa: F401,F403
-from .methods_2 import *  # noqa: F401,F403
-from .methods_3 import *  # noqa: F401,F403
-from .methods_4 import *  # noqa: F401,F403
-from .methods_5 import *  # noqa: F401,F403
-from .methods_6 import *  # noqa: F401,F403
-from .methods_7 import *  # noqa: F401,F403
-from .methods_8 import *  # noqa: F401,F403
-from .methods_9 import *  # noqa: F401,F403
-from .methods_10 import *  # noqa: F401,F403
-from .methods_11 import *  # noqa: F401,F403
-from .methods_12 import *  # noqa: F401,F403
-from .methods_13 import *  # noqa: F401,F403
+from .prompt_context import *  # noqa: F401,F403
+from .prompt_settings import *  # noqa: F401,F403
+from .message_safety import *  # noqa: F401,F403
+from .cloud_api import *  # noqa: F401,F403
+from .tool_retry import *  # noqa: F401,F403
+from .cloud_stream import *  # noqa: F401,F403
+from .model_lifecycle import *  # noqa: F401,F403
+from .model_load_fallback import *  # noqa: F401,F403
+from .generation import *  # noqa: F401,F403
+from .generation_stream import *  # noqa: F401,F403
+from .prompt_builder import *  # noqa: F401,F403
+from .memory_retrieval import *  # noqa: F401,F403
+from .search_helpers import *  # noqa: F401,F403
 
-class ModelEnginePart14(object):
+class ModelEngineWebTools(object):
     def _execute_web_tool(self, tool_call: str, progress_cb=None) -> str:
         """执行模型请求的网络工具，返回工具结果文本。
         progress_cb: 可选回调函数，接收 (step, detail_dict) 用于追踪搜索过程
@@ -251,7 +155,7 @@ class ModelEnginePart14(object):
                     metadata={"type": "web_page"}
                 )
                 _trace("rag_done", url=arg, title=page.get("title", arg), doc_id=doc_id, chars=len(page["content"]))
-                return f"✅ 已将网页《{page.get('title', arg)}》存入知识库 (ID: {doc_id}, {len(page['content'])} 字符)"
+                return f" 已将网页《{page.get('title', arg)}》存入知识库 (ID: {doc_id}, {len(page['content'])} 字符)"
 
             elif tool == "MEDIA_ANALYZE":
                 _trace("media_analyze_start", url=arg)
@@ -278,7 +182,7 @@ class ModelEnginePart14(object):
                     lines = [f"【页面视频源: {arg}】", f"发现 {len(media_result['sources'])} 个视频源:"]
                     for i, src in enumerate(media_result["sources"][:5], 1):
                         sinfo = src.get("info", {})
-                        status = "✅可播放" if sinfo.get("alive") else "❌不可用"
+                        status = "可播放" if sinfo.get("alive") else "不可用"
                         lines.append(f"  {i}. [{src['type']}] {status} {src['url'][:80]}")
                         if src.get("probe", {}).get("duration"):
                             d = int(src["probe"]["duration"])
@@ -300,7 +204,7 @@ class ModelEnginePart14(object):
                     else:
                         chain = str(health["status"])
                     lines = [f"【链接检查: {arg}】",
-                             f"状态: ✅ 正常 ({chain})",
+                             f"状态:  正常 ({chain})",
                              f"最终URL: {health['final_url']}",
                              f"响应时间: {health['response_time']}s"]
                     if health.get("content_type"):
@@ -310,7 +214,7 @@ class ModelEnginePart14(object):
                 else:
                     _err = health.get("error", f"HTTP {health.get('status', '?')}")
                     _trace("link_check_done", url=arg, alive=False, error=_err)
-                    return f"【链接检查: {arg}】❌ 不可用: {_err}"
+                    return f"【链接检查: {arg}】 不可用: {_err}"
 
             elif tool == "LINK_REPAIR":
                 _trace("link_repair_start", url=arg)
@@ -319,7 +223,7 @@ class ModelEnginePart14(object):
                 if repair.get("fixed"):
                     _trace("link_repair_done", url=arg, fixed=True, method=repair["method"])
                     return (f"【链接修复: {arg}】\n"
-                            f"✅ 已修复（{repair['method']}）\n"
+                            f" 已修复（{repair['method']}）\n"
                             f"新URL: {repair['fixed_url']}")
                 elif repair.get("archive_url"):
                     _trace("link_repair_done", url=arg, fixed=False, archive=True)
@@ -328,11 +232,11 @@ class ModelEnginePart14(object):
                             f"{repair['archive_url']}")
                 else:
                     alts = repair.get("alternatives", [])
-                    lines = [f"【链接修复: {arg}】❌ 无法自动修复"]
+                    lines = [f"【链接修复: {arg}】 无法自动修复"]
                     if alts:
                         lines.append("已尝试:")
                         for a in alts[:5]:
-                            lines.append(f"  - {a['method']}: {a['url'][:60]} → {'✅' if a['alive'] else '❌'}")
+                            lines.append(f"  - {a['method']}: {a['url'][:60]} → {'成功' if a['alive'] else '失败'}")
                     _trace("link_repair_done", url=arg, fixed=False)
                     return "\n".join(lines)
 

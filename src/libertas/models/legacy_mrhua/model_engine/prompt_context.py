@@ -1,106 +1,10 @@
-# models/model_engine.py
-# 模型引擎：负责本地/云端模型的加载、推理、流式生成
-# 支持量化加载（4bit/8bit）、CPU/GPU 混合、自动降级
-import os
-import sys
-import json
-import time
-import math
-import random
-import threading
-import hashlib
-import re
-from collections import deque, OrderedDict
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable
-try:
-    import jieba
-except ImportError:
-    jieba = None
-
-# 尝试导入 transformers 相关
-try:
-    import torch
-except ImportError:
-    torch = None
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, TextIteratorStreamer
-    try:
-        from transformers import logging as _transformers_logging
-        logger = _transformers_logging.get_logger(__name__)
-    except Exception:
-        logger = None
-except ImportError:
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    GenerationConfig = None
-    TextIteratorStreamer = None
-    logger = None
-
-# 兜底：纯云端安装（未安装 transformers）时 logger 会是 None，
-# 会让下面所有 logger.warning/info 抛 AttributeError，把真正的错误盖掉。
-if logger is None:
-    import logging as _std_logging
-    logger = _std_logging.getLogger(__name__)
-
-# 尝试导入 bitsandbytes（量化）
-# bitsandbytes 与某些 torch 版本不兼容时，可能在导入阶段抛出 AttributeError
-# （例如 module 'torch' has no attribute 'library'），这不应导致整个模型引擎无法加载。
-bitsandbytes = None
-bitsandbytes_import_error = None
-try:
-    import bitsandbytes
-except Exception as exc:  # noqa: BLE001 - optional dependency may fail under incompatible envs
-    bitsandbytes_import_error = exc
-    bitsandbytes = None
-    if logger is not None:
-        logger.warning("bitsandbytes 不可用，跳过 8-bit/4-bit 量化: %s", exc)
-
-# 尝试导入 llama-cpp-python（GGUF格式支持，加载速度快3-5倍，显存占用小）
-# 某些 Windows / 打包环境下，llama_cpp 的原生库路径可能不存在，导致 FileNotFoundError
-# 或其他加载错误；这不应让整个 MrHua 在启动时崩溃。
-LlamaCpp = None
-_llama_cpp_available = False
-llama_cpp_import_error = None
-try:
-    from llama_cpp import Llama as LlamaCpp
-    _llama_cpp_available = True
-except Exception as exc:  # noqa: BLE001 - optional native dependency may fail on missing DLLs
-    llama_cpp_import_error = exc
-    LlamaCpp = None
-    _llama_cpp_available = False
-    if logger is not None:
-        logger.warning("llama_cpp 不可用，GGUF 模型加载已禁用: %s", exc)
-
-# 尝试导入 requests（云端调用）
-try:
-    import requests
-except ImportError:
-    requests = None
-
-# SSH隧道管理器
-try:
-    from libertas.network.ssh_tunnel import SSHTunnelManager
-except Exception:
-    SSHTunnelManager = None
-
-# 隐私脱敏引擎
-try:
-    from libertas.security.privacy import PrivacySanitizer
-except Exception:
-    PrivacySanitizer = None
-
-# 导入用户管理（用于规则加载）
-from libertas.identity.user import UserManager
-from libertas.tools.batch_executor import extract_tasks_from_reply, BatchExecutor
-from libertas.foundation.config import get_data_dir
+from ._shared import *  # noqa: F401,F403
 
 # ==================== 模型LRU缓存 ====================
 from .model_cache import *  # noqa: F401,F403
 from .core import *  # noqa: F401,F403
 
-class ModelEnginePart1(object):
+class ModelEnginePromptContext(object):
     def __new__(cls, *args, **kwargs):
         # 修复：双重检查锁定，防止多线程竞态创建多个实例
         if cls._instance is None:
@@ -113,7 +17,7 @@ class ModelEnginePart1(object):
         # 确保单例只初始化一次
         if hasattr(self, '_initialized') and self._initialized:
             if logger:
-                logger.info("✅ 模型引擎已初始化，跳过重复初始化")
+                logger.info(" 模型引擎已初始化，跳过重复初始化")
             return
         self.memory_system = memory_system
         self.user_manager = user_manager or UserManager()  # 如果未传入则创建默认
@@ -161,7 +65,7 @@ class ModelEnginePart1(object):
                     if tunnel_cfg.get("enabled", False):
                         result = self.ssh_tunnel.start()
                         if result.get("success"):
-                            print(f"🔒 SSH隧道已连接: {result.get('socks_proxy','')}")
+                            print(f" SSH隧道已连接: {result.get('socks_proxy','')}")
                             # 同步设置web_search代理
                             try:
                                 from libertas.tools.legacy_mrhua.web_search import set_proxy as _ws_set_proxy
@@ -169,9 +73,9 @@ class ModelEnginePart1(object):
                             except Exception:
                                 pass
                         else:
-                            print(f"⚠️ SSH隧道启动失败: {result.get('error','')}")
+                            print(f" SSH隧道启动失败: {result.get('error','')}")
             except Exception as e:
-                print(f"⚠️ SSH隧道配置加载失败: {e}")
+                print(f" SSH隧道配置加载失败: {e}")
 
         self.model = None
         self.tokenizer = None
@@ -216,9 +120,9 @@ class ModelEnginePart1(object):
                 _init_pe_cfg = _init_rules.get("提示词配置", {})
                 if _init_pe_cfg:
                     self.prompt_engine.import_config(_init_pe_cfg)
-                    print(f"✅ 人格配置已从磁盘加载: persona={_init_pe_cfg.get('persona', 'default')}, scenario={_init_pe_cfg.get('scenario', 'casual')}, obedience={_init_pe_cfg.get('obedience', 'balanced')}")
+                    print(f" 人格配置已从磁盘加载: persona={_init_pe_cfg.get('persona', 'default')}, scenario={_init_pe_cfg.get('scenario', 'casual')}, obedience={_init_pe_cfg.get('obedience', 'balanced')}")
         except Exception as _init_e:
-            print(f"⚠️ 人格配置加载失败（使用默认值）: {_init_e}")
+            print(f" 人格配置加载失败（使用默认值）: {_init_e}")
         self._enhance_system_prompt()
         self.performance_statistics = {
             "总调用次数": 0, "成功生成次数": 0, "生成失败次数": 0,
@@ -238,7 +142,7 @@ class ModelEnginePart1(object):
         self._prompt_config_loaded = True  # 标记人格配置已从磁盘加载，防止 _enhance_system_prompt 中的 reset() 覆盖
         self._initialized = True
         if logger:
-            logger.info(f"🚀 终极花先生模型引擎初始化完成 - 设备: {self.device}")
+            logger.info(f" 终极花先生模型引擎初始化完成 - 设备: {self.device}")
     def _get_thinking_config(self, key: str, default=None):
         """
         从用户规则中读取思考配置，若不存在则返回全局配置或默认值。
@@ -311,9 +215,9 @@ class ModelEnginePart1(object):
                     if thinking_text.strip():
                         return f"<thinking>\n{thinking_text}\n</thinking>"
                 except KeyError as e:
-                    print(f"⚠️ 自定义模板缺少变量 {e}，回退到 style 逻辑")
+                    print(f" 自定义模板缺少变量 {e}，回退到 style 逻辑")
                 except Exception as e:
-                    print(f"⚠️ 自定义模板渲染失败: {e}")
+                    print(f" 自定义模板渲染失败: {e}")
 
             # ----- 6. 回退到内置 style 逻辑 -----
             thinking_parts = []
@@ -393,7 +297,7 @@ class ModelEnginePart1(object):
             return f"<thinking>\n{thinking_text}\n</thinking>"
 
         except Exception as e:
-            print(f"⚠️ 动态思考生成失败: {e}")
+            print(f" 动态思考生成失败: {e}")
             return None
     def _create_system_prompt(self) -> str:
         """基础系统提示词（仅身份+原则），完整分层由 _enhance_system_prompt 完成"""

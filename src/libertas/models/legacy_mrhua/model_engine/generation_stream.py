@@ -1,115 +1,19 @@
-# models/model_engine.py
-# 模型引擎：负责本地/云端模型的加载、推理、流式生成
-# 支持量化加载（4bit/8bit）、CPU/GPU 混合、自动降级
-import os
-import sys
-import json
-import time
-import math
-import random
-import threading
-import hashlib
-import re
-from collections import deque, OrderedDict
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable
-try:
-    import jieba
-except ImportError:
-    jieba = None
-
-# 尝试导入 transformers 相关
-try:
-    import torch
-except ImportError:
-    torch = None
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, TextIteratorStreamer
-    try:
-        from transformers import logging as _transformers_logging
-        logger = _transformers_logging.get_logger(__name__)
-    except Exception:
-        logger = None
-except ImportError:
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    GenerationConfig = None
-    TextIteratorStreamer = None
-    logger = None
-
-# 兜底：纯云端安装（未安装 transformers）时 logger 会是 None，
-# 会让下面所有 logger.warning/info 抛 AttributeError，把真正的错误盖掉。
-if logger is None:
-    import logging as _std_logging
-    logger = _std_logging.getLogger(__name__)
-
-# 尝试导入 bitsandbytes（量化）
-# bitsandbytes 与某些 torch 版本不兼容时，可能在导入阶段抛出 AttributeError
-# （例如 module 'torch' has no attribute 'library'），这不应导致整个模型引擎无法加载。
-bitsandbytes = None
-bitsandbytes_import_error = None
-try:
-    import bitsandbytes
-except Exception as exc:  # noqa: BLE001 - optional dependency may fail under incompatible envs
-    bitsandbytes_import_error = exc
-    bitsandbytes = None
-    if logger is not None:
-        logger.warning("bitsandbytes 不可用，跳过 8-bit/4-bit 量化: %s", exc)
-
-# 尝试导入 llama-cpp-python（GGUF格式支持，加载速度快3-5倍，显存占用小）
-# 某些 Windows / 打包环境下，llama_cpp 的原生库路径可能不存在，导致 FileNotFoundError
-# 或其他加载错误；这不应让整个 MrHua 在启动时崩溃。
-LlamaCpp = None
-_llama_cpp_available = False
-llama_cpp_import_error = None
-try:
-    from llama_cpp import Llama as LlamaCpp
-    _llama_cpp_available = True
-except Exception as exc:  # noqa: BLE001 - optional native dependency may fail on missing DLLs
-    llama_cpp_import_error = exc
-    LlamaCpp = None
-    _llama_cpp_available = False
-    if logger is not None:
-        logger.warning("llama_cpp 不可用，GGUF 模型加载已禁用: %s", exc)
-
-# 尝试导入 requests（云端调用）
-try:
-    import requests
-except ImportError:
-    requests = None
-
-# SSH隧道管理器
-try:
-    from libertas.network.ssh_tunnel import SSHTunnelManager
-except Exception:
-    SSHTunnelManager = None
-
-# 隐私脱敏引擎
-try:
-    from libertas.security.privacy import PrivacySanitizer
-except Exception:
-    PrivacySanitizer = None
-
-# 导入用户管理（用于规则加载）
-from libertas.identity.user import UserManager
-from libertas.tools.batch_executor import extract_tasks_from_reply, BatchExecutor
-from libertas.foundation.config import get_data_dir
+from ._shared import *  # noqa: F401,F403
 
 # ==================== 模型LRU缓存 ====================
 from .model_cache import *  # noqa: F401,F403
 from .core import *  # noqa: F401,F403
-from .methods_1 import *  # noqa: F401,F403
-from .methods_2 import *  # noqa: F401,F403
-from .methods_3 import *  # noqa: F401,F403
-from .methods_4 import *  # noqa: F401,F403
-from .methods_5 import *  # noqa: F401,F403
-from .methods_6 import *  # noqa: F401,F403
-from .methods_7 import *  # noqa: F401,F403
-from .methods_8 import *  # noqa: F401,F403
-from .methods_9 import *  # noqa: F401,F403
+from .prompt_context import *  # noqa: F401,F403
+from .prompt_settings import *  # noqa: F401,F403
+from .message_safety import *  # noqa: F401,F403
+from .cloud_api import *  # noqa: F401,F403
+from .tool_retry import *  # noqa: F401,F403
+from .cloud_stream import *  # noqa: F401,F403
+from .model_lifecycle import *  # noqa: F401,F403
+from .model_load_fallback import *  # noqa: F401,F403
+from .generation import *  # noqa: F401,F403
 
-class ModelEnginePart10(object):
+class ModelEngineGenerationStream(object):
     def generate_stream(self, user_input: str, max_length: int = None, temperature: float = None, context: Dict = None, lang: str = None):
         """
         流式生成回复（支持深度思考框）
@@ -195,10 +99,10 @@ class ModelEnginePart10(object):
                     _preemptive_target = (_search_keyword or user_input)[:40]
                     try:
                         from libertas.tools.legacy_mrhua.dork_parser import is_dork_query as _is_dork
-                        _dork_badge = "🎯高级搜索 " if _is_dork(_search_keyword or user_input) else ""
+                        _dork_badge = "高级搜索 " if _is_dork(_search_keyword or user_input) else ""
                     except Exception:
                         _dork_badge = ""
-                    yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _preemptive_tool, 'target': _preemptive_target, 'content': '🔍 ' + _dork_badge + '搜索: ' + _preemptive_target}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _preemptive_tool, 'target': _preemptive_target, 'content': ' ' + _dork_badge + '搜索: ' + _preemptive_target}, ensure_ascii=False)}\n\n"
                     import threading as _threading
                     _search_done = _threading.Event()
                     _search_output = {"result": "", "urls": [], "error": None}
@@ -238,11 +142,11 @@ class ModelEnginePart10(object):
 
                     if not _search_done.is_set():
                         _ptimer.end_stage("search", "timeout")
-                        yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 搜索超时，模型将基于已有信息回答'}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 搜索超时，模型将基于已有信息回答'}, ensure_ascii=False)}\n\n"
                         logger.warning("前置搜索硬超时(10s)，跳过")
                     elif _search_output.get("error"):
                         _ptimer.end_stage("search", "error")
-                        yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 搜索暂时不可用，模型将基于已有信息回答'}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 搜索暂时不可用，模型将基于已有信息回答'}, ensure_ascii=False)}\n\n"
                         logger.warning(f"前置搜索异常: {_search_output['error']}")
                     else:
                         _ptimer.end_stage("search")
@@ -252,9 +156,9 @@ class ModelEnginePart10(object):
                             for _pu in _preemptive_urls[:3]:
                                 yield f"data: {json.dumps({'type': 'web_view', 'url': _pu}, ensure_ascii=False)}\n\n"
                         if "搜索结果" in _preemptive_result:
-                            yield f"data: {json.dumps({'type': 'tool_status', 'content': '✅ 搜索完成，模型可按需抓取完整页面'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 搜索完成，模型可按需抓取完整页面'}, ensure_ascii=False)}\n\n"
                         elif "网络侦察" in _preemptive_result:
-                            yield f"data: {json.dumps({'type': 'tool_status', 'content': '✅ 侦察完成，模型可按需抓取完整页面'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 侦察完成，模型可按需抓取完整页面'}, ensure_ascii=False)}\n\n"
                     yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'complete', 'total': 1, 'tool': _preemptive_tool, 'target': _preemptive_target, 'duration': round(time.time() - _preemptive_t0, 1)}, ensure_ascii=False)}\n\n"
 
                 # 注入Layer 1/2结果，模型通过Layer 3 function calling按需抓取完整页面
@@ -460,7 +364,7 @@ class ModelEnginePart10(object):
                     if _cv["action"] == "abort":
                         _dbg(f"STREAM_ABORT: {_cv['reason']}")
                         logger.warning(f"流式输出实时检测到拒绝，提前终止: {_cv['reason']}")
-                        yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 检测到拒绝，正在强制重试...'}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 检测到拒绝，正在强制重试...'}, ensure_ascii=False)}\n\n"
                         break
 
                     full_reply += piece
@@ -739,7 +643,7 @@ class ModelEnginePart10(object):
                     _is_empty_reply = not full_reply.strip() and not _has_any_tool_empty
 
                 if _is_empty_reply:
-                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 回复为空，正在重新生成...'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 回复为空，正在重新生成...'}, ensure_ascii=False)}\n\n"
                     # 使用强制回复提示词，不包含思考指令，确保模型直接回答
                     _force_reply_sys = (
                         "你是一个助手。用户对你说话，你必须直接用中文回复。"
@@ -813,7 +717,7 @@ class ModelEnginePart10(object):
                 _enforce_round = 0
                 while _v["should_retry"] and _enforce_round < _ctrl.MAX_ENFORCEMENT_ROUNDS:
                     yield f"data: {json.dumps({'type': 'clear'}, ensure_ascii=False)}\n\n"
-                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 检测到拒绝/空回复，强制执行重试（第' + str(_enforce_round+1) + '轮）...'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 检测到拒绝/空回复，强制执行重试（第' + str(_enforce_round+1) + '轮）...'}, ensure_ascii=False)}\n\n"
                     _enf_sys, _enf_user = _ctrl.build_enforcement_prompt(user_input, full_reply, _enforce_round)
                     _enf_temp = max(0.1, 0.7 - _enforce_round * 0.15)
                     full_reply = ""
@@ -945,11 +849,11 @@ class ModelEnginePart10(object):
                             _ntc_t0 = time.time()
                             try:
                                 from libertas.tools.legacy_mrhua.dork_parser import is_dork_query as _is_dork
-                                _db = "🎯高级 " if _is_dork(_query) else ""
+                                _db = "高级 " if _is_dork(_query) else ""
                             except Exception:
                                 _db = ""
-                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f'🔍 {_db}Layer2 搜索: {_query}'}, ensure_ascii=False)}\n\n"
-                            yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_search', 'target': _query[:40], 'content': f'🔍 {_db}搜索: {_query[:40]}'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f' {_db}Layer2 搜索: {_query}'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_search', 'target': _query[:40], 'content': f' {_db}搜索: {_query[:40]}'}, ensure_ascii=False)}\n\n"
                             try:
                                 from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
                                 _browse_urls_n = []
@@ -1001,12 +905,12 @@ class ModelEnginePart10(object):
                                             _url = _ku
                                             _corrected = True
                                             break
-                                _status_msg = f'🌐 Layer3 抓取: {_url[:50]}'
+                                _status_msg = f' Layer3 抓取: {_url[:50]}'
                                 if _corrected:
                                     _status_msg += ' (已修正为搜索结果中的URL)'
                                 yield f"data: {json.dumps({'type': 'tool_status', 'content': _status_msg}, ensure_ascii=False)}\n\n"
                                 _ntc_t0 = time.time()
-                                yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_fetch', 'target': _url[:40], 'content': f'🌐 抓取: {_url[:40]}'}, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_fetch', 'target': _url[:40], 'content': f' 抓取: {_url[:40]}'}, ensure_ascii=False)}\n\n"
                                 # 硬超时10秒，防止卡住
                                 import threading as _threading_fetch
                                 _fetch_result = {"page": None, "error": None}
@@ -1024,15 +928,15 @@ class ModelEnginePart10(object):
                                 _fetch_done.wait(timeout=20.0)
                                 if not _fetch_done.is_set():
                                     _result_str = f"【抓取超时】{_url} 在12秒内未响应，可能网站不可达或被反爬拦截。请尝试搜索结果中的其他URL。"
-                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 抓取超时'}, ensure_ascii=False)}\n\n"
+                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 抓取超时'}, ensure_ascii=False)}\n\n"
                                 elif _fetch_result["error"]:
                                     _result_str = f"【抓取失败】{_fetch_result['error']}"
-                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 抓取失败'}, ensure_ascii=False)}\n\n"
+                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 抓取失败'}, ensure_ascii=False)}\n\n"
                                 else:
                                     from libertas.tools.legacy_mrhua.web_engine import format_fetch_result
                                     _result_str = format_fetch_result(_fetch_result["page"], _url)
                                     yield f"data: {json.dumps({'type': 'web_view', 'url': _url}, ensure_ascii=False)}\n\n"
-                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '✅ 页面抓取完成'}, ensure_ascii=False)}\n\n"
+                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 页面抓取完成'}, ensure_ascii=False)}\n\n"
                             # 防御：确保结果是 str
                             if isinstance(_result_str, bytes):
                                 _result_str = _result_str.decode('utf-8', errors='replace')
@@ -1045,8 +949,8 @@ class ModelEnginePart10(object):
                         elif _ntc_name == "web_deep_search":
                             _query = _ntc_args.get("query", "")
                             _ntc_t0 = time.time()
-                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f'🔍 Layer2+3 深度搜索: {_query}'}, ensure_ascii=False)}\n\n"
-                            yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_deep_search', 'target': _query[:40], 'content': f'🔍 深度搜索: {_query[:40]}'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f' Layer2+3 深度搜索: {_query}'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_deep_search', 'target': _query[:40], 'content': f' 深度搜索: {_query[:40]}'}, ensure_ascii=False)}\n\n"
                             try:
                                 from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
                                 from libertas.tools.legacy_mrhua.web_engine import robust_fetch, format_fetch_result
@@ -1156,7 +1060,7 @@ class ModelEnginePart10(object):
                             if not _install_name:
                                 _result_str = "【错误】install_tool 需要 tool_name 参数"
                             else:
-                                _install_msg = "📦 安装工具: " + _install_name
+                                _install_msg = " 安装工具: " + _install_name
                                 yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'install_tool', 'target': _install_name[:40], 'content': _install_msg}, ensure_ascii=False)}\n\n"
                                 _install_start = time.time()
                                 try:
@@ -1187,7 +1091,7 @@ class ModelEnginePart10(object):
                             if not _sec_tool:
                                 _result_str = "【错误】security_tool 需要 tool_name 参数（编码解码等无目标工具可省略 target）"
                             else:
-                                yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _sec_tool, 'target': _sec_target[:40], 'content': f'🔧 调用安全工具: {_sec_tool} → {_sec_target[:40]}'}, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _sec_tool, 'target': _sec_target[:40], 'content': f' 调用安全工具: {_sec_tool} → {_sec_target[:40]}'}, ensure_ascii=False)}\n\n"
                                 _tool_start_time = time.time()
                                 try:
                                     from libertas.tools.tool_governance import get_executor
@@ -1323,7 +1227,7 @@ class ModelEnginePart10(object):
                                             }
                                         )
                                 except Exception as _scan_e:
-                                    print(f"⚠️ 保存扫描记忆失败: {_scan_e}")
+                                    print(f" 保存扫描记忆失败: {_scan_e}")
                             # 结果解析 + 自动编排
                             if _ntc_name == "security_tool" and _sec_result is not None and _sec_result.get("success"):
                                 try:
@@ -1346,7 +1250,7 @@ class ModelEnginePart10(object):
                                             _suggest_tasks = [t for t in _followups if t["risk"] != RISK_AUTO]
                                             if _auto_tasks:
                                                 for _ft in _auto_tasks[:3]:
-                                                    yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _ft['tool'], 'target': _ft['target'][:40], 'content': '🔧 自动编排: ' + _ft['tool'] + ' → ' + _ft['target'][:40]}, ensure_ascii=False)}\n\n"
+                                                    yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _ft['tool'], 'target': _ft['target'][:40], 'content': ' 自动编排: ' + _ft['tool'] + ' → ' + _ft['target'][:40]}, ensure_ascii=False)}\n\n"
                                                     try:
                                                         _ft_executor = get_executor(_sec_scanner)
                                                         _ft_type = detect_tool_type(_ft['tool'], _sec_scanner)
@@ -1415,13 +1319,13 @@ class ModelEnginePart10(object):
                             _elapsed = time.time() - _loop_start
                             if _elapsed > _GLOBAL_DEADLINE:
                                 _dbg(f"TOOL_ROUND: global deadline reached ({_elapsed:.0f}s), forcing final answer")
-                                yield f"data: {json.dumps({'type': 'tool_status', 'content': f'⏱️ 工具链执行超时({_elapsed:.0f}s)，正在用已有结果生成回答...'}, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps({'type': 'tool_status', 'content': f' 工具链执行超时({_elapsed:.0f}s)，正在用已有结果生成回答...'}, ensure_ascii=False)}\n\n"
                                 full_reply = "根据工具查询结果：\n\n" + native_tool_results[:4000]
                                 yield f"data: {json.dumps({'type': 'chunk', 'content': full_reply}, ensure_ascii=False)}\n\n"
                                 break
                             _round_start = time.time()
                             _dbg(f"TOOL_ROUND: starting round, total_calls={_total_tool_calls}, elapsed={_elapsed:.0f}s")
-                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f'🔄 继续执行多步骤任务... ({_elapsed:.0f}s)'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f' 继续执行多步骤任务... ({_elapsed:.0f}s)'}, ensure_ascii=False)}\n\n"
                             full_reply = ""
                             _r_buf = ""
                             _r_skip_think = False
@@ -1473,14 +1377,14 @@ class ModelEnginePart10(object):
                                         if time.time() - _last_hb > 3.0:
                                             _last_hb = time.time()
                                             _wait_elapsed = time.time() - _round_start
-                                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f'⏳ 模型思考中... ({_wait_elapsed:.0f}s)'}, ensure_ascii=False)}\n\n"
+                                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f' 模型思考中... ({_wait_elapsed:.0f}s)'}, ensure_ascii=False)}\n\n"
                                         continue
                                     if isinstance(piece, Exception):
                                         _dbg(f"TOOL_ROUND: stream exception: {piece}")
                                         logger.warning(f"多轮工具调用流异常: {piece}")
                                         # 使用兜底回复：基于已有工具结果生成回答
                                         _fb_content = "根据工具查询结果：\n\n" + (native_tool_results[:4000] if native_tool_results else "工具执行未返回完整结果。")
-                                        yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 模型响应异常，正在用已有结果生成回答...'}, ensure_ascii=False)}\n\n"
+                                        yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 模型响应异常，正在用已有结果生成回答...'}, ensure_ascii=False)}\n\n"
                                         yield f"data: {json.dumps({'type': 'chunk', 'content': _fb_content}, ensure_ascii=False)}\n\n"
                                         yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
                                         self.conversation_history.append(f"花先生: {self._strip_tool_calls(_fb_content)}")
@@ -1570,7 +1474,7 @@ class ModelEnginePart10(object):
                                         _dbg(f"TOOL_ROUND: executing {_tool_type} -> {_tool_arg[:40]}")
                                         # 使用原来的进度条功能：执行前发送 start，执行后发送 complete
                                         _round_t0 = time.time()
-                                        _tool_label = "🔍 搜索" if "SEARCH" in _tool_type else "🌐 抓取"
+                                        _tool_label = " 搜索" if "SEARCH" in _tool_type else " 抓取"
                                         yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _tool_type.lower(), 'target': _tool_arg[:50], 'content': f'{_tool_label}: {_tool_arg[:50]}'}, ensure_ascii=False)}\n\n"
                                         _web_result = self._execute_web_tool(f"<<<{_tool_type}:{_tool_arg}>>>")
                                         if _web_result:
@@ -1627,7 +1531,7 @@ class ModelEnginePart10(object):
                                                 continue
                                             _seen_call_sigs.add(_tt_sig)
                                             _tag_executed += 1
-                                            yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _tt.tool_name, 'target': str(_tt.target)[:40], 'content': f'🔧 调用安全工具: {_tt.tool_name} → {str(_tt.target)[:40]}'}, ensure_ascii=False)}\n\n"
+                                            yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _tt.tool_name, 'target': str(_tt.target)[:40], 'content': f' 调用安全工具: {_tt.tool_name} → {str(_tt.target)[:40]}'}, ensure_ascii=False)}\n\n"
                                             _t0 = time.time()
                                             try:
                                                 from libertas.tools.tool_governance import get_executor as _gx2, detect_tool_type as _dt2
@@ -1692,7 +1596,7 @@ class ModelEnginePart10(object):
                                     and not _forced_task_retry):
                                 _forced_task_retry = True
                                 _dbg("TASK_GUARD: task-like request but zero tool execution -> forcing tool_choice=required")
-                                yield f"data: {json.dumps({'type': 'tool_status', 'content': '🔄 检测到任务请求尚未实际执行工具，正在强制调用...'}, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 检测到任务请求尚未实际执行工具，正在强制调用...'}, ensure_ascii=False)}\n\n"
                                 continue
 
                             # ===== 失败重试守卫 =====
@@ -1723,14 +1627,14 @@ class ModelEnginePart10(object):
                                 )
                                 tool_messages.append({"role": "user", "content": _retry_hint})
                                 _dbg("TOOL_RETRY_GUARD: last tool failed -> asking model to adjust and retry")
-                                yield f"data: {json.dumps({'type': 'tool_status', 'content': '🔁 ' + _failed_tool + ' 执行失败，正在让它调整参数/换等价工具重试...'}, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps({'type': 'tool_status', 'content': ' ' + _failed_tool + ' 执行失败，正在让它调整参数/换等价工具重试...'}, ensure_ascii=False)}\n\n"
                                 continue
 
                             if not _r_native_calls or _r_error:
                                 # 诚实上报：强制过仍无执行，不要让它看起来像已完成
                                 if _task_like and _total_tool_calls == 0:
                                     _dbg("TASK_GUARD: still no tool execution after forced retry -> reporting NOT executed")
-                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 本次任务未实际执行任何工具（模型未发起工具调用），以下内容仅为说明'}, ensure_ascii=False)}\n\n"
+                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 本次任务未实际执行任何工具（模型未发起工具调用），以下内容仅为说明'}, ensure_ascii=False)}\n\n"
                                 if _r_buf.strip():
                                     yield f"data: {json.dumps({'type': 'chunk', 'content': _r_buf}, ensure_ascii=False)}\n\n"
                                 # 检查可见内容是否为空（去掉thinking标签和工具标记后）
@@ -1766,7 +1670,7 @@ class ModelEnginePart10(object):
                             # 防御3：全部是重复调用 → 强制最终回答
                             if not _new_calls:
                                 _dbg("TOOL_ROUND: all calls were duplicates, forcing final answer")
-                                yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 检测到重复工具调用，正在生成最终回答...'}, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 检测到重复工具调用，正在生成最终回答...'}, ensure_ascii=False)}\n\n"
                                 # 用已有结果做最终回答
                                 _final_prompt = user_prompt + "\n\n【工具调用结果】\n" + native_tool_results + "\n\n【重要指令】所有必要的工具已执行完毕，请直接根据以上结果给出完整回答，不要再次调用工具。"
                                 full_reply = ""
@@ -1876,7 +1780,7 @@ class ModelEnginePart10(object):
                                     if not _iname:
                                         _result_str = "【错误】install_tool 需要 tool_name 参数"
                                     else:
-                                        _imsg = "📦 安装工具: " + _iname
+                                        _imsg = " 安装工具: " + _iname
                                         yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'install_tool', 'target': _iname[:40], 'content': _imsg}, ensure_ascii=False)}\n\n"
                                         _it0 = time.time()
                                         try:
@@ -1896,7 +1800,7 @@ class ModelEnginePart10(object):
                                     _sec_target = _ntc_args.get("target", "")
                                     _sec_params = _ntc_args.get("params", {}) or {}
                                     if _sec_tool:
-                                        yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _sec_tool, 'target': _sec_target[:40], 'content': f'🔧 调用安全工具: {_sec_tool} → {_sec_target[:40]}'}, ensure_ascii=False)}\n\n"
+                                        yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': _sec_tool, 'target': _sec_target[:40], 'content': f' 调用安全工具: {_sec_tool} → {_sec_target[:40]}'}, ensure_ascii=False)}\n\n"
                                         _t0 = time.time()
                                         try:
                                             from libertas.tools.tool_governance import get_executor as _gx, detect_tool_type as _dt
@@ -1941,10 +1845,10 @@ class ModelEnginePart10(object):
                                     _ntc_t0 = time.time()
                                     try:
                                         from libertas.tools.legacy_mrhua.dork_parser import is_dork_query as _is_dork
-                                        _db2 = "🎯高级 " if _is_dork(_q) else ""
+                                        _db2 = "高级 " if _is_dork(_q) else ""
                                     except Exception:
                                         _db2 = ""
-                                    yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_search', 'target': _q[:40], 'content': f'🔍 {_db2}搜索: {_q[:40]}'}, ensure_ascii=False)}\n\n"
+                                    yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_search', 'target': _q[:40], 'content': f' {_db2}搜索: {_q[:40]}'}, ensure_ascii=False)}\n\n"
                                     try:
                                         _result_str = self._execute_web_tool(f"<<<WEB_SEARCH:{_q}>>>") or ""
                                     except Exception:
@@ -1954,7 +1858,7 @@ class ModelEnginePart10(object):
                                     _u = _ntc_args.get("url", "").strip()
                                     if _u:
                                         _ntc_t0 = time.time()
-                                        yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_fetch', 'target': _u[:40], 'content': f'🌐 抓取: {_u[:40]}'}, ensure_ascii=False)}\n\n"
+                                        yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_fetch', 'target': _u[:40], 'content': f' 抓取: {_u[:40]}'}, ensure_ascii=False)}\n\n"
                                         try:
                                             _result_str = self._execute_web_tool(f"<<<WEB_FETCH:{_u}>>>") or ""
                                         except Exception:
@@ -1976,7 +1880,7 @@ class ModelEnginePart10(object):
                             # 防御4：达到安全上限
                             if _MAX_TOOL_CALLS and _total_tool_calls >= _MAX_TOOL_CALLS:
                                 _dbg(f"TOOL_ROUND: reached max tool calls ({_MAX_TOOL_CALLS}), forcing final answer")
-                                yield f"data: {json.dumps({'type': 'tool_status', 'content': f'⚠️ 已达到工具调用上限({_MAX_TOOL_CALLS}次)，正在生成最终回答...'}, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps({'type': 'tool_status', 'content': f' 已达到工具调用上限({_MAX_TOOL_CALLS}次)，正在生成最终回答...'}, ensure_ascii=False)}\n\n"
                                 full_reply = ""
                                 _fb2 = "根据工具查询结果：\n\n" + native_tool_results[:4000]
                                 full_reply = _fb2
@@ -2053,9 +1957,9 @@ class ModelEnginePart10(object):
                 if _has_any_tool:
                     yield f"data: {json.dumps({'type': 'clear'}, ensure_ascii=False)}\n\n"
                     if _has_search_call:
-                        yield f"data: {json.dumps({'type': 'tool_status', 'content': '🔍 正在搜索...'}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 正在搜索...'}, ensure_ascii=False)}\n\n"
                     elif _has_fetch_call:
-                        yield f"data: {json.dumps({'type': 'tool_status', 'content': '🌐 正在抓取网页...'}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 正在抓取网页...'}, ensure_ascii=False)}\n\n"
 
                 # 逐个执行工具，每步都通过内置浏览器追踪
                 import re as _re_tp
@@ -2087,15 +1991,15 @@ class ModelEnginePart10(object):
                         # 发送搜索步骤状态到前端
                         try:
                             step_labels = {
-                                'searching': '🔍 正在搜索: ' + kw.get('query', ''),
-                                'search_start': '🔍 开始搜索: ' + kw.get('keyword', ''),
-                                'fetching_page': '📄 正在抓取页面: ' + kw.get('title', url)[:50],
-                                'fetch_start': '🌐 正在访问: ' + url[:60],
-                                'page_fetched': '✅ 已获取页面: ' + kw.get('title', url)[:50] + ' (' + str(kw.get('chars', 0)) + ' 字符)',
-                                'search_results': '📋 找到 ' + str(kw.get('count', 0)) + ' 条结果',
-                                'search_done': '✅ 搜索完成，共 ' + str(kw.get('count', 0)) + ' 条',
-                                'page_error': '❌ 页面抓取失败: ' + kw.get('error', '')[:50],
-                                'search_error': '❌ 搜索失败: ' + kw.get('error', '')[:50],
+                                'searching': ' 正在搜索: ' + kw.get('query', ''),
+                                'search_start': ' 开始搜索: ' + kw.get('keyword', ''),
+                                'fetching_page': ' 正在抓取页面: ' + kw.get('title', url)[:50],
+                                'fetch_start': ' 正在访问: ' + url[:60],
+                                'page_fetched': ' 已获取页面: ' + kw.get('title', url)[:50] + ' (' + str(kw.get('chars', 0)) + ' 字符)',
+                                'search_results': ' 找到 ' + str(kw.get('count', 0)) + ' 条结果',
+                                'search_done': ' 搜索完成，共 ' + str(kw.get('count', 0)) + ' 条',
+                                'page_error': ' 页面抓取失败: ' + kw.get('error', '')[:50],
+                                'search_error': ' 搜索失败: ' + kw.get('error', '')[:50],
                             }
                             if step in step_labels:
                                 _status_events.append(step_labels[step])
@@ -2159,7 +2063,7 @@ class ModelEnginePart10(object):
                         pass
 
                     _total_sec = len(_sec_tasks)
-                    yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': _total_sec, 'workers': _batch_workers, 'timeout': _batch_timeout, 'content': f'🔧 批量执行 {_total_sec} 个工具任务（并发{_batch_workers}，单任务超时{_batch_timeout:.0f}s）'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': _total_sec, 'workers': _batch_workers, 'timeout': _batch_timeout, 'content': f' 批量执行 {_total_sec} 个工具任务（并发{_batch_workers}，单任务超时{_batch_timeout:.0f}s）'}, ensure_ascii=False)}\n\n"
 
                     import queue as _queue_mod
                     _progress_q = _queue_mod.Queue()
@@ -2213,7 +2117,7 @@ class ModelEnginePart10(object):
                         if evt.get("step") == "start":
                             yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'task_start', 'tool': evt['tool'], 'target': evt['target'], 'done': _done_count[0], 'total': _total_sec}, ensure_ascii=False)}\n\n"
                         elif evt.get("step") == "done":
-                            _ok = "✅" if evt["success"] else "❌"
+                            _ok = "成功" if evt["success"] else "失败"
                             _status_line = f'  [{evt["done"]}/{evt["total"]}] {_ok} {evt["tool"]} → {evt["target"]}'
                             yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'task_done', 'tool': evt['tool'], 'target': evt['target'], 'success': evt['success'], 'duration': round(evt.get('duration', 0), 1), 'done': evt['done'], 'total': evt['total'], 'content': _status_line}, ensure_ascii=False)}\n\n"
 
@@ -2229,7 +2133,7 @@ class ModelEnginePart10(object):
                 # 预搜索已完成或安全工具已执行时不再强制搜索
                 if not tool_results and not _preemptive_result and not native_tool_results and self._needs_web_search(user_input) and not _has_any_tool:
                     _dbg("CORRECTIVE_RETRY: model did not call any tools, forcing retry")
-                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '🔄 正在纠正模型行为，强制调用搜索...'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 正在纠正模型行为，强制调用搜索...'}, ensure_ascii=False)}\n\n"
                     _search_kw = self._extract_search_keyword(user_input)
                     _corrective_sys = (
                         system_content + "\n\n"
@@ -2259,7 +2163,7 @@ class ModelEnginePart10(object):
                                 _tc_args = tc_data.get("arguments", {})
                                 if _tc_name == "web_search":
                                     _q = _tc_args.get("query", _search_kw)
-                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': f'🔍 正在搜索: {_q}'}, ensure_ascii=False)}\n\n"
+                                    yield f"data: {json.dumps({'type': 'tool_status', 'content': f' 正在搜索: {_q}'}, ensure_ascii=False)}\n\n"
                                     tool_results = self._execute_web_tool(f"<<<WEB_SEARCH:{_q}>>>") or ""
                                 elif _tc_name == "web_fetch":
                                     _u = _tc_args.get("url", "")
@@ -2276,7 +2180,7 @@ class ModelEnginePart10(object):
                         if _cm:
                             _ct = _cm.group(1).upper()
                             _ca = _cm.group(2).strip()
-                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f'🔍 正在搜索: {_ca}'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_status', 'content': f' 正在搜索: {_ca}'}, ensure_ascii=False)}\n\n"
                             tool_results = self._execute_web_tool(f"<<<WEB_{_ct}:{_ca}>>>") or ""
                     if tool_results:
                         _dbg("CORRECTIVE_RETRY: success, tool executed")
@@ -2300,9 +2204,9 @@ class ModelEnginePart10(object):
                     elif self._detect_search_noncompliance(full_reply, user_input):
                         _reason = "未执行"
                     if _reason:
-                        yield f"data: {json.dumps({'type': 'tool_status', 'content': f'🔍 检测到模型{_reason}搜索，本地直接执行...'}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'tool_status', 'content': f' 检测到模型{_reason}搜索，本地直接执行...'}, ensure_ascii=False)}\n\n"
                     else:
-                        yield f"data: {json.dumps({'type': 'tool_status', 'content': '🔍 本地执行搜索...'}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 本地执行搜索...'}, ensure_ascii=False)}\n\n"
                     _browse_urls, _seen_urls = [], set()
                     tool_results = self._auto_execute_search(
                         user_input,
@@ -2318,16 +2222,16 @@ class ModelEnginePart10(object):
                 if (not tool_results and not native_tool_results
                         and not _has_any_tool and _task_like):
                     _dbg("TASK_GUARD: task-like but zero tool execution after all fallbacks -> NOT executed")
-                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '⚠️ 本次任务未实际执行任何工具（模型未发起工具调用），以下内容仅为说明，不代表任务已完成'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 本次任务未实际执行任何工具（模型未发起工具调用），以下内容仅为说明，不代表任务已完成'}, ensure_ascii=False)}\n\n"
                     full_reply = (
-                        "⚠️ **未执行**：本次任务没有实际调用任何工具，因此没有被真正执行。\n\n"
+                        " **未执行**：本次任务没有实际调用任何工具，因此没有被真正执行。\n\n"
                         "可能原因：模型未发起工具调用、或所选模型不支持 function calling。\n\n"
                         "模型给出的说明（仅供参考）：\n\n"
                     ) + (full_reply or "")
                     yield f"data: {json.dumps({'type': 'chunk', 'content': full_reply}, ensure_ascii=False)}\n\n"
 
                 if tool_results:
-                    yield f"data: {json.dumps({'type': 'tool_status', 'content': '✅ 工具执行完成，正在整理结果...'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 工具执行完成，正在整理结果...'}, ensure_ascii=False)}\n\n"
                     followup_prompt = (
                         user_prompt +
                         "\n\n【工具调用结果】\n" + tool_results +
@@ -2614,7 +2518,7 @@ class ModelEnginePart10(object):
 
             except Exception as e:
                 self.last_cloud_error = str(e)
-                logger.error(f"☁️ 云端流式调用失败: {e}")
+                logger.error(f" 云端流式调用失败: {e}")
                 import traceback as _tb
                 logger.error(_tb.format_exc())
                 _dbg(f"EXCEPTION: {type(e).__name__}: {e}")
@@ -2626,14 +2530,14 @@ class ModelEnginePart10(object):
                         _df.write(_tb.format_exc())
                 except Exception:
                     pass
-                yield f"data: {json.dumps({'type': 'error', 'content': f'☁️ 云端服务暂时不可用: {e}'}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'content': f' 云端服务暂时不可用: {e}'}, ensure_ascii=False)}\n\n"
                 return
 
         # ----- 本地模式（或 auto 模式回退到本地） -----
         # 确保模型已加载（GGUF模型的tokenizer是None，用_is_gguf_model判断）
         if not self.model or (not self.tokenizer and not self._is_gguf_model):
             if not self.load_model():
-                yield f"data: {json.dumps({'type': 'error', 'content': '💭 模型尚未就绪，请稍后再试。'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'content': ' 模型尚未就绪，请稍后再试。'})}\n\n"
                 return
 
         # GGUF模型流式生成分支（llama-cpp-python，加载快、显存小）
@@ -2763,7 +2667,7 @@ class ModelEnginePart10(object):
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
             except Exception as e:
-                logger.error(f"❌ GGUF流式生成失败: {e}")
+                logger.error(f" GGUF流式生成失败: {e}")
                 import traceback
                 traceback.print_exc()
                 yield f"data: {json.dumps({'type': 'error', 'content': f'生成失败: {e}'}, ensure_ascii=False)}\n\n"

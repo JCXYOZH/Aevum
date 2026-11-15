@@ -1,113 +1,18 @@
-# models/model_engine.py
-# 模型引擎：负责本地/云端模型的加载、推理、流式生成
-# 支持量化加载（4bit/8bit）、CPU/GPU 混合、自动降级
-import os
-import sys
-import json
-import time
-import math
-import random
-import threading
-import hashlib
-import re
-from collections import deque, OrderedDict
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable
-try:
-    import jieba
-except ImportError:
-    jieba = None
-
-# 尝试导入 transformers 相关
-try:
-    import torch
-except ImportError:
-    torch = None
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, TextIteratorStreamer
-    try:
-        from transformers import logging as _transformers_logging
-        logger = _transformers_logging.get_logger(__name__)
-    except Exception:
-        logger = None
-except ImportError:
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    GenerationConfig = None
-    TextIteratorStreamer = None
-    logger = None
-
-# 兜底：纯云端安装（未安装 transformers）时 logger 会是 None，
-# 会让下面所有 logger.warning/info 抛 AttributeError，把真正的错误盖掉。
-if logger is None:
-    import logging as _std_logging
-    logger = _std_logging.getLogger(__name__)
-
-# 尝试导入 bitsandbytes（量化）
-# bitsandbytes 与某些 torch 版本不兼容时，可能在导入阶段抛出 AttributeError
-# （例如 module 'torch' has no attribute 'library'），这不应导致整个模型引擎无法加载。
-bitsandbytes = None
-bitsandbytes_import_error = None
-try:
-    import bitsandbytes
-except Exception as exc:  # noqa: BLE001 - optional dependency may fail under incompatible envs
-    bitsandbytes_import_error = exc
-    bitsandbytes = None
-    if logger is not None:
-        logger.warning("bitsandbytes 不可用，跳过 8-bit/4-bit 量化: %s", exc)
-
-# 尝试导入 llama-cpp-python（GGUF格式支持，加载速度快3-5倍，显存占用小）
-# 某些 Windows / 打包环境下，llama_cpp 的原生库路径可能不存在，导致 FileNotFoundError
-# 或其他加载错误；这不应让整个 MrHua 在启动时崩溃。
-LlamaCpp = None
-_llama_cpp_available = False
-llama_cpp_import_error = None
-try:
-    from llama_cpp import Llama as LlamaCpp
-    _llama_cpp_available = True
-except Exception as exc:  # noqa: BLE001 - optional native dependency may fail on missing DLLs
-    llama_cpp_import_error = exc
-    LlamaCpp = None
-    _llama_cpp_available = False
-    if logger is not None:
-        logger.warning("llama_cpp 不可用，GGUF 模型加载已禁用: %s", exc)
-
-# 尝试导入 requests（云端调用）
-try:
-    import requests
-except ImportError:
-    requests = None
-
-# SSH隧道管理器
-try:
-    from libertas.network.ssh_tunnel import SSHTunnelManager
-except Exception:
-    SSHTunnelManager = None
-
-# 隐私脱敏引擎
-try:
-    from libertas.security.privacy import PrivacySanitizer
-except Exception:
-    PrivacySanitizer = None
-
-# 导入用户管理（用于规则加载）
-from libertas.identity.user import UserManager
-from libertas.tools.batch_executor import extract_tasks_from_reply, BatchExecutor
-from libertas.foundation.config import get_data_dir
+from ._shared import *  # noqa: F401,F403
+from ._shared import _llama_cpp_available  # noqa: F401
 
 # ==================== 模型LRU缓存 ====================
 from .model_cache import *  # noqa: F401,F403
 from .core import *  # noqa: F401,F403
-from .methods_1 import *  # noqa: F401,F403
-from .methods_2 import *  # noqa: F401,F403
-from .methods_3 import *  # noqa: F401,F403
-from .methods_4 import *  # noqa: F401,F403
-from .methods_5 import *  # noqa: F401,F403
-from .methods_6 import *  # noqa: F401,F403
-from .methods_7 import *  # noqa: F401,F403
+from .prompt_context import *  # noqa: F401,F403
+from .prompt_settings import *  # noqa: F401,F403
+from .message_safety import *  # noqa: F401,F403
+from .cloud_api import *  # noqa: F401,F403
+from .tool_retry import *  # noqa: F401,F403
+from .cloud_stream import *  # noqa: F401,F403
+from .model_lifecycle import *  # noqa: F401,F403
 
-class ModelEnginePart8(object):
+class ModelEngineModelLoadFallback(object):
     def _attempt_gguf_loading(self) -> bool:
         """尝试加载GGUF格式模型（llama-cpp-python）。
         优势：加载速度快3-5倍，显存占用小，支持CPU/GPU混合。
@@ -127,7 +32,7 @@ class ModelEnginePart8(object):
                 gguf_path = self.model_path  # 路径本身就是.gguf文件
             else:
                 gguf_path = os.path.join(self.model_path, gguf_file)
-            logger.info(f"🚀 尝试 GGUF 加载: {gguf_file}")
+            logger.info(f" 尝试 GGUF 加载: {gguf_file}")
 
             # 解析配置
             model_config = self.configuration.get("模型", {}) or {}
@@ -143,11 +48,11 @@ class ModelEnginePart8(object):
                     # 如果模型大小超过显存的70%，只放部分层到GPU
                     if model_size > total_vram * 0.7:
                         n_gpu_layers = 20  # 放20层到GPU，其余CPU
-                        logger.info(f"⚠️ 模型较大({model_size}GB)，仅放{n_gpu_layers}层到GPU")
+                        logger.info(f" 模型较大({model_size}GB)，仅放{n_gpu_layers}层到GPU")
                 except Exception:
                     pass
 
-            print(f"📦 GGUF加载参数: n_ctx={n_ctx}, n_threads={n_threads}, n_gpu_layers={n_gpu_layers}")
+            print(f" GGUF加载参数: n_ctx={n_ctx}, n_threads={n_threads}, n_gpu_layers={n_gpu_layers}")
 
             # 加载模型
             self._gguf_llm = LlamaCpp(
@@ -170,12 +75,12 @@ class ModelEnginePart8(object):
             quant_type = self._current_model_info.get("gguf_quant_type", "unknown")
             self._record_quantization_status("gguf", True, True,
                                               f"GGUF({quant_type})加载成功, GPU层数={n_gpu_layers}")
-            print(f"✅ GGUF模型加载成功: {gguf_file}, 量化={quant_type}, 设备={self.device}")
+            print(f" GGUF模型加载成功: {gguf_file}, 量化={quant_type}, 设备={self.device}")
             return True
         except Exception as e:
             import traceback as _tb
             _err_detail = f"{type(e).__name__}: {e}"
-            print(f"❌ GGUF加载失败: {_err_detail}")
+            print(f" GGUF加载失败: {_err_detail}")
             print(f"   详细错误:\n{_tb.format_exc()}")
             logger.warning(f"GGUF加载失败: {_err_detail}")
             self._gguf_llm = None
@@ -217,7 +122,7 @@ class ModelEnginePart8(object):
         if not torch or not torch.cuda.is_available():
             return False
         try:
-            logger.info("🚀 尝试原始混合加载...")
+            logger.info(" 尝试原始混合加载...")
             total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
             used = torch.cuda.memory_allocated() / 1024**3
             available = total_vram - used
@@ -237,7 +142,7 @@ class ModelEnginePart8(object):
                 device_map[f"model.layers.{i}"] = "cuda:0"
             for i in range(gpu_layers, total_layers):
                 device_map[f"model.layers.{i}"] = "cpu"
-            logger.info(f"🎯 分配策略: {gpu_layers}层GPU, {total_layers - gpu_layers}层CPU")
+            logger.info(f" 分配策略: {gpu_layers}层GPU, {total_layers - gpu_layers}层CPU")
             if self._load_with_device_map(device_map, "原始混合加载"):
                 self._record_quantization_status(self.configuration.get("模型", {}).get("量化模式", "auto"), False, True, "原生精度/混合加载成功")
                 return True
@@ -265,7 +170,7 @@ class ModelEnginePart8(object):
                 if gpu_layers < self.mixed_loading_configuration["最小GPU层数"]:
                     continue
                 try:
-                    logger.info(f"🚀 尝试减少GPU层数到 {gpu_layers} ...")
+                    logger.info(f" 尝试减少GPU层数到 {gpu_layers} ...")
                     # 注意：此 device_map 仅适用于 Llama/Qwen 架构，其他架构会自动回退到 auto
                     device_map = {}
                     device_map["model.embed_tokens"] = "cuda:0"
@@ -298,7 +203,7 @@ class ModelEnginePart8(object):
             self._record_quantization_status("8bit", False, False, "bitsandbytes 未安装，跳过 8-bit 量化")
             return False
         try:
-            logger.info("🚀 尝试 8-bit 量化加载...")
+            logger.info(" 尝试 8-bit 量化加载...")
             from transformers import BitsAndBytesConfig
             _quant_config = BitsAndBytesConfig(load_in_8bit=True)
             # 优化：优先加载safetensors格式，使用SDPA注意力加速
@@ -320,7 +225,7 @@ class ModelEnginePart8(object):
         except Exception as e:
             import traceback as _tb
             _err_detail = f"{type(e).__name__}: {e}"
-            print(f"❌ 8-bit 量化加载失败: {_err_detail}")
+            print(f" 8-bit 量化加载失败: {_err_detail}")
             print(f"   详细错误:\n{_tb.format_exc()}")
             logger.warning(f"8-bit 量化加载失败: {_err_detail}")
             self._record_quantization_status("8bit", False, False, f"8-bit 量化加载失败: {_err_detail}")
@@ -337,7 +242,7 @@ class ModelEnginePart8(object):
             self._record_quantization_status("4bit", False, False, "bitsandbytes 未安装，跳过 4-bit 量化")
             return False
         try:
-            logger.info("🚀 尝试 4-bit 量化加载（NF4+双重量化+FP16计算）...")
+            logger.info(" 尝试 4-bit 量化加载（NF4+双重量化+FP16计算）...")
             from transformers import BitsAndBytesConfig
             # 优化：NF4量化精度更好，双重量化进一步减显存，FP16计算速度更快
             _quant_config = BitsAndBytesConfig(
@@ -365,14 +270,14 @@ class ModelEnginePart8(object):
         except Exception as e:
             import traceback as _tb
             _err_detail = f"{type(e).__name__}: {e}"
-            print(f"❌ 4-bit 量化加载失败: {_err_detail}")
+            print(f" 4-bit 量化加载失败: {_err_detail}")
             print(f"   详细错误:\n{_tb.format_exc()}")
             logger.warning(f"4-bit 量化加载失败: {_err_detail}")
             self._record_quantization_status("4bit", False, False, f"4-bit 量化加载失败: {_err_detail}")
             return False
     def _attempt_CPU_mode(self) -> bool:
         try:
-            logger.info("🚀 尝试 CPU 模式加载...")
+            logger.info(" 尝试 CPU 模式加载...")
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_path,
                 torch_dtype=torch.float32,

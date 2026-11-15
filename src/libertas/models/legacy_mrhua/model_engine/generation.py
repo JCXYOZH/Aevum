@@ -1,114 +1,18 @@
-# models/model_engine.py
-# 模型引擎：负责本地/云端模型的加载、推理、流式生成
-# 支持量化加载（4bit/8bit）、CPU/GPU 混合、自动降级
-import os
-import sys
-import json
-import time
-import math
-import random
-import threading
-import hashlib
-import re
-from collections import deque, OrderedDict
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable
-try:
-    import jieba
-except ImportError:
-    jieba = None
-
-# 尝试导入 transformers 相关
-try:
-    import torch
-except ImportError:
-    torch = None
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, TextIteratorStreamer
-    try:
-        from transformers import logging as _transformers_logging
-        logger = _transformers_logging.get_logger(__name__)
-    except Exception:
-        logger = None
-except ImportError:
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    GenerationConfig = None
-    TextIteratorStreamer = None
-    logger = None
-
-# 兜底：纯云端安装（未安装 transformers）时 logger 会是 None，
-# 会让下面所有 logger.warning/info 抛 AttributeError，把真正的错误盖掉。
-if logger is None:
-    import logging as _std_logging
-    logger = _std_logging.getLogger(__name__)
-
-# 尝试导入 bitsandbytes（量化）
-# bitsandbytes 与某些 torch 版本不兼容时，可能在导入阶段抛出 AttributeError
-# （例如 module 'torch' has no attribute 'library'），这不应导致整个模型引擎无法加载。
-bitsandbytes = None
-bitsandbytes_import_error = None
-try:
-    import bitsandbytes
-except Exception as exc:  # noqa: BLE001 - optional dependency may fail under incompatible envs
-    bitsandbytes_import_error = exc
-    bitsandbytes = None
-    if logger is not None:
-        logger.warning("bitsandbytes 不可用，跳过 8-bit/4-bit 量化: %s", exc)
-
-# 尝试导入 llama-cpp-python（GGUF格式支持，加载速度快3-5倍，显存占用小）
-# 某些 Windows / 打包环境下，llama_cpp 的原生库路径可能不存在，导致 FileNotFoundError
-# 或其他加载错误；这不应让整个 MrHua 在启动时崩溃。
-LlamaCpp = None
-_llama_cpp_available = False
-llama_cpp_import_error = None
-try:
-    from llama_cpp import Llama as LlamaCpp
-    _llama_cpp_available = True
-except Exception as exc:  # noqa: BLE001 - optional native dependency may fail on missing DLLs
-    llama_cpp_import_error = exc
-    LlamaCpp = None
-    _llama_cpp_available = False
-    if logger is not None:
-        logger.warning("llama_cpp 不可用，GGUF 模型加载已禁用: %s", exc)
-
-# 尝试导入 requests（云端调用）
-try:
-    import requests
-except ImportError:
-    requests = None
-
-# SSH隧道管理器
-try:
-    from libertas.network.ssh_tunnel import SSHTunnelManager
-except Exception:
-    SSHTunnelManager = None
-
-# 隐私脱敏引擎
-try:
-    from libertas.security.privacy import PrivacySanitizer
-except Exception:
-    PrivacySanitizer = None
-
-# 导入用户管理（用于规则加载）
-from libertas.identity.user import UserManager
-from libertas.tools.batch_executor import extract_tasks_from_reply, BatchExecutor
-from libertas.foundation.config import get_data_dir
+from ._shared import *  # noqa: F401,F403
 
 # ==================== 模型LRU缓存 ====================
 from .model_cache import *  # noqa: F401,F403
 from .core import *  # noqa: F401,F403
-from .methods_1 import *  # noqa: F401,F403
-from .methods_2 import *  # noqa: F401,F403
-from .methods_3 import *  # noqa: F401,F403
-from .methods_4 import *  # noqa: F401,F403
-from .methods_5 import *  # noqa: F401,F403
-from .methods_6 import *  # noqa: F401,F403
-from .methods_7 import *  # noqa: F401,F403
-from .methods_8 import *  # noqa: F401,F403
+from .prompt_context import *  # noqa: F401,F403
+from .prompt_settings import *  # noqa: F401,F403
+from .message_safety import *  # noqa: F401,F403
+from .cloud_api import *  # noqa: F401,F403
+from .tool_retry import *  # noqa: F401,F403
+from .cloud_stream import *  # noqa: F401,F403
+from .model_lifecycle import *  # noqa: F401,F403
+from .model_load_fallback import *  # noqa: F401,F403
 
-class ModelEnginePart9(object):
+class ModelEngineGeneration(object):
     def generate_response(self, user_input: str, max_length: int = None, temperature: float = None, context: Dict[str, Any] = None) -> str:
         """生成回复（支持云端/本地/规则降级）"""
         # 防御：确保 user_input 是 str
@@ -218,16 +122,16 @@ class ModelEnginePart9(object):
                     return reply
                 except Exception as e:
                     self.last_cloud_error = str(e)
-                    logger.warning(f"☁️ 云端模型调用失败，降级到规则模式: {e}")
-                    return f"☁️ 云端服务暂时不可用，请检查配置。错误: {e}"
+                    logger.warning(f" 云端模型调用失败，降级到规则模式: {e}")
+                    return f" 云端服务暂时不可用，请检查配置。错误: {e}"
 
             # 本地模式（或 auto）
             if self.loading_failed_permanently:
-                return "💭 模型当前不可用，花先生以规则模式回应你……"
+                return " 模型当前不可用，花先生以规则模式回应你……"
             if not self.model or self.model_loading_status != "已加载":
                 if not self.load_model():
                     self.loading_failed_permanently = True
-                    return "💭 花先生正在准备中，请稍候..."
+                    return " 花先生正在准备中，请稍候..."
             if not self.tokenizer and not self._is_gguf_model:
                 try:
                     if AutoTokenizer is not None:
@@ -235,10 +139,10 @@ class ModelEnginePart9(object):
                         if self.tokenizer.pad_token is None:
                             self.tokenizer.pad_token = self.tokenizer.eos_token
                     else:
-                        return "💭 当前环境缺少 tokenizer，已切换到规则回复。"
+                        return " 当前环境缺少 tokenizer，已切换到规则回复。"
                 except Exception as e:
-                    print(f"⚠️ tokenizer 初始化失败: {e}")
-                    return "💭 当前模型不可用，已切换到规则回复。"
+                    print(f" tokenizer 初始化失败: {e}")
+                    return " 当前模型不可用，已切换到规则回复。"
 
             start_time = datetime.now().timestamp()
 
@@ -329,14 +233,14 @@ class ModelEnginePart9(object):
                     self._update_history(user_input, reply)
                     elapsed = datetime.now().timestamp() - start_time
                     self._update_stats(success=True, reply=reply, elapsed=elapsed)
-                    logger.info(f"✅ GGUF生成成功 - 耗时: {elapsed:.2f}s")
+                    logger.info(f" GGUF生成成功 - 耗时: {elapsed:.2f}s")
                     return reply
                 except Exception as e:
                     self.performance_statistics["生成失败次数"] += 1
-                    logger.error(f"❌ GGUF生成失败: {e}")
+                    logger.error(f" GGUF生成失败: {e}")
                     import traceback
                     traceback.print_exc()
-                    return "😁 花先生思考时遇到了些波动，请再试一次"
+                    return " 花先生思考时遇到了些波动，请再试一次"
 
             self.performance_statistics["总调用次数"] += 1
             try:
@@ -448,15 +352,15 @@ class ModelEnginePart9(object):
                     reply = self._optimize_final_response(reply)
                     self._update_history(user_input, reply)
                 else:
-                    reply = "😁 花先生的思绪正在整理中..."
+                    reply = " 花先生的思绪正在整理中..."
                 elapsed = datetime.now().timestamp() - start_time
                 self._update_stats(success=True, reply=reply, elapsed=elapsed)
-                logger.info(f"✅ 生成成功 - 耗时: {elapsed:.2f}s")
+                logger.info(f" 生成成功 - 耗时: {elapsed:.2f}s")
                 return reply
             except Exception as e:
                 self.performance_statistics["生成失败次数"] += 1
-                logger.error(f"❌ 生成失败: {e}")
-                return "😁 花先生思考时遇到了些波动，请再试一次"
+                logger.error(f" 生成失败: {e}")
+                return " 花先生思考时遇到了些波动，请再试一次"
     def cancel_generation(self):
         """取消正在进行的生成（流式和非流式均支持）"""
         self._cancel_flag.set()

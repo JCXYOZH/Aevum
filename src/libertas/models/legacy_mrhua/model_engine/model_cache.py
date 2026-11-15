@@ -1,100 +1,4 @@
-# models/model_engine.py
-# 模型引擎：负责本地/云端模型的加载、推理、流式生成
-# 支持量化加载（4bit/8bit）、CPU/GPU 混合、自动降级
-import os
-import sys
-import json
-import time
-import math
-import random
-import threading
-import hashlib
-import re
-from collections import deque, OrderedDict
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable
-try:
-    import jieba
-except ImportError:
-    jieba = None
-
-# 尝试导入 transformers 相关
-try:
-    import torch
-except ImportError:
-    torch = None
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, TextIteratorStreamer
-    try:
-        from transformers import logging as _transformers_logging
-        logger = _transformers_logging.get_logger(__name__)
-    except Exception:
-        logger = None
-except ImportError:
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    GenerationConfig = None
-    TextIteratorStreamer = None
-    logger = None
-
-# 兜底：纯云端安装（未安装 transformers）时 logger 会是 None，
-# 会让下面所有 logger.warning/info 抛 AttributeError，把真正的错误盖掉。
-if logger is None:
-    import logging as _std_logging
-    logger = _std_logging.getLogger(__name__)
-
-# 尝试导入 bitsandbytes（量化）
-# bitsandbytes 与某些 torch 版本不兼容时，可能在导入阶段抛出 AttributeError
-# （例如 module 'torch' has no attribute 'library'），这不应导致整个模型引擎无法加载。
-bitsandbytes = None
-bitsandbytes_import_error = None
-try:
-    import bitsandbytes
-except Exception as exc:  # noqa: BLE001 - optional dependency may fail under incompatible envs
-    bitsandbytes_import_error = exc
-    bitsandbytes = None
-    if logger is not None:
-        logger.warning("bitsandbytes 不可用，跳过 8-bit/4-bit 量化: %s", exc)
-
-# 尝试导入 llama-cpp-python（GGUF格式支持，加载速度快3-5倍，显存占用小）
-# 某些 Windows / 打包环境下，llama_cpp 的原生库路径可能不存在，导致 FileNotFoundError
-# 或其他加载错误；这不应让整个 MrHua 在启动时崩溃。
-LlamaCpp = None
-_llama_cpp_available = False
-llama_cpp_import_error = None
-try:
-    from llama_cpp import Llama as LlamaCpp
-    _llama_cpp_available = True
-except Exception as exc:  # noqa: BLE001 - optional native dependency may fail on missing DLLs
-    llama_cpp_import_error = exc
-    LlamaCpp = None
-    _llama_cpp_available = False
-    if logger is not None:
-        logger.warning("llama_cpp 不可用，GGUF 模型加载已禁用: %s", exc)
-
-# 尝试导入 requests（云端调用）
-try:
-    import requests
-except ImportError:
-    requests = None
-
-# SSH隧道管理器
-try:
-    from libertas.network.ssh_tunnel import SSHTunnelManager
-except Exception:
-    SSHTunnelManager = None
-
-# 隐私脱敏引擎
-try:
-    from libertas.security.privacy import PrivacySanitizer
-except Exception:
-    PrivacySanitizer = None
-
-# 导入用户管理（用于规则加载）
-from libertas.identity.user import UserManager
-from libertas.tools.batch_executor import extract_tasks_from_reply, BatchExecutor
-from libertas.foundation.config import get_data_dir
+from ._shared import *  # noqa: F401,F403
 
 # ==================== 模型LRU缓存 ====================
 
@@ -145,7 +49,7 @@ class ModelCache:
         while len(self._cache) >= max_size:
             # 淘汰最久未使用的（OrderedDict的第一个）
             oldest_path, oldest_data = self._cache.popitem(last=False)
-            print(f"🗑️ 模型缓存淘汰: {oldest_path}")
+            print(f" 模型缓存淘汰: {oldest_path}")
             self._unload_model(oldest_data)
 
         # 如果指定了最大显存，检查显存是否超限
@@ -154,7 +58,7 @@ class ModelCache:
             new_vram = self._estimate_model_vram_gb(new_model_info)
             while current_vram + new_vram > self._max_vram_gb and len(self._cache) > 0:
                 oldest_path, oldest_data = self._cache.popitem(last=False)
-                print(f"🗑️ 显存不足，淘汰模型: {oldest_path}")
+                print(f" 显存不足，淘汰模型: {oldest_path}")
                 self._unload_model(oldest_data)
                 current_vram = self._get_current_vram_gb()
 
@@ -184,7 +88,7 @@ class ModelCache:
             except Exception:
                 pass
         except Exception as e:
-            print(f"⚠️ 模型卸载时出错: {e}")
+            print(f" 模型卸载时出错: {e}")
 
     def get(self, model_path: str):
         """从缓存获取模型。命中则更新访问时间，返回模型数据；未命中返回None。"""
@@ -193,7 +97,7 @@ class ModelCache:
                 # 移到末尾（最近使用）
                 self._cache.move_to_end(model_path)
                 self._cache[model_path]["last_used"] = time.time()
-                print(f"✅ 模型缓存命中: {model_path}")
+                print(f" 模型缓存命中: {model_path}")
                 return self._cache[model_path]
             return None
 
@@ -217,7 +121,7 @@ class ModelCache:
                 "gguf_llm": gguf_llm,
                 "last_used": time.time(),
             }
-            print(f"📦 模型已放入缓存: {model_path} (当前缓存: {len(self._cache)}/{self._max_size or 'auto'})")
+            print(f" 模型已放入缓存: {model_path} (当前缓存: {len(self._cache)}/{self._max_size or 'auto'})")
 
     def remove(self, model_path: str):
         """从缓存移除指定模型。"""
@@ -225,7 +129,7 @@ class ModelCache:
             if model_path in self._cache:
                 data = self._cache.pop(model_path)
                 self._unload_model(data)
-                print(f"🗑️ 模型已从缓存移除: {model_path}")
+                print(f" 模型已从缓存移除: {model_path}")
 
     def clear(self):
         """清空缓存。"""
@@ -233,7 +137,7 @@ class ModelCache:
             for path, data in self._cache.items():
                 self._unload_model(data)
             self._cache.clear()
-            print("🧹 模型缓存已清空")
+            print(" 模型缓存已清空")
 
     def list_cached(self) -> list:
         """列出当前缓存的模型。"""

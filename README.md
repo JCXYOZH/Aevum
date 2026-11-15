@@ -79,7 +79,7 @@ scripts\desktop.ps1 -Stop
 `src/libertas/core` 只保留兼容入口，具体实现按职责分布在 `foundation`、`observability`、`security`、`identity`、`release`、`data`、`workflow`、`ai`、`tools`、`models`、`media`、`code`、`network` 等目录。
 
 - `src/libertas/foundation/`：异常、终端、事件总线、缓存、限流、重试、指标、健康检查、计时、配置。
-- `src/libertas/models/legacy_mrhua/`：从 `mrhua/models` 迁入，35 个 `.py`，32 个不超过 500 行，3 个因单个方法体过大仍超过 500 行；`ModelEngine` 的 107 个方法全部保留。
+- `src/libertas/models/legacy_mrhua/`：从 `mrhua/models` 迁入，36 个 `.py`，33 个不超过 500 行，3 个因单个方法体过大仍超过 500 行；`ModelEngine` 的 107 个方法全部保留。
 - `src/libertas/tools/legacy_mrhua/`：旧工具层迁入；外部扫描工具从 `PATH` 或环境变量解析，不在仓库里写死本机路径。
 - `src/libertas/security/`：隐私、合规、守护、沙箱、规则、漏洞情报等能力。
 
