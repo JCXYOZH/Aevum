@@ -152,6 +152,10 @@ if ! "$PYTHON" -c 'import websockets' >/dev/null 2>&1; then
     "$PYTHON" -m pip install --quiet websockets \
         || die "装不上 websockets：检查网络或换 MEMORIA_PYTHON 指向已有 venv"
 fi
+if ! "$PYTHON" -c 'import yaml' >/dev/null 2>&1; then
+    "$PYTHON" -m pip install --quiet pyyaml \
+        || log "警告：pyyaml 未安装，config.yaml 会退化为默认值；不影响桌面和内核实况启动"
+fi
 log "Python：$PYTHON"
 
 # ---------------------------------------------------------------- 2.1 torch 运行库

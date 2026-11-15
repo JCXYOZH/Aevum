@@ -17,7 +17,7 @@ sudo env DOMAIN=www.mrhua.cn EMAIL=admin@mrhua.cn bash apps/console/deploy/insta
 安装脚本会做这些事：
 
 - 安装 nginx、QEMU、Python 3.10+ 和 `curl`；
-- 如果服务器上还没有可用 venv，就在仓库根目录创建 `.venv`，只安装 `websockets`；
+- 如果服务器上还没有可用 venv，就在仓库根目录创建 `.venv`，安装 `websockets`，并尝试安装可选的 `pyyaml`；
 - 写入四个 systemd 服务：`aevum-kernel`（QEMU 串口内核）、`aevum-bridge`（串口转 WebSocket）、`aevum-relay`（内存中继）、`aevum-monitor`（桌面、身份认证和对话 API）；
 - 写入 nginx 配置：静态首页、`desktop.html`、`/mrhua/`、`/engine/`、`/api/`、`/ws`、`/v1/`；
 - 默认使用 `apps/console/kernel/robot/disk.img`，也就是已经接好串口上报的真实内核镜像；
