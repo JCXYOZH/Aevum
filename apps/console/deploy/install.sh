@@ -335,6 +335,8 @@ check "8790 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8790'"
 check "看板健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8781/api/health"
 check "中继健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8790/v1/health"
 check "页面能取到 200"    "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN'"
+check "桌面页能取到 200"  "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/desktop.html -H 'Host: $DOMAIN'"
+check "MrHua 页面能取到 200" "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/mrhua/index.html -H 'Host: $DOMAIN'"
 check "验证页能取到 200"  "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN'"
 check "验证页不是首页回退" "curl -fsS --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN' | grep -q '渲染引擎验证'"
 if [ "$TLS_ACTIVE" = "yes" ]; then
