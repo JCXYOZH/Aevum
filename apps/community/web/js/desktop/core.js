@@ -96,8 +96,8 @@
     }
   ];
 
-  // 当前演示阶段只显示 MrHua 广域网与内核实况；其它窗口代码仍在，避免删掉以后要用的入口。
-  MD.visibleApps = ["mrhua-wan", "kernel"];
+  // 当前演示阶段显示 MrHua 广域网、内核实况和原展示页；其它窗口代码仍在，避免删掉以后要用的入口。
+  MD.visibleApps = ["mrhua-wan", "kernel", "exhibit"];
 
   MD.state = {
     wins: new Map(),
