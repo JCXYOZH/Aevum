@@ -48,11 +48,13 @@
 
   var mount = document.getElementById("scene3d");
   if (!mount) return;
+  var characterLayer = document.getElementById("scene-characters") || mount;
 
   var api = scene.create({
     mount: mount,
     nodes: buildNodes(),
     slots: slots,
+    nodePick: false,
     onOpen: function (id) {
       if (!MD.getApp(id)) return;
       var desk = mount.parentElement;
@@ -125,6 +127,7 @@
     var yaw = params.get("yaw");
     hostHandle = global.AEVUM.scene.attachVRM({
       mount: mount,
+      characterMount: characterLayer,
       scene: api,
       slotId: "host",
       height: 1.75,
@@ -137,6 +140,7 @@
     var pmxYaw = params.get("pmxYaw");
     guideHandle = global.AEVUM.scene.attachPMX({
       mount: mount,
+      characterMount: characterLayer,
       scene: api,
       slotId: "guide",
       height: 1.75,
@@ -149,6 +153,7 @@
   if (global.AEVUM.scene.attachLive2D && params.get("guide") === "live2d") {
     guideHandle = global.AEVUM.scene.attachLive2D({
       mount: mount,
+      characterMount: characterLayer,
       scene: api,
       slotId: "guide",
       modelUrl: "/engine/assets/models/live2d/xiaoyue/" + encodeURIComponent("xiaoyue.model3.json")

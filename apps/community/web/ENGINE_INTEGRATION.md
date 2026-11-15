@@ -12,10 +12,38 @@
 | `engine/formats/vrm/vrm.js` | VRM 解析 |
 | `engine/formats/texture/tga.js` | PMX 的 TGA 贴图解码 |
 | `engine/render/pmx/webgl-renderer.js` | PMX 骨骼、贴图、toon、描边、透明画布 |
-| `engine/render/vrm/vrm-renderer.js` | VRM 骨骼、贴图、透明画布 |
+| `engine/render/vrm/vrm-renderer.js` | VRM 骨骼、贴图、透明画布；本轮新增方向主光、环境补光、Blinn 高光、fresnel 轮廓光，接收场景相机位置 |
 | `engine/render/live2d/live2d-renderer.js` | Live2D 模型、动作、眨眼、视线、口型 |
 | `engine/render/procedural/procedural-animation.js` | 本次接入：空闲/行走姿态、呼吸、手臂与腿部步态 |
 | `engine/render/look/look-controller.js` | 本次接入：指针驱动的头部/颈部/胸部朝向 |
+
+## VRM 光照现状
+
+`VRMRenderer` 原本只有“方向光 + 固定 0.45 环境项”，模型在浅色地面上容易发灰、发平。本轮在它自己的 shader 里补了四项，没有引入新的渲染管线：
+
+| 项 | 实现 | 参数入口 |
+| --- | --- | --- |
+| 方向主光 | 顶点输出 `vWorldPos`，片元按 `uLightDir` 做 Lambert，并用 `smoothstep(-0.15, 0.55, ndl)` 做轻 toon 化的明暗过渡 | `override.lighting.direction / color`，默认 `[0.35,0.85,0.42]`、`[0.78,0.74,0.66]` |
+| 环境补光 | 片元统一环境色，避免背光面死黑 | `override.lighting.ambient`，默认 `[0.22,0.24,0.3]` |
+| 镜面高光 | Blinn-Phong，`pow(dot(N,H), 32)`，强度独立控制 | `override.lighting.specular`，默认 `0.08` |
+| fresnel 轮廓光 | `pow(1 - dot(N,V), 3)`，用 `uCameraPos - vWorldPos` 求视线方向 | `override.lighting.rim / rimStrength`，默认 `[0.55,0.78,1]`、`0.2` |
+
+`scene-vrm.js` 每帧把 `scene.camera.position` 传成 `override.cameraPosition`，并传一份 `lighting` 配置。没有外部光照系统、没有阴影贴图、没有 MToon；参数在 `scene-vrm.js` 里集中可调。
+
+## 引擎里还能继续接的 VRM 相关能力
+
+| 能力 | 现状 | 能补什么 | 限制 |
+| --- | --- | --- | --- |
+| `engine/render/pmx/webgl-renderer.js` 的 toon ramp / 描边 | PMX 已用，VRM 没接 | 把 VRM 也做成 MMD 式色阶 + 反向外扩描边 | 它的 vertex/skin 和 PMX 材质槽绑定，不能直接套到 VRM；需要把色阶采样和描边 pass 移植到 `VRMRenderer` |
+| `engine/character/skin/skin-material.js` | 未接 | 皮肤 SSS、sheen、clearcoat、fresnel | 当前 VRM 渲染器没有材质槽，也不区分皮肤/服装；需要先解析 `VRM/MToon` 或材质名映射 |
+| `engine/graphics/core/gl-core/pbr.js` | 未接 | PBR、多光源、高光、Fresnel | 是另一套 WebGL 核心，和现有 `VRMRenderer` 的资源/循环重复；整包接会和场景两套渲染循环冲突 |
+| `engine/world/pipeline/world-pipeline.js` 光照/阴影/后处理 | 只用了 `CameraController` | 真实方向光阴影、昼夜、后处理 | 需要完整 render graph 和 shadow map，当前角色是每个角色一个透明 canvas，不是同一 G-Buffer |
+| `engine/render/vmd/vmd-pose.js` + `vmd-player.js` / `animation-retarget.js` | 未接 | 真实动作、VRM Humanoid 重定向 | 仓库没有 `.vmd` 资产；重定向要先有动作图，当前是程序化姿态 |
+| `engine/render/action/action-state.js` + `pose-blend.js` | 未接 | idle/walk/run 状态机、上下半身叠加 | 需要把速度/目标距离喂给状态机，VRM 与 PMX 骨骼轴不同 |
+| `engine/render/retarget/animation-retarget.js` | 未接 | Mixamo/glTF 动作迁移到 VRM Humanoid | 需要外部动作资产 |
+| `engine/animation/ik/action-joint-ik.js` | 未接 | 手部/脚部 IK、关节限制 | 需要骨骼链、约束参数和落地检测，改动量大于状态机 |
+
+结论：本轮能直接做的是“在 `VRMRenderer` 内补光照”，已经完成；下一步收益最高的是 toon ramp/描边移植与 `action-state + pose-blend`，而不是把 `character/skin` 或 `graphics/core/gl-core` 整包接进来。
 
 ## 可以近期接入
 
@@ -35,7 +63,7 @@
 | 模块 | 原因 |
 | --- | --- |
 | `engine/world/terrain/terrain-atmosphere.js`、`terrain-lod-water.js`、`terrain-vegetation-water.js` | 这些是程序化地形/天空/水体/植被，要求自己的网格、LOD、深度和后处理；当前地面是单平面 shader，硬接会破坏 DOM 分层和现有相机投影 |
-| `engine/world/pipeline/world-pipeline.js` 的光照/阴影/昼夜/后处理 | 当前只用了 `CameraController`；PMX/VRM 渲染器的光照是内置简化模型，接真实阴影需要改两个渲染器的材质和 uniform |
+| `engine/world/pipeline/world-pipeline.js` 的光照/阴影/昼夜/后处理 | 当前只用了 `CameraController`；VRM 已在自己的轻量 shader 里补主光/环境/高光/轮廓光，PMX 仍用内置简化光照。接真实阴影需要改两个渲染器的材质和 uniform，并引入 shadow map |
 | `engine/character/deferred/*`（GI、头发/布料、粒子、延迟队列、材质扩展） | 依赖完整 `SpiritRenderer` 渲染图和 G-Buffer；不是当前每个角色一个透明 canvas 的结构 |
 | `engine/character/skin/*`（皮肤材质、湿度、物理妆容、皮肤物理） | 面向 SSS/皮肤材质管线，当前 PMX/VRM 渲染器没有对应的材质插槽 |
 | `engine/graphics/core/gl-core/*`、`engine/graphics/post/*` | 另一套 WebGL 核心/PBR/后处理栈，和现有 `WebGLRenderer`/`VRMRenderer` 重复；同时加载会出现两个资源与渲染循环 |

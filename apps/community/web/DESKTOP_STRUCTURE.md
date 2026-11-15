@@ -37,7 +37,7 @@ template. Styles and behavior live in their own files.
 | `js/scene/scene-live2d.js` | Live2D screen-space character pass anchored to a slot, optional replacement for slot 02 |
 | `ENGINE_INTEGRATION.md` | Engine modules already used, near-term candidates, and duplicates to avoid |
 | `SCENE3D.md` | Scene architecture, camera, ground shader, character slots and movement |
-| `js/scene/scene-desktop.js` | desktop app-to-node layout; node clicks reuse `MD.bus` |
+| `js/scene/scene-desktop.js` | desktop app-to-node layout; nodes are visual-only, character slots reuse `MD.bus` |
 | `js/scene/scene-showcase.js` | `index.html` `#world` layout; node clicks scroll to sections or open the 3D desktop |
 
 ## Extension API

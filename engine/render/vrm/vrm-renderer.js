@@ -6,7 +6,7 @@
  *   - 节点层级世界矩阵
  *   - skin + inverseBindMatrices 蒙皮
  *   - 内嵌 PNG 贴图
- *   - 基础方向光
+ *   - 基础方向光、环境补光、Blinn 高光与 fresnel 轮廓光
  *   - Humanoid 骨骼的程序化待机动作
  *
  * 只做最小可验证管线，不包含 PBR、MToon、SpringBone 和真实动画文件。
@@ -60,6 +60,11 @@
     const result = new Float32Array(array.length);
     result.set(array);
     return result;
+  }
+
+  function normalize3(vector) {
+    const length = Math.hypot(vector[0], vector[1], vector[2]) || 1;
+    return [vector[0] / length, vector[1] / length, vector[2] / length];
   }
 
   function primitiveData(json, binary, primitive, readAccessor) {
@@ -219,7 +224,13 @@
         hasTexture: this.gl.getUniformLocation(this.program, 'uHasTexture'),
         texture: this.gl.getUniformLocation(this.program, 'uTexture'),
         lightDir: this.gl.getUniformLocation(this.program, 'uLightDir'),
-        lightOn: this.gl.getUniformLocation(this.program, 'uLightOn')
+        lightOn: this.gl.getUniformLocation(this.program, 'uLightOn'),
+        cameraPos: this.gl.getUniformLocation(this.program, 'uCameraPos'),
+        lightColor: this.gl.getUniformLocation(this.program, 'uLightColor'),
+        ambient: this.gl.getUniformLocation(this.program, 'uAmbientColor'),
+        rimColor: this.gl.getUniformLocation(this.program, 'uRimColor'),
+        rimStrength: this.gl.getUniformLocation(this.program, 'uRimStrength'),
+        specular: this.gl.getUniformLocation(this.program, 'uSpecular')
       };
       this.options = {
         texture: true,
@@ -227,6 +238,15 @@
         wireframe: false,
         clearColor: (options && options.clearColor) || [0.03, 0.045, 0.07, 1]
       };
+      const defaultLighting = {
+        direction: [0.35, 0.85, 0.42],
+        color: [0.78, 0.74, 0.66],
+        ambient: [0.22, 0.24, 0.3],
+        rim: [0.55, 0.78, 1],
+        rimStrength: 0.18,
+        specular: 0.08
+      };
+      this.lighting = Object.assign(defaultLighting, (options && options.lighting) || {});
       this.modelMatrix = this.math.M4.identity(this.math.M4.create());
       this.textures = [];
       this.primitives = [];
@@ -402,6 +422,7 @@
 
       const world = computeNodeWorld(this.vrm.json, math, pose || null, transforms || null);
       let viewProj;
+      let cameraPosition = [0, 0, 10];
       if (override && override.viewProjection) {
         viewProj = override.viewProjection;
       } else {
@@ -431,15 +452,24 @@
           size * 10 + 10
         );
         viewProj = math.M4.mult(math.M4.create(), view, projection);
+        cameraPosition = eye;
       }
       this.lastViewProj = viewProj;
       const modelMatrix = (override && override.modelMatrix) || this.modelMatrix;
+      const lighting = (override && override.lighting) || this.lighting;
+      const lightDir = normalize3(lighting.direction || [0.35, 0.85, 0.42]);
 
       gl.useProgram(this.program);
       gl.uniformMatrix4fv(this.locations.viewProj, false, viewProj);
       gl.uniformMatrix4fv(this.locations.model, false, modelMatrix);
-      gl.uniform3fv(this.locations.lightDir, [0.4, 0.8, 0.5]);
+      gl.uniform3fv(this.locations.lightDir, lightDir);
       gl.uniform1f(this.locations.lightOn, this.options.light ? 1 : 0);
+      gl.uniform3fv(this.locations.cameraPos, (override && override.cameraPosition) || cameraPosition);
+      gl.uniform3fv(this.locations.lightColor, lighting.color || [1, 0.94, 0.84]);
+      gl.uniform3fv(this.locations.ambient, lighting.ambient || [0.34, 0.36, 0.42]);
+      gl.uniform3fv(this.locations.rimColor, lighting.rim || [0.58, 0.82, 1]);
+      gl.uniform1f(this.locations.rimStrength, lighting.rimStrength == null ? 0.22 : lighting.rimStrength);
+      gl.uniform1f(this.locations.specular, lighting.specular == null ? 0.1 : lighting.specular);
       gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(this.locations.texture, 0);
 
@@ -488,6 +518,7 @@ uniform mat4 uModel;
 uniform mat4 uMesh;
 uniform mat4 uBones[600];
 out vec3 vNormal;
+out vec3 vWorldPos;
 out vec2 vUv;
 void main() {
   mat4 skin = uBones[int(aJoints.x)] * aWeights.x
@@ -496,27 +527,45 @@ void main() {
             + uBones[int(aJoints.w)] * aWeights.w;
   vec4 skinned = skin * vec4(aPosition, 1.0);
   mat4 world = uModel * uMesh;
+  vec4 worldPos = world * skinned;
   vNormal = mat3(world * skin) * aNormal;
+  vWorldPos = worldPos.xyz;
   vUv = aUv;
-  gl_Position = uViewProj * (world * skinned);
+  gl_Position = uViewProj * worldPos;
 }`;
 
   VRMRenderer.FRAGMENT_SHADER = `#version 300 es
 precision highp float;
 in vec3 vNormal;
+in vec3 vWorldPos;
 in vec2 vUv;
 uniform vec4 uBaseColor;
 uniform int uHasTexture;
 uniform sampler2D uTexture;
 uniform vec3 uLightDir;
 uniform float uLightOn;
+uniform vec3 uCameraPos;
+uniform vec3 uLightColor;
+uniform vec3 uAmbientColor;
+uniform vec3 uRimColor;
+uniform float uRimStrength;
+uniform float uSpecular;
 out vec4 outColor;
 void main() {
   vec4 base = uBaseColor;
   if (uHasTexture == 1) base *= texture(uTexture, vUv);
-  float ndl = max(dot(normalize(vNormal), normalize(uLightDir)), 0.0);
-  vec3 color = base.rgb * (0.45 + 0.55 * ndl * uLightOn);
-  outColor = vec4(color, base.a);
+  vec3 N = normalize(vNormal);
+  vec3 L = normalize(uLightDir);
+  vec3 V = normalize(uCameraPos - vWorldPos);
+  float ndl = dot(N, L);
+  float toon = smoothstep(-0.15, 0.55, ndl);
+  float diffuse = mix(max(ndl, 0.0), toon, 0.65);
+  vec3 lit = base.rgb * (uAmbientColor + uLightColor * diffuse * uLightOn);
+  vec3 H = normalize(L + V);
+  float spec = pow(max(dot(N, H), 0.0), 32.0) * uSpecular * uLightOn;
+  float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
+  vec3 color = lit + uLightColor * spec + uRimColor * fresnel * uRimStrength;
+  outColor = vec4(clamp(color, 0.0, 1.0), base.a);
 }`;
 
   const api = { VRMRenderer, MAX_BONES, computeNodeWorld, computeSkinMatrices, makeIdlePose, primitiveData };

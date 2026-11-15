@@ -28,9 +28,10 @@
     canvas.style.height = height + "px";
     canvas.style.transformOrigin = "50% 100%";
     canvas.style.transform = "scale(" + scale + ")";
+    var characterMount = options.characterMount || mount;
     var overlay = mount.querySelector(".scene3d__overlay");
-    if (overlay) mount.insertBefore(canvas, overlay);
-    else mount.appendChild(canvas);
+    if (overlay && characterMount === mount) mount.insertBefore(canvas, overlay);
+    else characterMount.appendChild(canvas);
 
     var home = scene.slotWorld(slotId);
     var position = home ? [home[0], 0, home[2]] : [0, 0, 0];

@@ -17,6 +17,13 @@
     cursor: grab;
     touch-action: none;
   }
+  .scene3d__characters-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    overflow: hidden;
+  }
   .scene3d__characters {
     position: absolute;
     inset: 0;
@@ -106,8 +113,9 @@
     background: rgba(255, 253, 248, .9);
     color: var(--text);
     text-align: left;
-    cursor: pointer;
-    pointer-events: auto;
+    cursor: default;
+    pointer-events: none;
+    user-select: none;
     transform: translate(-50%, -100%);
     box-shadow: 2px 3px 0 rgba(80, 64, 45, .1);
     backdrop-filter: blur(3px);

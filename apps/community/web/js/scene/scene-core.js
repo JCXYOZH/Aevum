@@ -133,6 +133,7 @@
     var onSlot = options.onSlot || function () {};
     var onPick = options.onPick || function () {};
     var onGround = options.onGround || function () {};
+    var nodePickEnabled = options.nodePick !== false;
     var mounted = false;
     var canvas = null;
     var gl = null;
@@ -273,6 +274,7 @@
         var el = createElement("button", "scene-node scene-node--" + (node.tone || "amber"), overlay);
         el.type = "button";
         el.dataset.sceneNode = node.id;
+        el.tabIndex = nodePickEnabled ? 0 : -1;
         el.innerHTML =
           '<span class="scene-node__mark"></span>' +
           '<span class="scene-node__copy"><span class="scene-node__title">' +
@@ -442,7 +444,7 @@
           nearestDistance = distance;
         }
       });
-      if (nearest) {
+      if (nodePickEnabled && nearest) {
         readout.textContent = "选中：" + nearest.title;
         onPick(nearest);
         onOpen(nearest.id);

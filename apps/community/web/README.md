@@ -4,7 +4,7 @@
 
 ## 3D 场景层
 
-`desktop.html` 和 `index.html` 共用一层 WebGL 地面网格：3D 只负责空间、相机、节点选择与角色位，原有窗口、输入、滚动、iframe 和拖拽仍然由 DOM 负责。桌面页把 7 个应用摆成地面节点，展示页用 `#world` 做同一个长页的 3D 索引；桌面页角色位 01 已接入真实 VRM，角色位 02 默认接入 PMX，也可以用 `?guide=live2d` 换成 Live2D。点击空白地面，离点击点最近的角色会走向该位置，走路姿态来自引擎程序化动作，头部朝向来自指针视线控制器。
+`desktop.html` 和 `index.html` 共用一层 WebGL 地面网格：3D 只负责空间、相机、节点选择与角色位，原有窗口、输入、滚动、iframe 和拖拽仍然由 DOM 负责。桌面页把 7 个应用摆成地面节点，展示页用 `#world` 做同一个长页的 3D 索引；桌面页角色位 01 已接入真实 VRM，角色位 02 默认接入 PMX，也可以用 `?guide=live2d` 换成 Live2D。VRM 已有方向主光、环境补光、高光和 fresnel 轮廓光；角色画布在独立置顶层，普通桌面时会显示在窗口之上。点击空白地面，离点击点最近的角色会走向该位置，走路姿态来自引擎程序化动作，头部朝向来自指针视线控制器。桌面页的 3D 节点标签只做空间标记，不接点击热区，点击会穿透到地面，避免误触打开窗口。
 
 - 代码：`js/scene/scene-core.js`、`scene-vrm.js`、`scene-pmx.js`、`scene-live2d.js`、`scene-desktop.js`、`scene-showcase.js`
 - 模型：`engine/assets/models/furina/f芙宁娜.vrm`、`engine/assets/models/ganyu/甘雨.pmx`、`engine/assets/models/live2d/xiaoyue/xiaoyue.model3.json`

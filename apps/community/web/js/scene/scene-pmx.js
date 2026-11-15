@@ -29,9 +29,10 @@
     var canvas = document.createElement("canvas");
     canvas.className = "scene3d__characters";
     canvas.setAttribute("aria-hidden", "true");
+    var characterMount = options.characterMount || mount;
     var overlay = mount.querySelector(".scene3d__overlay");
-    if (overlay) mount.insertBefore(canvas, overlay);
-    else mount.appendChild(canvas);
+    if (overlay && characterMount === mount) mount.insertBefore(canvas, overlay);
+    else characterMount.appendChild(canvas);
 
     var renderer = null;
     var model = null;

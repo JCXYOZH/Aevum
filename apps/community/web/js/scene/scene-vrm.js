@@ -25,9 +25,10 @@
     var canvas = document.createElement("canvas");
     canvas.className = "scene3d__characters";
     canvas.setAttribute("aria-hidden", "true");
+    var characterMount = options.characterMount || mount;
     var overlay = mount.querySelector(".scene3d__overlay");
-    if (overlay) mount.insertBefore(canvas, overlay);
-    else mount.appendChild(canvas);
+    if (overlay && characterMount === mount) mount.insertBefore(canvas, overlay);
+    else characterMount.appendChild(canvas);
 
     var renderer = null;
     var vrm = null;
@@ -43,6 +44,14 @@
     var look = options.look || null;
     var bindings = null;
     var startedAt = 0;
+    var lighting = options.lighting || {
+      direction: [0.35, 0.85, 0.42],
+      color: [0.78, 0.74, 0.66],
+      ambient: [0.22, 0.24, 0.3],
+      rim: [0.55, 0.78, 1],
+      rimStrength: 0.2,
+      specular: 0.08
+    };
     var state = {
       status: "loading",
       renderer: null,
@@ -155,6 +164,8 @@
       renderer.render(t, pose, null, {
         viewProjection: scene.getViewProjection(),
         modelMatrix: modelMatrix,
+        cameraPosition: scene.camera ? scene.camera.position : null,
+        lighting: lighting,
         clearColor: [0, 0, 0, 0]
       });
     }
