@@ -12,14 +12,14 @@
     var SCRIPTS_URL = './js/scripts.json';
 
     function fetchJSON(url) {
-        return fetch(url, { cache: 'no-store' }).then(function (response) {
+        return fetch(url).then(function (response) {
             if (!response.ok) throw new Error(url + ' 读取失败：HTTP ' + response.status);
             return response.json();
         });
     }
 
     function fetchText(url) {
-        return fetch(url, { cache: 'no-store' }).then(function (response) {
+        return fetch(url).then(function (response) {
             if (!response.ok) throw new Error(url + ' 读取失败：HTTP ' + response.status);
             return response.text();
         });
@@ -119,7 +119,10 @@
                 });
             })
             .then(function () {
-                if (window.startMrHuaEngine) window.startMrHuaEngine();
+                // 嵌入广域网只需要窗口本身，不启动 3D 灵体引擎；否则会额外装载整套 legacy orb 模块。
+                if (!window.MR_EMBED_WANSHARE && window.startMrHuaEngine) {
+                    window.startMrHuaEngine();
+                }
                 if (!window.MR_EMBED_WANSHARE) return;
 
                 /* 嵌入模式：跳过开门动画，直接打开广域网窗口。
