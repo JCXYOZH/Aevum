@@ -38,6 +38,12 @@ MODEL_EXE="$BUILD_DIR/memoria_gen_cpu"
 MODEL_DATA="$APP_ROOT/data/tinyshakespeare_3000.txt"
 WEB_ROOT="$APP_ROOT/apps/community/web"
 ENGINE_ROOT="$APP_ROOT/engine"
+MODEL_ROOT="$ENGINE_ROOT/assets/models"
+VRM_MODEL="$MODEL_ROOT/furina/f芙宁娜.vrm"
+PMX_MODEL="$MODEL_ROOT/ganyu/甘雨.pmx"
+LIVE2D_MODEL="$MODEL_ROOT/live2d/xiaoyue/xiaoyue.model3.json"
+LIVE2D_MOC="$MODEL_ROOT/live2d/xiaoyue/xiaoyue.moc3"
+REQUIRE_MODELS="${REQUIRE_MODELS:-yes}"
 PYTHON="$APP_ROOT/.venv/bin/python"
 NGINX_COMMON="/etc/nginx/aevum-console-common.conf"
 NGINX_HTTP="/etc/nginx/conf.d/aevum-console.conf"
@@ -247,6 +253,22 @@ log "写 nginx 配置"
 [ -f "$APP_ROOT/apps/console/ui/shell/app-shell.js" ] || die "缺少 MrHua 前端脚本：$APP_ROOT/apps/console/ui/shell/app-shell.js"
 [ -f "$ENGINE_ROOT/validate.html" ] || die "缺少验证页：$ENGINE_ROOT/validate.html"
 
+# Character assets are not in Git (see .gitignore: *.vrm, *.pmx, engine/assets/).
+# Check them before nginx starts so a "successful" deploy cannot silently show empty
+# character slots. REQUIRE_MODELS=no keeps the site deployable without characters.
+log "检查角色模型"
+MODEL_ASSETS=("$VRM_MODEL" "$PMX_MODEL" "$LIVE2D_MODEL" "$LIVE2D_MOC" "$MODEL_ROOT/ganyu/tex" "$MODEL_ROOT/live2d/xiaoyue/xiaoyue.8192")
+for asset in "${MODEL_ASSETS[@]}"; do
+    if [ -r "$asset" ]; then
+        printf '    [ok]   %s\n' "$asset"
+    elif [ "$REQUIRE_MODELS" = "yes" ]; then
+        die "缺少角色资源：$asset（模型未进 Git，请先把 engine/assets/models 上传到服务器；或 REQUIRE_MODELS=no 只部署站点）"
+    else
+        printf '    [warn] 缺少角色资源：%s\n' "$asset"
+    fi
+done
+
+
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@DOMAIN@|$DOMAIN|g" \
     "$CONSOLE_DIR/deploy/nginx-common.conf" > "$NGINX_COMMON"
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@DOMAIN@|$DOMAIN|g" \
@@ -343,10 +365,17 @@ check "8790 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8790'"
 check "看板健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8781/api/health"
 check "中继健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8790/v1/health"
 check "页面能取到 200"    "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN'"
+check "根页是展示页"      "curl -fsS --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN' | grep -q 'class=\"masthead\"'"
 check "桌面页能取到 200"  "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/desktop.html -H 'Host: $DOMAIN'"
 check "MrHua 页面能取到 200" "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/mrhua/index.html -H 'Host: $DOMAIN'"
 check "验证页能取到 200"  "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN'"
 check "验证页不是首页回退" "curl -fsS --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN' | grep -q '渲染引擎验证'"
+if [ "$REQUIRE_MODELS" = "yes" ]; then
+    check "VRM 角色资源可读" "test -r '$VRM_MODEL'"
+    check "PMX 角色资源可读" "test -r '$PMX_MODEL'"
+    check "Live2D 角色资源可读" "test -r '$LIVE2D_MODEL'"
+    check "Live2D moc 可读" "test -r '$LIVE2D_MOC'"
+fi
 if [ "$TLS_ACTIVE" = "yes" ]; then
     check "443 在监听" "ss -lnt | grep -q ':443'"
 fi

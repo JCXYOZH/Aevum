@@ -32,7 +32,8 @@ template. Styles and behavior live in their own files.
 | `js/desktop/components/line-chart.js` | reusable loss chart |
 | `js/desktop/panels/*.js` | one panel per file: overview, kernel, trainer, relay, errors, exhibit, camera |
 | `js/desktop/main.js` | boot and wire components/panels; exposes `window.MemoriaDesk` |
-| `js/scene/scene-core.js` | shared WebGL ground grid, camera matrices, DOM anchor projection, ray picking, character slots, frame hooks |
+| `js/scene/scene-core.js` | shared WebGL ground grid, camera matrices, DOM anchor projection, ray picking, character slots, frame hooks, 3D photo backdrop |
+| `js/scene/models.config.js` | single source for VRM/PMX/Live2D/action model paths |
 | `js/scene/scene-vrm.js` | VRM character pass: transparent canvas, real model load, idle pose, slot placement |
 | `js/scene/scene-pmx.js` | PMX character pass: parser, textures, idle pose, slot placement |
 | `js/scene/scene-live2d.js` | Live2D screen-space character pass anchored to a slot, optional replacement for slot 02 |

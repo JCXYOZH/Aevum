@@ -47,7 +47,9 @@
     var actionGLB = null;
     var actionPlayer = null;
     var actionReady = false;
-    var actionUrl = options.actionUrl || "/engine/assets/all_animations.glb";
+    var actionUrl = options.actionUrl ||
+      (global.AEVUM_MODEL_CONFIG && global.AEVUM_MODEL_CONFIG.actions) ||
+      "/engine/assets/all_animations.glb";
     var walkLegFilter = Object.create(null);
     var walkArmLimit = Object.create(null);
     var runMode = false;

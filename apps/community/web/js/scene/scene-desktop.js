@@ -81,6 +81,21 @@
   var requestedView = params.get("view");
   if (requestedView) api.setView(requestedView);
 
+  var modelConfig = global.AEVUM_MODEL_CONFIG || {};
+  var modelBase = String(modelConfig.base || "/engine/assets/models/").replace(/\/+$/, "") + "/";
+
+  function modelDirectory(kind, fallback) {
+    var spec = modelConfig[kind] || {};
+    var directory = String(spec.directory || fallback || "").replace(/^\/+|\/+$/g, "");
+    return modelBase + directory + "/";
+  }
+
+  function modelUrl(kind, fallbackDirectory, fallbackFilename) {
+    var spec = modelConfig[kind] || {};
+    return modelDirectory(kind, fallbackDirectory) +
+      encodeURIComponent(spec.filename || fallbackFilename);
+  }
+
   /* Camera + character visibility tools. The models sit in their own layer:
      by default they are visible but behind the windows, and this button lets
      the user remove them from the desk entirely. */
@@ -210,7 +225,8 @@
       height: 1.75,
       yaw: yaw === null ? Math.PI : Number(yaw),
       look: look,
-      modelUrl: "/engine/assets/models/furina/" + encodeURIComponent("f芙宁娜.vrm")
+      actionUrl: modelConfig.actions || "/engine/assets/all_animations.glb",
+      modelUrl: params.get("vrmUrl") || modelUrl("vrm", "furina", "f芙宁娜.vrm")
     });
   }
   if (global.AEVUM.scene.attachPMX && params.get("guide") !== "live2d") {
@@ -223,8 +239,8 @@
       height: 1.75,
       yaw: pmxYaw === null ? Math.PI : Number(pmxYaw),
       look: look,
-      modelUrl: "/engine/assets/models/ganyu/" + encodeURIComponent("甘雨.pmx"),
-      baseUrl: "/engine/assets/models/ganyu/"
+      modelUrl: params.get("pmxUrl") || modelUrl("pmx", "ganyu", "甘雨.pmx"),
+      baseUrl: params.get("pmxBaseUrl") || modelDirectory("pmx", "ganyu")
     });
   }
   if (global.AEVUM.scene.attachLive2D && params.get("guide") === "live2d") {
@@ -233,7 +249,7 @@
       characterMount: characterLayer,
       scene: api,
       slotId: "guide",
-      modelUrl: "/engine/assets/models/live2d/xiaoyue/" + encodeURIComponent("xiaoyue.model3.json")
+      modelUrl: params.get("live2dUrl") || modelUrl("live2d", "live2d/xiaoyue", "xiaoyue.model3.json")
     });
   }
   MD.bus.on("apps", function () {

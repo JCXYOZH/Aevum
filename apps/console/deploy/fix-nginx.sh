@@ -42,6 +42,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 WEB_ROOT="$APP_ROOT/apps/community/web"
 ENGINE_ROOT="$APP_ROOT/engine"
+MODEL_ROOT="$ENGINE_ROOT/assets/models"
 NGINX_COMMON="/etc/nginx/aevum-console-common.conf"
 NGINX_HTTP="/etc/nginx/conf.d/aevum-console.conf"
 NGINX_TLS="/etc/nginx/conf.d/aevum-console-tls.conf"
@@ -62,6 +63,10 @@ TLS_ACTIVE="no"
 [ -f "$WEB_ROOT/desktop.html" ] || die "找不到桌面页：$WEB_ROOT/desktop.html"
 [ -f "$WEB_ROOT/mrhua/index.html" ] || die "找不到 MrHua 页面：$WEB_ROOT/mrhua/index.html"
 [ -f "$APP_ROOT/apps/console/ui/shell/app-shell.js" ] || die "找不到 MrHua 前端脚本：$APP_ROOT/apps/console/ui/shell/app-shell.js"
+
+if [ ! -r "$MODEL_ROOT/furina/f芙宁娜.vrm" ] || [ ! -r "$MODEL_ROOT/ganyu/甘雨.pmx" ] || [ ! -r "$MODEL_ROOT/live2d/xiaoyue/xiaoyue.model3.json" ]; then
+    log "警告：角色模型不完整，桌面角色位会空白；模型被 .gitignore 排除，需要单独上传 engine/assets/models"
+fi
 
 log "仓库根目录：$APP_ROOT"
 log "域名：$DOMAIN"
@@ -131,6 +136,7 @@ check() {
 }
 check "验证页 200"       "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN'"
 check "验证页不是首页"   "curl -fsS --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN' | grep -q '渲染引擎验证'"
+check "根页是展示页"     "curl -fsS --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN' | grep -q 'class=\"masthead\"'"
 if [ "$TLS_ACTIVE" = "yes" ]; then
     check "443 在监听"   "ss -lnt | grep -q ':443'"
     check "HTTPS 验证页"  "curl -fsS --max-time 5 --resolve '$DOMAIN:443:127.0.0.1' 'https://$DOMAIN/engine/validate.html' | grep -q '渲染引擎验证'"
