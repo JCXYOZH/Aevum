@@ -35,9 +35,10 @@
   }
   .logbox--err pre { color: #d8a7a7; }
 
-  .kernel-stage { background: #070b0f; border: 1px solid var(--line); padding: 10px; overflow: auto; }
-  #vga { display: block; width: 100%; max-width: 960px; height: auto; margin: 0 auto; image-rendering: pixelated; }
+  .kernel-stage { background: #070b0f; border: 1px solid var(--line); padding: 8px; overflow: hidden; }
+  #vga { display: block; width: 100%; max-width: 100%; height: auto; margin: 0 auto; image-rendering: pixelated; }
   .kernel-bar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 10px; }
+
   .led { width: 7px; height: 7px; background: var(--dim); display: inline-block; }
   .led[data-state="online"] { background: var(--teal); }
   .led[data-state="connecting"] { background: var(--amber); }

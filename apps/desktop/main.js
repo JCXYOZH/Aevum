@@ -207,7 +207,8 @@ function qemuPath() {
 }
 
 function qemuLaunch() {
-  const disk = path.join(serviceDir("kernel"), "disk.img");
+  const robotDisk = path.join(serviceDir("kernel"), "robot", "disk.img");
+  const disk = fs.existsSync(robotDisk) ? robotDisk : path.join(serviceDir("kernel"), "disk.img");
   if (!fs.existsSync(disk)) return null;
   const serial = `tcp:127.0.0.1:${PORTS.serial},server=on,wait=off`;
   return {
@@ -276,8 +277,9 @@ async function ensureKernel() {
     appendLog("qemu", "kernel disk image or qemu executable is missing");
     return false;
   }
-  if (!(await ensurePort("qemu", PORTS.serial, qemu))) return false;
-  return ensurePort("bridge", PORTS.bridge, bridgeLaunch());
+  // 桥接先起：QEMU 一开机就发出的首帧不会因为桥接晚到而丢掉。
+  if (!(await ensurePort("bridge", PORTS.bridge, bridgeLaunch()))) return false;
+  return ensurePort("qemu", PORTS.serial, qemu);
 }
 
 async function ensureServices() {

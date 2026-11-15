@@ -4,6 +4,7 @@ AEVUM serial bridge: reads TCP-framed serial from QEMU, forwards to WebSocket.
 Frame format: A5 5A 01 COUNT [row col ch attr] * COUNT CRC
 """
 import asyncio
+import json
 import os
 import struct
 import sys
@@ -70,8 +71,15 @@ class FrameParser:
         return out
 
 
-async def serial_reader(parser, broadcast):
-    reader, writer = await asyncio.open_connection(QEMU_SERIAL_HOST, QEMU_SERIAL_PORT)
+async def serial_reader(parser, broadcast, link):
+    while True:
+        try:
+            reader, writer = await asyncio.open_connection(QEMU_SERIAL_HOST, QEMU_SERIAL_PORT)
+            break
+        except OSError:
+            # QEMU 先启动还是桥接先启动都可能；桥接先起时在这里等串口。
+            await asyncio.sleep(0.4)
+    link["writer"] = writer
     print(f"[bridge] connected to QEMU serial {QEMU_SERIAL_HOST}:{QEMU_SERIAL_PORT}")
     try:
         while True:
@@ -81,29 +89,44 @@ async def serial_reader(parser, broadcast):
             for frame in parser.feed(data):
                 await broadcast(frame)
     finally:
+        link["writer"] = None
         writer.close()
 
 
 async def main():
     parser = FrameParser()
     clients = set()
+    state = {}
+    link = {"writer": None}
 
     async def handler(ws):
         clients.add(ws)
         try:
+            # 新窗口后连接时补一帧当前画面，否则只收到打开之后的差量。
+            if state:
+                await ws.send(json.dumps({"type": "frame", "cells": list(state.values())}))
+            # 让内核下一次扫描发送完整 VGA，补齐窗口连接前就已经存在的静态单元。
+            if link["writer"]:
+                try:
+                    link["writer"].write(b"F")
+                    await link["writer"].drain()
+                except Exception:
+                    pass
             async for _ in ws:
                 pass
         finally:
             clients.discard(ws)
 
     async def broadcast(frame):
+        for cell in frame["cells"]:
+            state[(cell[0], cell[1])] = cell
         if not clients:
             return
         msg = {"type": "frame", "cells": frame["cells"]}
         dead = []
-        for ws in clients:
+        for ws in list(clients):
             try:
-                await ws.send(__import__("json").dumps(msg))
+                await ws.send(json.dumps(msg))
             except Exception:
                 dead.append(ws)
         for ws in dead:
@@ -111,7 +134,7 @@ async def main():
 
     async with websockets.serve(handler, WS_HOST, WS_PORT):
         print(f"[bridge] websocket listening on ws://{WS_HOST}:{WS_PORT}")
-        await serial_reader(parser, broadcast)
+        await serial_reader(parser, broadcast, link)
 
 
 if __name__ == "__main__":

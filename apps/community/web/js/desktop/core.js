@@ -78,13 +78,26 @@
 
   MD.baseApps = [
     { id: "overview", title: "总览", meta: "OVERVIEW", icon: "grid", w: 540, h: 660, desc: "项目本体与四个入口" },
-    { id: "kernel", title: "内核实况", meta: "80×25 VGA", icon: "terminal", w: 760, h: 520, desc: "QEMU 串口帧 / VGA" },
+    { id: "kernel", title: "内核实况", meta: "80×25 VGA", icon: "terminal", w: 1000, h: 600, desc: "QEMU 串口帧 / VGA" },
     { id: "trainer", title: "训练监控", meta: "LOSS / EPOCH", icon: "pulse", w: 690, h: 610, desc: "JSONL 指标 / 错误" },
     { id: "model", title: "模型对话", meta: "CHECKPOINT", icon: "layers", w: 720, h: 620, desc: "加载检查点并生成文本" },
     { id: "relay", title: "中继交流", meta: "ROOM / LOBBY", icon: "chat", w: 590, h: 590, desc: "在线、浏览、发帖" },
     { id: "errors", title: "错误看板", meta: "0xRRFFTT", icon: "alert", w: 680, h: 600, desc: "错误码与日志" },
-    { id: "exhibit", title: "展示页", meta: "LEGACY PAGE", icon: "page", w: 940, h: 660, desc: "原 AEVUM 长页" }
+    { id: "exhibit", title: "展示页", meta: "LEGACY PAGE", icon: "page", w: 940, h: 660, desc: "原 AEVUM 长页" },
+    {
+      id: "mrhua-wan",
+      title: "MrHua 广域网",
+      meta: "WAN / MQTT",
+      icon: "chat",
+      w: 1000,
+      h: 740,
+      desc: "MrHua 广域网通信页",
+      url: "/mrhua/?embed=wanshare"
+    }
   ];
+
+  // 当前演示阶段只显示 MrHua 广域网与内核实况；其它窗口代码仍在，避免删掉以后要用的入口。
+  MD.visibleApps = ["mrhua-wan", "kernel"];
 
   MD.state = {
     wins: new Map(),
@@ -129,7 +142,12 @@
     return MD.baseApps.find(function (app) { return app.id === id; }) || null;
   };
 
-  MD.listApps = function () { return MD.baseApps.slice(); };
+  MD.listApps = function () {
+    if (!MD.visibleApps) return MD.baseApps.slice();
+    return MD.baseApps.filter(function (app) {
+      return app.custom || MD.visibleApps.indexOf(app.id) !== -1;
+    });
+  };
 
   MD.addCustom = function (title, rawUrl) {
     var normalized;

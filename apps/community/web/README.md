@@ -1,10 +1,10 @@
 # web —— AEVUM 前端
 
-一个纵向滚动的页面，四块内容：首屏（灵体 + 项目一句话）、内核实况（VGA 文本屏画面，未接桥接时回放演示帧）、开源进度（仓库数字 + ROADMAP 阶段）、中继交流区（房间在线/浏览、帖子流、发言）。浏览器直接打开 `index.html` 就能看；中继不在线时交流区显示未连接，页面其余部分照常。
+一个纵向滚动的页面，四块内容：首屏（灵体 + 项目一句话）、内核实况（QEMU 串口送出的 VGA 文本帧）、开源进度（仓库数字 + ROADMAP 阶段）、中继交流区（房间在线/浏览、帖子流、发言）。浏览器直接打开 `index.html` 就能看；中继不在线时交流区显示未连接，页面其余部分照常。
 
 ## 3D 场景层
 
-`desktop.html` 和 `index.html` 共用一层 WebGL 地面网格：3D 只负责空间、相机、节点选择与角色位，原有窗口、输入、滚动、iframe 和拖拽仍然由 DOM 负责。桌面页把 7 个应用摆成地面区域，但不再渲染“总览”“展示页”这类小标签，地面只保留角色位圆环，避免视觉噪声；展示页用 `#world` 做同一个长页的 3D 索引，5 个入口标签仍负责滚动和跳转。桌面页角色位 01 已接入真实 VRM，角色位 02 默认接入 PMX，也可以用 `?guide=live2d` 换成 Live2D。VRM 已有方向主光、环境补光、高光和 fresnel 轮廓光；角色画布在独立置顶层，普通桌面时会显示在窗口之上。点击空白地面，离点击点最近的角色会走向该位置；近距离是 `walk`，远距离或按住 Shift 是 `run`，VRM 的步态来自 `engine/assets/all_animations.glb` 经 `AnimationRetarget` 重定向，PMX 用程序化 `walk` / `run`，待机头部朝向来自指针视线控制器。桌面页的 3D 空间不接节点点击，点地面不会误打开窗口。
+`desktop.html` 和 `index.html` 共用一层 WebGL 地面网格：3D 只负责空间、相机、节点选择与角色位，原有窗口、输入、滚动、iframe 和拖拽仍然由 DOM 负责。桌面页当前暴露 `MrHua 广域网` 和 `内核实况` 两个应用项：前者打开 `/mrhua/?embed=wanshare`，后者通过 `serial_bridge.py` 接收 QEMU 里真实内核的 80×25 VGA 差量帧；其它应用窗口代码仍保留在注册表和 panels 里，通过 `MD.visibleApps` 控制是否显示；地面只保留角色位圆环，不渲染节点小标签，避免视觉噪声。展示页用 `#world` 做同一个长页的 3D 索引，5 个入口标签仍负责滚动和跳转。桌面页角色位 01 已接入真实 VRM，角色位 02 默认接入 PMX，也可以用 `?guide=live2d` 换成 Live2D。VRM 已有方向主光、环境补光、高光和 fresnel 轮廓光；角色画布在独立置顶层，普通桌面时会显示在窗口之上。点击空白地面，离点击点最近的角色会走向该位置；近距离是 `walk`，远距离或按住 Shift 是 `run`，VRM 的步态来自 `engine/assets/all_animations.glb` 经 `AnimationRetarget` 重定向，PMX 用程序化 `walk` / `run`，待机头部朝向来自指针视线控制器。桌面页的 3D 空间不接节点点击，点地面不会误打开窗口。
 
 - 代码：`js/scene/scene-core.js`、`scene-vrm.js`、`scene-pmx.js`、`scene-live2d.js`、`scene-desktop.js`、`scene-showcase.js`
 - 模型：`engine/assets/models/furina/f芙宁娜.vrm`、`engine/assets/models/ganyu/甘雨.pmx`、`engine/assets/models/live2d/xiaoyue/xiaoyue.model3.json`
@@ -12,6 +12,12 @@
 - 沉浸桌面：`desktop.html?scene=1`
 - 贴地仰视：`desktop.html?scene=1&view=low`
 - 完整说明见 [SCENE3D.md](SCENE3D.md)，引擎能力见 [ENGINE_INTEGRATION.md](ENGINE_INTEGRATION.md)
+
+## 内核实况窗口
+
+`apps/community/web/data/kernel.c` 是旧项目 `例6_完整内核/kernel.c` 的原文件完整副本（893 行、33,150 字节，SHA256 `2D3CD873BBC76E55A5C6E83DDF27325A3CB167D4B063B576852CE09768FE5C6C`），只作为源文件参考，不在桌面窗口里显示。
+
+真正运行的内核在 `apps/console/kernel/robot/`：以这份 `kernel.c` 为基础，保留原来的三自由度机械臂渲染，追加了 COM1 串口初始化、VGA 差量扫描和 `A5 5A 01 COUNT ... CRC` 帧输出。`apps/console/bridge/serial_bridge.py` 读取 QEMU 串口并把 `{type:"frame",cells}` 广播到 `ws://127.0.0.1:8765`；桌面「内核实况」窗口的 `kernel.js` 只负责画这块 80×25 VGA，不再显示源码。没有连接时画布保持空白。
 
 ## 目录与归属
 
