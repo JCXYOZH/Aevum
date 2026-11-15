@@ -222,6 +222,21 @@ else
     log "提示：$APP_ROOT/build 下没有 memoria_model.pt 或 pytorch_model.bin；只影响模型窗口"
 fi
 
+# Character assets are not in Git (see .gitignore: *.vrm, *.pmx, engine/assets/).
+# Check them before systemd starts so a "successful" deploy cannot silently show
+# empty character slots. REQUIRE_MODELS=no keeps the site deployable without characters.
+log "检查角色模型"
+MODEL_ASSETS=("$VRM_MODEL" "$PMX_MODEL" "$LIVE2D_MODEL" "$LIVE2D_MOC" "$MODEL_ROOT/ganyu/tex" "$MODEL_ROOT/live2d/xiaoyue/xiaoyue.8192")
+for asset in "${MODEL_ASSETS[@]}"; do
+    if [ -r "$asset" ]; then
+        printf '    [ok]   %s\n' "$asset"
+    elif [ "$REQUIRE_MODELS" = "yes" ]; then
+        die "缺少角色资源：$asset（模型未进 Git，请先把 engine/assets/models 上传到服务器；或 REQUIRE_MODELS=no 只部署站点）"
+    else
+        printf '    [warn] 缺少角色资源：%s\n' "$asset"
+    fi
+done
+
 # ---------------------------------------------------------------- 4 systemd
 log "写入 systemd 单元并启动"
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@QEMU_BIN@|$QEMU_BIN|g" -e "s|@KERNEL_IMAGE@|$IMAGE|g" \
@@ -252,22 +267,6 @@ log "写 nginx 配置"
 [ -f "$WEB_ROOT/mrhua/index.html" ] || die "缺少 MrHua 页面：$WEB_ROOT/mrhua/index.html"
 [ -f "$APP_ROOT/apps/console/ui/shell/app-shell.js" ] || die "缺少 MrHua 前端脚本：$APP_ROOT/apps/console/ui/shell/app-shell.js"
 [ -f "$ENGINE_ROOT/validate.html" ] || die "缺少验证页：$ENGINE_ROOT/validate.html"
-
-# Character assets are not in Git (see .gitignore: *.vrm, *.pmx, engine/assets/).
-# Check them before nginx starts so a "successful" deploy cannot silently show empty
-# character slots. REQUIRE_MODELS=no keeps the site deployable without characters.
-log "检查角色模型"
-MODEL_ASSETS=("$VRM_MODEL" "$PMX_MODEL" "$LIVE2D_MODEL" "$LIVE2D_MOC" "$MODEL_ROOT/ganyu/tex" "$MODEL_ROOT/live2d/xiaoyue/xiaoyue.8192")
-for asset in "${MODEL_ASSETS[@]}"; do
-    if [ -r "$asset" ]; then
-        printf '    [ok]   %s\n' "$asset"
-    elif [ "$REQUIRE_MODELS" = "yes" ]; then
-        die "缺少角色资源：$asset（模型未进 Git，请先把 engine/assets/models 上传到服务器；或 REQUIRE_MODELS=no 只部署站点）"
-    else
-        printf '    [warn] 缺少角色资源：%s\n' "$asset"
-    fi
-done
-
 
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@DOMAIN@|$DOMAIN|g" \
     "$CONSOLE_DIR/deploy/nginx-common.conf" > "$NGINX_COMMON"

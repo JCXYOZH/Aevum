@@ -82,18 +82,22 @@
   if (requestedView) api.setView(requestedView);
 
   var modelConfig = global.AEVUM_MODEL_CONFIG || {};
-  var modelBase = String(modelConfig.base || "/engine/assets/models/").replace(/\/+$/, "") + "/";
+  var modelBase = String(modelConfig.base || "").replace(/\/+$/, "") + "/";
+  if (!modelConfig.base) {
+    throw new Error("models.config.js 缺少 base");
+  }
 
-  function modelDirectory(kind, fallback) {
+  function modelDirectory(kind) {
     var spec = modelConfig[kind] || {};
-    var directory = String(spec.directory || fallback || "").replace(/^\/+|\/+$/g, "");
+    if (!spec.directory) throw new Error("models.config.js 缺少 " + kind + ".directory");
+    var directory = String(spec.directory).replace(/^\/+|\/+$/g, "");
     return modelBase + directory + "/";
   }
 
-  function modelUrl(kind, fallbackDirectory, fallbackFilename) {
+  function modelUrl(kind) {
     var spec = modelConfig[kind] || {};
-    return modelDirectory(kind, fallbackDirectory) +
-      encodeURIComponent(spec.filename || fallbackFilename);
+    if (!spec.filename) throw new Error("models.config.js 缺少 " + kind + ".filename");
+    return modelDirectory(kind) + encodeURIComponent(spec.filename);
   }
 
   /* Camera + character visibility tools. The models sit in their own layer:
@@ -226,7 +230,7 @@
       yaw: yaw === null ? Math.PI : Number(yaw),
       look: look,
       actionUrl: modelConfig.actions || "/engine/assets/all_animations.glb",
-      modelUrl: params.get("vrmUrl") || modelUrl("vrm", "furina", "f芙宁娜.vrm")
+      modelUrl: params.get("vrmUrl") || modelUrl("vrm")
     });
   }
   if (global.AEVUM.scene.attachPMX && params.get("guide") !== "live2d") {
@@ -239,8 +243,8 @@
       height: 1.75,
       yaw: pmxYaw === null ? Math.PI : Number(pmxYaw),
       look: look,
-      modelUrl: params.get("pmxUrl") || modelUrl("pmx", "ganyu", "甘雨.pmx"),
-      baseUrl: params.get("pmxBaseUrl") || modelDirectory("pmx", "ganyu")
+      modelUrl: params.get("pmxUrl") || modelUrl("pmx"),
+      baseUrl: params.get("pmxBaseUrl") || modelDirectory("pmx")
     });
   }
   if (global.AEVUM.scene.attachLive2D && params.get("guide") === "live2d") {
@@ -249,7 +253,7 @@
       characterMount: characterLayer,
       scene: api,
       slotId: "guide",
-      modelUrl: params.get("live2dUrl") || modelUrl("live2d", "live2d/xiaoyue", "xiaoyue.model3.json")
+      modelUrl: params.get("live2dUrl") || modelUrl("live2d")
     });
   }
   MD.bus.on("apps", function () {
