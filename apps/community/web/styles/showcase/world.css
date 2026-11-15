@@ -1,0 +1,31 @@
+  .world-stage {
+    position: relative;
+    height: min(58vh, 560px);
+    min-height: 380px;
+    border: 1px solid var(--line, #d8cbb6);
+    overflow: hidden;
+    background:
+      radial-gradient(80% 70% at 50% 20%, rgba(47, 124, 118, .08), transparent 70%),
+      linear-gradient(180deg, #fffdf8 0%, #f6f0e3 100%);
+  }
+  .world-stage .scene3d__readout {
+    bottom: 12px;
+  }
+  .world__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 10px;
+    color: var(--dim, #8a8070);
+    font: 10px/1.5 var(--mono, monospace);
+  }
+  .world__foot .btn { margin: 0; }
+  @media (max-width: 900px) {
+    .world-stage { height: 440px; min-height: 320px; }
+    .world__foot { align-items: flex-start; flex-direction: column; }
+  }
+  @media (max-width: 620px) {
+    .world-stage { height: 380px; }
+    .scene3d__tools { display: none; }
+  }

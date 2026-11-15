@@ -2,6 +2,15 @@
 
 一个纵向滚动的页面，四块内容：首屏（灵体 + 项目一句话）、内核实况（VGA 文本屏画面，未接桥接时回放演示帧）、开源进度（仓库数字 + ROADMAP 阶段）、中继交流区（房间在线/浏览、帖子流、发言）。浏览器直接打开 `index.html` 就能看；中继不在线时交流区显示未连接，页面其余部分照常。
 
+## 3D 场景层
+
+`desktop.html` 和 `index.html` 共用一层 WebGL 地面网格：3D 只负责空间、相机、节点选择与角色位，原有窗口、输入、滚动、iframe 和拖拽仍然由 DOM 负责。桌面页把 7 个应用摆成地面节点，展示页用 `#world` 做同一个长页的 3D 索引；两个页面各留两个角色位，模型尚未接入。
+
+- 代码：`js/scene/scene-core.js`、`scene-desktop.js`、`scene-showcase.js`
+- 样式：`styles/scene3d.css`、`styles/showcase/world.css`
+- 沉浸桌面：`desktop.html?scene=1`
+- 完整说明见 [SCENE3D.md](SCENE3D.md)
+
 ## 目录与归属
 
 | 路径 | 归属 | 说明 |

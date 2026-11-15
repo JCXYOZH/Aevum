@@ -1,0 +1,231 @@
+  /* 3D ground-grid scene layer. The canvas sits under the existing windows;
+     anchors are DOM buttons projected from world coordinates. */
+  .scene3d {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .scene3d__canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: auto;
+    cursor: grab;
+    touch-action: none;
+  }
+  .scene3d__canvas:active { cursor: grabbing; }
+  .scene3d__overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .scene3d--fallback .scene3d__canvas { display: none; }
+
+  .scene3d__readout {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    z-index: 6;
+    padding: 5px 9px;
+    border: 1px solid var(--line);
+    background: rgba(255, 253, 248, .82);
+    color: var(--muted);
+    font: 10px/1.3 var(--mono);
+    letter-spacing: .02em;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .scene3d__tools {
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    z-index: 7;
+    display: flex;
+    gap: 5px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    background: rgba(255, 253, 248, .82);
+    pointer-events: auto;
+  }
+  .scene3d__tool {
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font: 10px/1 var(--mono);
+    cursor: pointer;
+  }
+  .scene3d__tool:hover {
+    border-color: var(--line-2);
+    background: var(--panel);
+    color: var(--amber);
+  }
+  .scene3d__cursor {
+    position: absolute;
+    width: 28px;
+    height: 13px;
+    border: 1px solid rgba(47, 124, 118, .66);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 5;
+    box-shadow: 0 0 0 1px rgba(47, 124, 118, .12);
+  }
+
+  .scene-node {
+    --tone: var(--amber);
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 112px;
+    max-width: 190px;
+    padding: 5px 8px 5px 7px;
+    border: 1px solid var(--line-2);
+    background: rgba(255, 253, 248, .9);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    pointer-events: auto;
+    transform: translate(-50%, -100%);
+    box-shadow: 2px 3px 0 rgba(80, 64, 45, .1);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  .scene-node::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    width: 1px;
+    height: 9px;
+    background: var(--tone);
+    opacity: .5;
+    transform: translateX(-50%);
+  }
+  .scene-node:hover,
+  .scene-node:focus-visible {
+    border-color: var(--tone);
+    outline: none;
+    background: var(--panel);
+    box-shadow: 3px 4px 0 rgba(80, 64, 45, .16);
+  }
+  .scene-node__mark {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    background: var(--tone);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 13%, transparent);
+  }
+  .scene-node__copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .scene-node__title {
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .scene-node__meta {
+    color: var(--dim);
+    font: 8px/1.2 var(--mono);
+    letter-spacing: .03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .scene-node--teal { --tone: var(--teal); }
+  .scene-node--blue { --tone: var(--blue); }
+  .scene-node--red { --tone: var(--red); }
+  .scene-node--dim { --tone: var(--dim); }
+
+  .scene-slot {
+    position: absolute;
+    width: 92px;
+    height: 42px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    pointer-events: auto;
+    transform: translate(-50%, -50%);
+  }
+  .scene-slot__ring {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(47, 124, 118, .38);
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(47, 124, 118, .12), 0 0 0 8px rgba(47, 124, 118, .035);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .scene-slot__ring::before,
+  .scene-slot__ring::after {
+    content: "";
+    position: absolute;
+    background: rgba(47, 124, 118, .4);
+  }
+  .scene-slot__ring::before {
+    left: 50%;
+    top: -5px;
+    width: 1px;
+    height: 10px;
+    transform: translateX(-50%);
+  }
+  .scene-slot__ring::after {
+    left: -5px;
+    top: 50%;
+    width: 10px;
+    height: 1px;
+    transform: translateY(-50%);
+  }
+  .scene-slot:hover .scene-slot__ring,
+  .scene-slot:focus-visible .scene-slot__ring {
+    border-color: var(--teal);
+    box-shadow: inset 0 0 0 1px rgba(47, 124, 118, .22), 0 0 0 10px rgba(47, 124, 118, .07);
+    outline: none;
+  }
+  .scene-slot__label {
+    position: absolute;
+    left: 50%;
+    top: 44px;
+    transform: translateX(-50%);
+    color: var(--muted);
+    font: 9px/1.2 var(--mono);
+    letter-spacing: .04em;
+    white-space: nowrap;
+  }
+  .scene-slot__meta {
+    position: absolute;
+    left: 50%;
+    top: 57px;
+    transform: translateX(-50%);
+    color: var(--dim);
+    font: 8px/1.2 var(--mono);
+    letter-spacing: .03em;
+    white-space: nowrap;
+  }
+
+  .desk.has-scene::before { display: none; }
+  .desk.has-scene .desk__hint { color: rgba(138, 128, 112, .7); }
+  .desk.scene-focus .windows,
+  .desk.scene-focus .desk__hint,
+  .desk.scene-focus .launchpad { display: none !important; }
+  .desk.scene-focus .scene3d { z-index: 3; }
+
+  @media (max-width: 900px) {
+    .scene3d__readout { display: none; }
+    .scene-node { min-width: 88px; padding: 4px 6px; }
+    .scene-node__meta { display: none; }
+    .scene3d__tools { right: 10px; bottom: 10px; }
+  }
+  @media (max-width: 620px) {
+    .scene-node { min-width: 72px; }
+    .scene-node__title { font-size: 10px; }
+    .scene-slot { width: 64px; height: 30px; }
+    .scene-slot__label { top: 33px; }
+    .scene-slot__meta { display: none; }
+  }

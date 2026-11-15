@@ -14,6 +14,7 @@ template. Styles and behavior live in their own files.
 | `styles/desktop/panels.css` | trainer chart, kernel stage, relay feed, error rows |
 | `styles/desktop/dialog.css` | add-window dialog |
 | `styles/desktop/responsive.css` | narrow-screen rules |
+| `styles/scene3d.css` | shared 3D ground-grid layer, node anchors, character slots, scene tools (see `SCENE3D.md`) |
 
 ## JavaScript
 
@@ -30,6 +31,9 @@ template. Styles and behavior live in their own files.
 | `js/desktop/components/line-chart.js` | reusable loss chart |
 | `js/desktop/panels/*.js` | one panel per file: overview, kernel, trainer, relay, errors, exhibit |
 | `js/desktop/main.js` | boot and wire components/panels; exposes `window.MemoriaDesk` |
+| `js/scene/scene-core.js` | shared WebGL ground grid, camera matrices, DOM anchor projection, ray picking, character slots |
+| `js/scene/scene-desktop.js` | desktop app-to-node layout; node clicks reuse `MD.bus` |
+| `js/scene/scene-showcase.js` | `index.html` `#world` layout; node clicks scroll to sections or open the 3D desktop |
 
 ## Extension API
 

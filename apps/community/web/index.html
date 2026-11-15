@@ -13,6 +13,8 @@
   <link rel="stylesheet" href="styles/presence.css">
   <link rel="stylesheet" href="styles/showcase/rail.css">
   <link rel="stylesheet" href="styles/showcase/sections.css">
+  <link rel="stylesheet" href="styles/scene3d.css">
+  <link rel="stylesheet" href="styles/showcase/world.css">
 </head>
 <body>
   <div class="page" id="top">
@@ -24,6 +26,7 @@
       </a>
       <nav class="nav" aria-label="页面导航">
         <a href="#modules">架构</a>
+        <a href="#world">场景</a>
         <a href="#state">阶段</a>
         <a href="#console">控制台</a>
         <a href="#join">参与</a>
@@ -91,6 +94,19 @@
           </ol>
           <p class="plate__note">图示是代码里的真实顺序，不是另一个独立架构。</p>
         </aside>
+      </section>
+
+      <section class="section world" id="world" aria-labelledby="world-title">
+        <div class="section__head">
+          <p class="kicker">WORLD / 3D 地面网格</p>
+          <h2 id="world-title">页面不是列表，是一块可以走进去的场地</h2>
+          <p class="section__lede">用引擎自己的地面网格把架构、阶段、控制台和参与入口摆进同一块场地。拖拽旋转、滚轮缩放，点一个节点就回到对应内容；两个角色位先留空，等模型接入。</p>
+        </div>
+        <div class="world-stage" id="showcase-scene"></div>
+        <div class="world__foot">
+          <span>拖拽旋转 · 滚轮缩放 · 点击节点</span>
+          <a class="btn btn--small" href="desktop.html" target="_top">打开 3D 桌面</a>
+        </div>
       </section>
 
       <section class="section" id="modules" aria-labelledby="modules-title">
@@ -428,5 +444,9 @@
       <span>展示页不代替看板；看板不代替代码。</span>
     </footer>
   </div>
+  <script src="/engine/math/math.js"></script>
+  <script src="/engine/world/pipeline/world-pipeline.js"></script>
+  <script src="js/scene/scene-core.js"></script>
+  <script src="js/scene/scene-showcase.js"></script>
 </body>
 </html>
