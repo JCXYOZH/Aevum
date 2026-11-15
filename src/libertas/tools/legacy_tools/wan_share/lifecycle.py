@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Callable
 from datetime import datetime
 
 from .base import *
+from .crypto import _encode_msg
 
 
 class LifecycleMixin:

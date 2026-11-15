@@ -19,9 +19,28 @@ from typing import Dict, List, Optional, Callable
 from datetime import datetime
 
 from .base import *
+from .crypto import _decode_msg, _derive_key, _encode_msg
+from .mqtt import MQTTClient
 
 
 class RoomMixin:
+    DEFAULT_BROKER = "broker.hivemq.com"
+    DEFAULT_PORT = 8883
+    DEFAULT_TLS_PORT = 8883
+    FALLBACK_BROKERS = [
+        ("broker.hivemq.com", 8883, True),
+        ("broker.emqx.io", 8883, True),
+        ("test.mosquitto.org", 8883, True),
+        ("broker.hivemq.com", 1883, False),
+        ("broker.emqx.io", 1883, False),
+        ("test.mosquitto.org", 1883, False),
+    ]
+    DEFAULT_ROOM = "my_era"
+    DEFAULT_ROOM_PASSWORD = "my_era_public_2026"
+    MAX_FILE_SIZE = 5 * 1024 * 1024
+    PRESENCE_INTERVAL = 20
+    PEER_TIMEOUT = 60
+
     def __init__(self, storage=None, rate_limiter=None, governance=None):
         self.client: Optional[MQTTClient] = None
         self.room_id = ""
@@ -113,6 +132,7 @@ class RoomMixin:
             except Exception:
                 pass
 
+    @property
     def role(self) -> str:
         activated = False
         try:
@@ -140,6 +160,7 @@ class RoomMixin:
                 pass
         return effective
 
+    @role.setter
     def role(self, value):
         pass
 

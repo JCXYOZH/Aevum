@@ -30,9 +30,11 @@ if _SRC_DIR.is_dir() and str(_SRC_DIR) not in sys.path:
 try:
     from .auth_api import AuthAPI
     from .chat_api import ChatAPI
+    from .wan_api import WANAPI
 except ImportError:  # 直接以脚本方式运行 desktop_server.py
     from auth_api import AuthAPI
     from chat_api import ChatAPI
+    from wan_api import WANAPI
 
 
 def _default_root() -> Path:
@@ -496,6 +498,13 @@ class MonitorHandler(BaseHTTPRequestHandler):
             if auth_api.handle_get(self, route):
                 return
 
+        wan_api = getattr(self.server, "wan_api", None)
+        if wan_api is not None and (
+            route.startswith("/api/wan/") or route == "/api/nat/status"
+        ):
+            if wan_api.handle_get(self, route):
+                return
+
         if route == "/":
             self._send_file(WEB_ROOT / "index.html")
             return
@@ -608,6 +617,12 @@ class MonitorHandler(BaseHTTPRequestHandler):
             if chat_api.handle_post(self, parsed.path):
                 return
             self._send_json({"success": False, "message": "unknown chat api"}, 404)
+            return
+        wan_api = getattr(self.server, "wan_api", None)
+        if wan_api is not None and parsed.path.startswith("/api/wan/"):
+            if wan_api.handle_post(self, parsed.path):
+                return
+            self._send_json({"success": False, "message": "unknown wan api"}, 404)
             return
         if parsed.path != "/api/model/generate":
             self._send_json({"ok": False, "message": "unknown api"}, 404)
@@ -787,6 +802,10 @@ def main() -> None:
     }
     auth_api = AuthAPI()
     server.auth_api = auth_api  # type: ignore[attr-defined]
+    try:
+        server.wan_api = WANAPI()  # type: ignore[attr-defined]
+    except Exception as error:
+        print(f"WAN API unavailable: {error}", flush=True)
 
     print(f"Memoria desktop: http://{args.host}:{args.port}/", flush=True)
     print(f"Metrics: {metrics_path}", flush=True)

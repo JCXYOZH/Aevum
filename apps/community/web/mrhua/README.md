@@ -85,7 +85,13 @@ http://127.0.0.1:8799/mrhua/?embed=wanshare
 
 嵌入模式只把 `#win-wanshare` 留在页面上，隐藏开门动画、灵体、任务栏、启动器和其它窗口；`boot.js` 会跳过开门动画并自动打开广域网窗口，`app-shell.js` 在 `window.MR_EMBED_WANSHARE` 为真时不做身份认证拦截。窗口内部的文案、控件、id 和样式保持原样。
 
-这个模式目前只负责“把广域网页面接进来”。`/api/wan/status`、`/api/wan/connect`、`/api/wan/send` 等接口在 `desktop_server.py` 还没有路由，点击连接会按原前端逻辑请求并失败；下一步要补的是真实的 WAN HTTP 适配层，不是在前端猜接口。
+广域网后端已经由 `apps/console/monitor/wan_api.py` 接到
+`src/libertas/tools/legacy_tools/wan_share` 的真实 MQTT 房间实现：
+`desktop_server.py` 注册了 `/api/wan/status`、`/api/wan/auto_join`、
+`/api/wan/connect`、`/api/wan/rooms`、`/api/wan/rooms/join`、
+`/api/wan/rooms/create`、`/api/wan/send` 等路由。服务启动后会异步尝试
+自动加入默认公共房间 `my_era`，页面打开广域网窗口时也会再确认一次；
+“+ 创建”会用输入的新房间号和密码建立独立房间，不需要前端猜接口。
 
 ## 本地运行
 

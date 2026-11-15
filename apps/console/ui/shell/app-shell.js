@@ -11204,8 +11204,56 @@ const transfers = asArray(data.transfers);
             // ================================================================
             (function() {
                 let wanTimer = null;
+                let wanAutoJoinStarted = false;
 
                 function wEl(id) { return document.getElementById(id); }
+
+                /**
+                 * 进入广域网时先连默认公共房间。服务端启动时也会尝试一次，
+                 * 这里再显式触发一次，保证浏览器打开窗口就能进房间。
+                 */
+                async function wanAutoJoin() {
+                    if (wanAutoJoinStarted) return;
+                    wanAutoJoinStarted = true;
+                    const status = wEl('wan-conn-status');
+                    if (status) {
+                        status.style.display = '';
+                        status.textContent = '● 正在连接公共社区…';
+                        status.style.color = '#fb8c00';
+                    }
+                    try {
+                        const resp = await fetch('/api/wan/auto_join', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                nickname: wEl('wan-nickname')?.value.trim() || ''
+                            })
+                        });
+                        const data = await resp.json();
+                        if (data.success) {
+                            _wanCurrentRoom = 'my_era';
+                            if (!wanTimer) wanTimer = setInterval(wanRefresh, 2000);
+                            wanRefresh();
+                            if (typeof refreshMirrorShareStatus === 'function') refreshMirrorShareStatus();
+                            return;
+                        }
+                        // 服务端可能还在连接中；先开轮询，连接完成后 wanRefresh 会自动接管。
+                        if (data.pending) {
+                            if (!wanTimer) wanTimer = setInterval(wanRefresh, 2000);
+                            wanRefresh();
+                            return;
+                        }
+                        if (status) {
+                            status.textContent = '● 公共社区暂未连接';
+                            status.style.color = '#e53935';
+                        }
+                    } catch (e) {
+                        if (status) {
+                            status.textContent = '● 公共社区连接失败';
+                            status.style.color = '#e53935';
+                        }
+                    }
+                }
 
                 let _wanRoomsCache = [];
                 let _wanUnread = {};
@@ -11231,16 +11279,30 @@ const transfers = asArray(data.transfers);
                         const tlsCheck = wEl('wan-tls');
                         if (connectBtn) connectBtn.style.display = connected ? 'none' : '';
                         if (disconnectBtn) disconnectBtn.style.display = connected ? '' : 'none';
-                        if (connStatus) connStatus.style.display = connected ? '' : 'none';
+                        if (connStatus) {
+                            connStatus.style.display = connected ? '' : 'none';
+                            if (connected) {
+                                connStatus.textContent = '● 已连接';
+                                connStatus.style.color = '#43a047';
+                            }
+                        }
                         if (encHint) encHint.style.display = connected ? 'none' : '';
                         if (nicknameInput) nicknameInput.placeholder = connected ? '昵称（回车更新）' : '昵称（选填）';
                         if (brokerInput) brokerInput.disabled = connected;
                         if (tlsCheck) tlsCheck.disabled = connected;
-                        if (msgInput) msgInput.disabled = !connected;
+                        if (msgInput) {
+                            msgInput.disabled = !connected;
+                            msgInput.placeholder = connected ? '输入消息（Enter发送，Shift+Enter换行）' : '连接后即可发送消息（Enter发送，Shift+Enter换行）';
+                        }
                         if (sendBtn) sendBtn.disabled = !connected;
                         if (!connected) {
                             const rl = wEl('wan-room-list');
-                            if (rl) rl.innerHTML = '<div style="padding:20px 12px;text-align:center;color:#bbb;font-size:0.78rem;">连接后显示房间列表</div>';
+                            if (rl) {
+                                const hint = data.auto_state === 'connecting'
+                                    ? '公共社区 my_era<br/>正在自动连接…'
+                                    : '公共社区 my_era<br/>点“连接”进入';
+                                rl.innerHTML = '<div style="padding:20px 12px;text-align:center;color:#bbb;font-size:0.78rem;line-height:1.7;">' + hint + '</div>';
+                            }
                             const pb = wEl('wan-peers');
                             if (pb) pb.innerHTML = '<div style="padding:12px;text-align:center;color:#bbb;font-size:0.75rem;">未连接</div>';
                             return;
@@ -11603,18 +11665,41 @@ const transfers = asArray(data.transfers);
                     });
                 }
 
-                // ========== 多房间：加入/离开 ==========
+                // ========== 多房间：加入/创建/离开 ==========
                 const addRoomBtn = wEl('wan-add-room-btn');
+                const createRoomBtn = wEl('wan-create-room-btn');
                 const addRoomForm = wEl('wan-add-room-form');
                 const addRoomId = wEl('wan-add-room-id');
                 const addRoomPwd = wEl('wan-add-room-pwd');
                 const addRoomConfirm = wEl('wan-add-room-confirm');
                 const addRoomCancel = wEl('wan-add-room-cancel');
+                let wanRoomMode = 'join';
+
+                function showWanRoomForm(mode) {
+                    if (!addRoomForm) return;
+                    wanRoomMode = mode;
+                    addRoomForm.style.display = 'flex';
+                    if (addRoomConfirm) addRoomConfirm.textContent = mode === 'create' ? '创建' : '加入';
+                    if (addRoomId) {
+                        addRoomId.placeholder = mode === 'create'
+                            ? '新房间ID（字母/数字/下划线/横线）'
+                            : '房间ID（字母/数字/下划线/横线）';
+                        addRoomId.focus();
+                    }
+                }
 
                 if (addRoomBtn && addRoomForm) {
                     addRoomBtn.addEventListener('click', () => {
-                        addRoomForm.style.display = addRoomForm.style.display === 'flex' ? 'none' : 'flex';
-                        addRoomId?.focus();
+                        if (addRoomForm.style.display === 'flex' && wanRoomMode === 'join') {
+                            addRoomForm.style.display = 'none';
+                            return;
+                        }
+                        showWanRoomForm('join');
+                    });
+                }
+                if (createRoomBtn && addRoomForm) {
+                    createRoomBtn.addEventListener('click', () => {
+                        showWanRoomForm('create');
                     });
                 }
                 const pwdToggle = wEl('wan-pwd-toggle');
@@ -11641,9 +11726,10 @@ const transfers = asArray(data.transfers);
                             alert('房间ID只能包含字母、数字、下划线和横线，长度1-64');
                             return;
                         }
-                        addRoomConfirm.disabled = true; addRoomConfirm.textContent = '加入中...';
+                        addRoomConfirm.disabled = true; addRoomConfirm.textContent = (wanRoomMode === 'create' ? '创建中...' : '加入中...');
                         try {
-                            const r = await fetch('/api/wan/rooms/join', {
+                            const endpoint = wanRoomMode === 'create' ? '/api/wan/rooms/create' : '/api/wan/rooms/join';
+                            const r = await fetch(endpoint, {
                                 method: 'POST', headers: {'Content-Type': 'application/json'},
                                 body: JSON.stringify({room_id: roomId, password: pwd})
                             }).then(r => r.json());
@@ -11653,9 +11739,9 @@ const transfers = asArray(data.transfers);
                                 _wanUnread[roomId] = 0;
                                 wanRefresh();
                                 if (typeof refreshMirrorShareStatus === "function") refreshMirrorShareStatus();
-                            } else { alert('❌ ' + (r.error || '加入失败')); }
+                            } else { alert('❌ ' + (r.error || (wanRoomMode === 'create' ? '创建失败' : '加入失败'))); }
                         } catch(e) { alert('请求失败: ' + e); }
-                        addRoomConfirm.disabled = false; addRoomConfirm.textContent = '加入';
+                        addRoomConfirm.disabled = false; addRoomConfirm.textContent = (wanRoomMode === 'create' ? '创建' : '加入');
                     });
                 }
 
@@ -11864,6 +11950,7 @@ const transfers = asArray(data.transfers);
                     if (e.target.closest('[data-window="wanshare"]') && !_wanLoaded) {
                         _wanLoaded = true;
                         wanRefresh();
+                        wanAutoJoin();
                         if (!wanTimer) wanTimer = setInterval(wanRefresh, 2000);
                     }
                     if (e.target.classList && e.target.classList.contains('btn-close')) {
@@ -11880,6 +11967,7 @@ const transfers = asArray(data.transfers);
                         _wanLoaded = true;
                         setTimeout(() => {
                             wanRefresh();
+                            wanAutoJoin();
                             if (!wanTimer) wanTimer = setInterval(wanRefresh, 2000);
                         }, 100);
                     }

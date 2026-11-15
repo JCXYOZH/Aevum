@@ -19,13 +19,14 @@ from typing import Dict, List, Optional, Callable
 from datetime import datetime
 
 from .base import *
+from .crypto import _encode_msg
 
 
 class MessagingMixin:
     def send_message(self, text: str, room_id: str = "", target_peer_id: str = "") -> bool:
         if not self.is_connected():
             return False
-        from .chat_security import has_permission
+        from ..chat_security import has_permission
         if not has_permission(self.role, "can_send"):
             return False
         msg = {
