@@ -78,6 +78,7 @@ curl -fsS https://www.mrhua.cn/ | grep -q 'class="masthead"'
 curl -fsS https://www.mrhua.cn/api/health
 curl -fsS https://www.mrhua.cn/desktop.html -o /dev/null
 curl -fsS https://www.mrhua.cn/mrhua/index.html -o /dev/null
+curl -fsS https://www.mrhua.cn/engine/assets/models/live2d/xiaoyue/xiaoyue.model3.json -o /dev/null
 ```
 
 如果返回的是首页内容，说明 `/engine/` 路由没有生效，检查：
