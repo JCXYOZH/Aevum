@@ -210,6 +210,15 @@ class WANAPI:
                 return True
             handler._send_json(self.wan.leave_additional_room(rid))
             return True
+        if route.startswith("/api/wan/rooms/") and route.endswith("/messages/delete"):
+            room_id = route[len("/api/wan/rooms/"):-len("/messages/delete")].strip("/")
+            body = self.read_json(handler) or {}
+            msg_id = str(body.get("msg_id", "")).strip()
+            if not msg_id:
+                handler._send_json({"success": False, "error": "缺少msg_id"}, 400)
+                return True
+            handler._send_json({"success": self.wan.delete_message(room_id, msg_id)})
+            return True
         if route == "/api/wan/send_file":
             self._send_file(handler)
             return True
