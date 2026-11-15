@@ -96,6 +96,32 @@
     ].filter(Boolean).join("\n");
   }
 
+  var BOARD_VERTEX = [
+    "attribute vec3 aPos;",
+    "attribute vec2 aUv;",
+    "uniform mat4 uMVP;",
+    "varying vec2 vUv;",
+    "void main() {",
+    "  vUv = aUv;",
+    "  gl_Position = uMVP * vec4(aPos, 1.0);",
+    "}"
+  ].join("\n");
+
+  var BOARD_FRAGMENT = [
+    "precision highp float;",
+    "uniform sampler2D uTexture;",
+    "uniform float uOpacity;",
+    "varying vec2 vUv;",
+    "void main() {",
+    "  vec4 texel = texture2D(uTexture, vUv);",
+    "  float edge = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));",
+    "  vec3 frame = vec3(0.16, 0.13, 0.10);",
+    "  vec3 color = mix(frame, texel.rgb, smoothstep(0.0, 0.012, edge));",
+    "  float alpha = smoothstep(0.0, 0.006, edge);",
+    "  gl_FragColor = vec4(color, alpha * uOpacity);",
+    "}"
+  ].join("\n");
+
   function project(matrix, point, width, height) {
     var x = matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12];
     var y = matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13];
@@ -159,6 +185,12 @@
     var slotElements = [];
     var drag = null;
     var frameHooks = [];
+    var boardProgram = null;
+    var boardBuffer = null;
+    var boardLocations = {};
+    var boardTexture = null;
+    var boardVisible = false;
+    var pendingBackdrop = null;
 
     camera.mode = "orbit";
     camera.target = [0, 0, 0];
@@ -175,6 +207,99 @@
       A.M4.lookAt(viewMatrix, camera.position, camera.target, camera.up);
       A.M4.perspective(projectionMatrix, camera.fov * Math.PI / 180, camera.aspect, camera.near, camera.far);
       multiply(viewProjection, projectionMatrix, viewMatrix);
+    }
+
+    function boardGeometry(image) {
+      var aspect = image.naturalWidth / Math.max(1, image.naturalHeight);
+      var boardHeight = 5.4;
+      var boardWidth = boardHeight * aspect;
+      if (boardWidth > 16) {
+        boardWidth = 16;
+        boardHeight = boardWidth / aspect;
+      }
+      if (boardHeight > 7.4) {
+        boardHeight = 7.4;
+        boardWidth = boardHeight * aspect;
+      }
+      var z = -8.5;
+      var bottom = 0.2;
+      var top = bottom + boardHeight;
+      var left = -boardWidth / 2;
+      var right = boardWidth / 2;
+      return [
+        left, bottom, z, 0, 0,
+        right, bottom, z, 1, 0,
+        left, top, z, 0, 1,
+        right, bottom, z, 1, 0,
+        right, top, z, 1, 1,
+        left, top, z, 0, 1
+      ];
+    }
+
+    function drawBackdrop() {
+      if (!boardVisible || !boardTexture || !boardProgram || !boardBuffer) return;
+      if (boardLocations.aPos < 0 || boardLocations.aUv < 0) return;
+      gl.useProgram(boardProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, boardBuffer);
+      gl.enableVertexAttribArray(boardLocations.aPos);
+      gl.enableVertexAttribArray(boardLocations.aUv);
+      gl.vertexAttribPointer(boardLocations.aPos, 3, gl.FLOAT, false, 20, 0);
+      gl.vertexAttribPointer(boardLocations.aUv, 2, gl.FLOAT, false, 20, 12);
+      gl.uniformMatrix4fv(boardLocations.uMVP, false, viewProjection);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, boardTexture);
+      gl.uniform1i(boardLocations.uTexture, 0);
+      gl.uniform1f(boardLocations.uOpacity, 1);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    function setBackdrop(source) {
+      pendingBackdrop = source || null;
+      if (!gl || !boardProgram) return Promise.resolve(false);
+      if (!source) {
+        boardVisible = false;
+        pendingBackdrop = null;
+        draw();
+        return Promise.resolve(true);
+      }
+      return new Promise(function (resolve) {
+        var image = new Image();
+        image.onload = function () {
+          if (!boardTexture) boardTexture = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, boardTexture);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          try {
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+          } catch (error) {
+            if (global.console) console.error("setBackdrop:", error);
+            resolve(false);
+            return;
+          }
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          if (!boardBuffer) boardBuffer = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, boardBuffer);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(boardGeometry(image)), gl.STATIC_DRAW);
+          boardVisible = true;
+          pendingBackdrop = null;
+          draw();
+          resolve(true);
+        };
+        image.onerror = function () {
+          pendingBackdrop = null;
+          resolve(false);
+        };
+        image.src = source;
+      });
+    }
+
+    function clearBackdrop() {
+      boardVisible = false;
+      pendingBackdrop = null;
+      draw();
     }
 
     // The ground is a single plane at y=0. Keep the orbit camera just above it
@@ -367,6 +492,7 @@
       gl.uniform2f(locations.uResolution, canvas.width, canvas.height);
       gl.uniform1f(locations.uOpacity, opacity);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      drawBackdrop();
     }
 
     function resize() {
@@ -543,6 +669,19 @@
         uResolution: gl.getUniformLocation(program, "uResolution"),
         uOpacity: gl.getUniformLocation(program, "uOpacity")
       };
+      try {
+        boardProgram = createProgram(gl, BOARD_VERTEX, BOARD_FRAGMENT);
+        boardLocations = {
+          aPos: gl.getAttribLocation(boardProgram, "aPos"),
+          aUv: gl.getAttribLocation(boardProgram, "aUv"),
+          uMVP: gl.getUniformLocation(boardProgram, "uMVP"),
+          uTexture: gl.getUniformLocation(boardProgram, "uTexture"),
+          uOpacity: gl.getUniformLocation(boardProgram, "uOpacity")
+        };
+      } catch (error) {
+        boardProgram = null;
+        if (global.console) console.error("scene-core backdrop:", error);
+      }
       buffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
@@ -555,6 +694,11 @@
       bindPointer();
       bindTools();
       resize();
+      if (pendingBackdrop) {
+        var backdrop = pendingBackdrop;
+        pendingBackdrop = null;
+        setBackdrop(backdrop);
+      }
       if (global.ResizeObserver) {
         new ResizeObserver(resize).observe(mount);
       } else {
@@ -589,6 +733,9 @@
       project: function (world) { return project(viewProjection, world, width, height); },
       getViewProjection: function () { return viewProjection; },
       getSize: function () { return { width: width, height: height, dpr: dpr }; },
+      setBackdrop: setBackdrop,
+      clearBackdrop: clearBackdrop,
+      hasBackdrop: function () { return boardVisible; },
       slotWorld: function (id) {
         for (var i = 0; i < slots.length; i += 1) {
           if (slots[i].id === id) return [slots[i].grid[0] * 2.0, 0, slots[i].grid[1] * 2.0];

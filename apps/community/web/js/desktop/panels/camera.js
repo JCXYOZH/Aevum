@@ -27,7 +27,7 @@
         '<span class="camera-state" data-field="camera-state">等待拍照</span>' +
         '<input type="file" accept="image/*" data-field="camera-file" hidden>' +
       '</div>' +
-      '<p class="camera-note">图片只存在这个窗口的内存里，刷新即消失，不会上传，也不会写入 localStorage。</p>';
+      '<p class="camera-note">图片只存在这个窗口和场景的内存里，刷新即消失，不会上传，也不会写入 localStorage；载入后会自动放进 3D 背景板。</p>';
 
     var stage = root.querySelector('[data-field="camera-stage"]');
     var empty = root.querySelector('[data-field="camera-empty"]');
@@ -42,6 +42,14 @@
       if (state) state.textContent = text;
     }
 
+    function placeOnScene(source) {
+      var scene = global.MemoriaScene;
+      if (!scene || typeof scene.setBackdrop !== "function") return;
+      scene.setBackdrop(source).catch(function () {
+        setState("照片已留在窗口，3D 背景板载入失败");
+      });
+    }
+
     function showPhoto(source, label) {
       if (!source) return;
       photo.src = source;
@@ -49,6 +57,7 @@
       empty.hidden = true;
       stage.classList.add("has-photo");
       setState(label || "已载入");
+      placeOnScene(source);
     }
 
     function clearPhoto() {
@@ -57,6 +66,8 @@
       empty.hidden = false;
       stage.classList.remove("has-photo");
       fileInput.value = "";
+      var scene = global.MemoriaScene;
+      if (scene && typeof scene.clearBackdrop === "function") scene.clearBackdrop();
       setState("已清空");
     }
 
@@ -114,7 +125,7 @@
       element: root,
       mount: function () { root.focus(); },
       onShow: function () { root.focus(); },
-      destroy: function () { clearPhoto(); }
+      destroy: function () { photo.removeAttribute("src"); }
     };
   };
 })(window);
