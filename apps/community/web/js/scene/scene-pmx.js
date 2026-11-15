@@ -36,12 +36,36 @@
     var renderer = null;
     var model = null;
     var modelMatrix = null;
-    var world = scene.slotWorld(slotId);
+    var home = scene.slotWorld(slotId);
+    var position = home ? [home[0], 0, home[2]] : [0, 0, 0];
+    var target = null;
+    var baseYaw = Number(options.yaw) || 0;
+    var yaw = baseYaw;
+    var speed = options.speed == null ? 1.8 : Math.max(0.2, Number(options.speed));
+    var moving = false;
+    var metrics = null;
+    var look = options.look || null;
+    var bindings = null;
     var startedAt = 0;
-    var state = { status: "loading", renderer: null, model: null };
+    var state = {
+      status: "loading",
+      renderer: null,
+      model: null,
+      label: "角色位 02",
+      title: "",
+      position: position.slice(),
+      moving: false
+    };
 
     function setStatus(text) {
       if (scene.setStatus) scene.setStatus(text);
+    }
+
+    function lerpAngle(from, to, alpha) {
+      var delta = (to - from + Math.PI) % (Math.PI * 2);
+      if (delta < 0) delta += Math.PI * 2;
+      delta -= Math.PI;
+      return from + delta * alpha;
     }
 
     function boundsOf(parsed) {
@@ -57,51 +81,127 @@
       return { min: min, max: max };
     }
 
-    function modelFor(bounds, slotWorld) {
-      var height = bounds.max[1] - bounds.min[1];
+    function metricsFor(parsed) {
+      var b = boundsOf(parsed);
+      var height = b.max[1] - b.min[1];
       if (!height || !isFinite(height)) height = 1;
-      var scale = (options.height || 1.75) / height;
-      var cx = (bounds.min[0] + bounds.max[0]) / 2;
-      var cz = (bounds.min[2] + bounds.max[2]) / 2;
-      return placeMatrix(slotWorld, scale, [cx, bounds.min[1], cz], options.yaw || 0);
+      return {
+        scale: (options.height || 1.75) / height,
+        center: [(b.min[0] + b.max[0]) / 2, b.min[1], (b.min[2] + b.max[2]) / 2]
+      };
     }
 
-    function placeMatrix(slotWorld, scale, center, yaw) {
-      var m = math.M4.create();
-      var c = Math.cos(yaw);
-      var s = Math.sin(yaw);
-      m[0] = c * scale;
-      m[1] = 0;
-      m[2] = -s * scale;
-      m[3] = 0;
-      m[4] = 0;
-      m[5] = scale;
-      m[6] = 0;
-      m[7] = 0;
-      m[8] = s * scale;
-      m[9] = 0;
-      m[10] = c * scale;
-      m[11] = 0;
-      m[12] = slotWorld[0] - (c * scale * center[0] + s * scale * center[2]);
-      m[13] = slotWorld[1] - scale * center[1];
-      m[14] = slotWorld[2] - (-s * scale * center[0] + c * scale * center[2]);
-      m[15] = 1;
-      return m;
+    function placeMatrix(point, m, angle) {
+      var matrix = math.M4.create();
+      var c = Math.cos(angle);
+      var s = Math.sin(angle);
+      var scale = m.scale;
+      var center = m.center;
+      matrix[0] = c * scale;
+      matrix[1] = 0;
+      matrix[2] = -s * scale;
+      matrix[3] = 0;
+      matrix[4] = 0;
+      matrix[5] = scale;
+      matrix[6] = 0;
+      matrix[7] = 0;
+      matrix[8] = s * scale;
+      matrix[9] = 0;
+      matrix[10] = c * scale;
+      matrix[11] = 0;
+      matrix[12] = point[0] - (c * scale * center[0] + s * scale * center[2]);
+      matrix[13] = point[1] - scale * center[1];
+      matrix[14] = point[2] - (-s * scale * center[0] + c * scale * center[2]);
+      matrix[15] = 1;
+      return matrix;
     }
 
-    function frame(now) {
-      if (!renderer || !model || !modelMatrix) return;
+    function step(dt) {
+      var stepDt = dt || 0;
+      var wasMoving = moving;
+      if (target) {
+        var dx = target[0] - position[0];
+        var dz = target[2] - position[2];
+        var distance = Math.sqrt(dx * dx + dz * dz);
+        if (distance > 0.01) {
+          var distanceStep = Math.min(distance, speed * Math.max(stepDt, 0.001));
+          position[0] += dx / distance * distanceStep;
+          position[2] += dz / distance * distanceStep;
+          var desiredYaw = baseYaw + Math.atan2(dx, dz);
+          yaw = lerpAngle(yaw, desiredYaw, 1 - Math.exp(-Math.max(stepDt, 0.001) * 7));
+          moving = true;
+        } else {
+          position[0] = target[0];
+          position[2] = target[2];
+          target = null;
+          moving = false;
+        }
+      } else {
+        yaw = lerpAngle(yaw, baseYaw, 1 - Math.exp(-Math.max(stepDt, 0.001) * 3));
+        moving = false;
+      }
+      state.position[0] = position[0];
+      state.position[1] = position[1];
+      state.position[2] = position[2];
+      state.moving = moving;
+      state.yaw = yaw;
+      if (wasMoving !== moving) {
+        if (moving) setStatus(state.label + " · 移动中");
+        else if (state.title) setStatus(state.label + " · PMX / " + state.title);
+        else setStatus(state.label + " · 待机");
+      }
+    }
+
+    function sizeCanvas() {
+      if (!scene.getSize) return;
+      var size = scene.getSize();
+      var dpr = size.dpr || global.devicePixelRatio || 1;
+      var width = Math.max(1, Math.round((size.width || canvas.clientWidth) * dpr));
+      var height = Math.max(1, Math.round((size.height || canvas.clientHeight) * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+    }
+
+    function frame(now, dt) {
+      if (!renderer || !model || !metrics) return;
       if (!startedAt) startedAt = now;
-      var pose = Render.makeIdlePose(model, (now - startedAt) / 1000);
-      renderer.render((now - startedAt) / 1000, pose, {
+      sizeCanvas();
+      step(dt);
+      modelMatrix = placeMatrix(position, metrics, yaw);
+      var t = (now - startedAt) / 1000;
+      var pose;
+      var animation = Render.ProceduralAnimation;
+      if (animation && animation.makePMXPose) {
+        pose = animation.makePMXPose(model, t, {
+          state: moving ? "walk" : "idle",
+          armDown: -1.05,
+          armAxis: "z",
+          look: look ? look.getLook() : null,
+          bindings: bindings
+        });
+      } else {
+        pose = Render.makeIdlePose(model, t);
+      }
+      renderer.render(t, pose, {
         viewProjection: scene.getViewProjection(),
         modelMatrix: modelMatrix,
         clearColor: [0, 0, 0, 0]
       });
     }
 
+    function moveTo(point) {
+      if (!point) return;
+      target = [
+        Math.max(-18, Math.min(18, Number(point[0]) || 0)),
+        0,
+        Math.max(-18, Math.min(18, Number(point[2]) || 0))
+      ];
+    }
+
     function boot() {
-      if (!world) throw new Error("scene-pmx: slot not found: " + slotId);
+      if (!home) throw new Error("scene-pmx: slot not found: " + slotId);
       canvas.hidden = true;
       setStatus("角色位 02 · 载入 PMX");
       renderer = new Render.WebGLRenderer(canvas, {
@@ -123,10 +223,14 @@
           return renderer.loadPMX(model, textureUrls);
         })
         .then(function () {
-          modelMatrix = modelFor(boundsOf(model), world);
+          metrics = metricsFor(model);
+          var animation = Render.ProceduralAnimation;
+          if (animation && animation.detectPMXBones) bindings = animation.detectPMXBones(model);
+          modelMatrix = placeMatrix(position, metrics, yaw);
           canvas.hidden = false;
           state.status = "ready";
           var title = model.modelName || "已接入";
+          state.title = title;
           if (scene.setSlotMeta) scene.setSlotMeta(slotId, "PMX / " + title);
           setStatus("角色位 02 · PMX / " + title);
           scene.onFrame(frame);
@@ -142,7 +246,14 @@
         });
     }
 
-    var handle = { canvas: canvas, ready: boot(), state: state, renderer: null };
+    var handle = {
+      canvas: canvas,
+      ready: boot(),
+      state: state,
+      renderer: null,
+      moveTo: moveTo,
+      getPosition: function () { return state.position.slice(); }
+    };
     mount[key] = handle;
     handle.ready.then(function () {
       handle.renderer = renderer;

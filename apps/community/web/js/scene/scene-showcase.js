@@ -43,5 +43,6 @@
   });
 
   api.mount();
+  if (api.setStatus) api.setStatus("拖拽旋转 · 滚轮缩放 · 点击入口");
   global.AevumShowcaseScene = api;
 })(window);

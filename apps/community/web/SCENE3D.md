@@ -15,6 +15,7 @@ python D:\Aevum\apps\console\monitor\desktop_server.py --port 8799
 | --- | --- |
 | 普通桌面 | `http://127.0.0.1:8799/desktop.html` |
 | 沉浸桌面 | `http://127.0.0.1:8799/desktop.html?scene=1` |
+| 贴地仰视 | `http://127.0.0.1:8799/desktop.html?scene=1&view=low` |
 | 展示页场景段 | `http://127.0.0.1:8799/index.html#world` |
 
 ## 分层
@@ -24,9 +25,9 @@ python D:\Aevum\apps\console\monitor\desktop_server.py --port 8799
 | 数学 | `engine/math/math.js` | `V3 / M4 / Plane / Ray`，挂到 `window.AEVUM.math` |
 | 相机状态 | `engine/world/pipeline/world-pipeline.js` | `World3DEngine.CameraController` 的轨道参数 |
 | 场景核心 | `js/scene/scene-core.js` | WebGL 地面网格、相机矩阵、DOM 锚点投影、射线拾取、角色位、工具条、WebGL fallback |
-| 角色 pass | `js/scene/scene-vrm.js` | 透明角色 canvas、VRM 加载与待机动作、角色位放置、与地面共用 `viewProjection` |
-| PMX pass | `js/scene/scene-pmx.js` | PMX 解析、贴图、待机动作，默认放在角色位 02 |
-| Live2D pass | `js/scene/scene-live2d.js` | 屏幕空间 Live2D 画布，按角色位投影定位，可选替代角色位 02 |
+| 角色 pass | `js/scene/scene-vrm.js` | 透明角色 canvas、VRM 加载、程序化待机/行走、角色位放置、移动目标、与地面共用 `viewProjection` |
+| PMX pass | `js/scene/scene-pmx.js` | PMX 解析、贴图、程序化待机/行走，默认放在角色位 02 |
+| Live2D pass | `js/scene/scene-live2d.js` | 屏幕空间 Live2D 画布，按角色位投影定位并跟随移动目标，可选替代角色位 02 |
 | 桌面布局 | `js/scene/scene-desktop.js` | 桌面页 7 个应用节点 + 2 个角色位，点击走 `MD.bus` |
 | 展示页布局 | `js/scene/scene-showcase.js` | 展示页 5 个入口节点 + 2 个角色位，点击滚动或跳转 |
 | 场景样式 | `styles/scene3d.css` | 场景层、节点、角色位、工具条、沉浸模式、响应式 |
@@ -71,12 +72,22 @@ python D:\Aevum\apps\console\monitor\desktop_server.py --port 8799
 
 ## 交互
 
-- 拖拽：旋转相机。
+- 拖拽：旋转相机；相机俯仰有地面下界，不能穿到地面以下。
 - 滚轮：拉近拉远，`preventDefault` 只在场景挂载点上生效，不影响页面别处滚动。
 - 点击节点：走 `onOpen(id)`；桌面页发 `MD.bus`，展示页滚动 section。
-- 点击空白地面：选最近节点，或清除当前状态。
-- 工具条：`沉浸 / 返回桌面`、`斜视`、`俯视`、`重置`。
+- 点击空白地面：选最近节点，或清除当前状态；桌面页还会把离点击点最近的角色移到该位置。
+- 工具条：`沉浸 / 返回桌面`、`斜视`、`俯视`、`仰视`、`重置`。
 - `?scene=1` 直接进沉浸模式；`Esc` 退出。
+
+## 角色移动与仰视
+
+- `scene-core` 的 `onGround(point)` 把地面点击坐标交给桌面布局；`scene-desktop` 用两个角色的当前位置比较距离，最近的那个走向目标。
+- VRM / PMX 的 `moveTo(point)` 每帧线性推进世界坐标，按移动方向计算 `yaw`，停下后平滑转回面向相机的基础朝向。
+- 行走姿态使用 `engine/render/procedural/procedural-animation.js` 的 `state="walk"`；待机继续用同一套 `idle` 动作，不再手写两套步态。
+- 指针位置经过 `engine/render/look/look-controller.js`，以 `look` 参数叠加到头部、颈部和胸部；指针离开场景后权重回零。
+- 地面 shader 从单面向下求交改成 `abs(rd.y)` 双面求交；同时 `clampCamera()` 把轨道相机限制在 `y≥0.18`，向下拖到地平线以下时只会贴地仰视，不会出现整片网格消失。
+- `仰视` 视图使用 `rotationX=0.075`、`distance=12`，可以看到网格向地平线延伸；`俯视` 仍是 `rotationX=1.16`。
+- `attachVRM / attachPMX / attachLive2D` 返回的 handle 带 `moveTo(point)` 和 `getPosition()`；`state.position`、`state.moving` 可直接读，不依赖 DOM。
 
 ## 场景核心接口
 
@@ -97,6 +108,7 @@ api.setStatus("...");
 api.screenRay(x, y);
 api.project([x, y, z]);
 api.onFrame(function (now, dt) {});
+api.onGround(function (point) {});
 api.getViewProjection();
 api.getSize();
 api.slotWorld("host");
@@ -137,6 +149,7 @@ renderer.render(time, pose, transforms, {
 - 模型：`engine/assets/models/ganyu/甘雨.pmx`，贴图在同目录 `tex/`。
 - 解析：`engine/formats/pmx/pmx.js` 的 `parsePMX`。
 - 渲染：`engine/render/pmx/webgl-renderer.js` 的 `WebGLRenderer`，支持骨骼、morph、toon、sphere、描边。
+- 画布：`scene-pmx.js` 每帧按场景尺寸和 DPR 同步 canvas 缓冲区；默认 300×150 会被 CSS 拉伸到整屏并严重发虚。
 - 放置：`scene-pmx.js` 按顶点包围盒把模型缩放到 1.75 世界单位，脚底对齐 `y=0`，再放到 `slotWorld("guide")`。
 - 贴图：PMX 的贴图路径逐段 `encodeURIComponent`，中文目录也能加载；TGA 走 `engine/formats/texture/tga.js`，PNG/BMP 由浏览器解码。
 - 切换：`desktop.html?scene=1&guide=live2d` 把角色位 02 换成 Live2D。

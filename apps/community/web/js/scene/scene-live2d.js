@@ -32,17 +32,51 @@
     if (overlay) mount.insertBefore(canvas, overlay);
     else mount.appendChild(canvas);
 
-    var world = scene.slotWorld(slotId);
+    var home = scene.slotWorld(slotId);
+    var position = home ? [home[0], 0, home[2]] : [0, 0, 0];
+    var target = null;
+    var speed = options.speed == null ? 1.8 : Math.max(0.2, Number(options.speed));
     var renderer = null;
-    var state = { status: "loading", renderer: null };
+    var state = { status: "loading", renderer: null, position: position.slice(), moving: false };
 
     function setStatus(text) {
       if (scene.setStatus) scene.setStatus(text);
     }
 
-    function align() {
-      if (!world) return;
-      var point = scene.project(world);
+    function step(dt) {
+      var stepDt = dt || 0;
+      var wasMoving = state.moving;
+      if (target) {
+        var dx = target[0] - position[0];
+        var dz = target[2] - position[2];
+        var distance = Math.sqrt(dx * dx + dz * dz);
+        if (distance > 0.01) {
+          var distanceStep = Math.min(distance, speed * Math.max(stepDt, 0.001));
+          position[0] += dx / distance * distanceStep;
+          position[2] += dz / distance * distanceStep;
+          state.moving = true;
+        } else {
+          position[0] = target[0];
+          position[2] = target[2];
+          target = null;
+          state.moving = false;
+        }
+      } else {
+        state.moving = false;
+      }
+      state.position[0] = position[0];
+      state.position[1] = position[1];
+      state.position[2] = position[2];
+      if (wasMoving !== state.moving) {
+        if (state.moving) setStatus("角色位 02 · 移动中");
+        else setStatus("角色位 02 · Live2D / 小月");
+      }
+    }
+
+    function align(dt) {
+      if (!home) return;
+      step(dt);
+      var point = scene.project(position);
       if (!point || point.clip < -1.2 || point.clip > 1.2) {
         canvas.hidden = true;
         return;
@@ -52,8 +86,17 @@
       canvas.style.top = Math.round(point.y - height + 12) + "px";
     }
 
+    function moveTo(point) {
+      if (!point) return;
+      target = [
+        Math.max(-18, Math.min(18, Number(point[0]) || 0)),
+        0,
+        Math.max(-18, Math.min(18, Number(point[2]) || 0))
+      ];
+    }
+
     function boot() {
-      if (!world) throw new Error("scene-live2d: slot not found: " + slotId);
+      if (!home) throw new Error("scene-live2d: slot not found: " + slotId);
       canvas.hidden = true;
       setStatus("角色位 02 · 载入 Live2D");
       renderer = new Render.Live2DRenderer(canvas);
@@ -65,7 +108,7 @@
         if (scene.setSlotMeta) scene.setSlotMeta(slotId, "Live2D / 小月");
         setStatus("角色位 02 · Live2D / 小月");
         scene.onFrame(align);
-        align();
+        align(0);
         renderer.start();
         return state;
       }).catch(function (error) {
@@ -78,7 +121,14 @@
       });
     }
 
-    var handle = { canvas: canvas, ready: boot(), state: state, renderer: null };
+    var handle = {
+      canvas: canvas,
+      ready: boot(),
+      state: state,
+      renderer: null,
+      moveTo: moveTo,
+      getPosition: function () { return state.position.slice(); }
+    };
     mount[key] = handle;
     handle.ready.then(function () {
       handle.renderer = renderer;

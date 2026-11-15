@@ -81,7 +81,7 @@
       "  vec4 farP = uInvVP * vec4(ndc, 1.0, 1.0);",
       "  vec3 ro = uCamPos;",
       "  vec3 rd = normalize(farP.xyz / farP.w - nearP.xyz / nearP.w);",
-      "  if (rd.y >= -0.0001) discard;",
+      "  if (abs(rd.y) < 0.0001) discard;",
       "  float t = -ro.y / rd.y;",
       "  if (t <= 0.0) discard;",
       "  vec3 p = ro + rd * t;",
@@ -132,6 +132,7 @@
     var onOpen = options.onOpen || function () {};
     var onSlot = options.onSlot || function () {};
     var onPick = options.onPick || function () {};
+    var onGround = options.onGround || function () {};
     var mounted = false;
     var canvas = null;
     var gl = null;
@@ -174,6 +175,16 @@
       multiply(viewProjection, projectionMatrix, viewMatrix);
     }
 
+    // The ground is a single plane at y=0. Keep the orbit camera just above it
+    // so a downward drag cannot put the eye underneath the plane and erase the grid.
+    function clampCamera() {
+      if (camera.mode !== "orbit") return;
+      var minPitch = 0.055;
+      if (camera.rotationX < minPitch) camera.rotationX = minPitch;
+      var eyeY = camera.target[1] + camera.distance * Math.sin(camera.rotationX);
+      if (eyeY < 0.18) camera.rotationX = Math.asin((0.18 - camera.target[1]) / camera.distance);
+    }
+
     function createElement(tag, className, parent) {
       var el = document.createElement(tag);
       el.className = className;
@@ -196,12 +207,16 @@
       viewTop.type = "button";
       viewTop.dataset.sceneView = "top";
       viewTop.textContent = "俯视";
+      var viewLow = createElement("button", "scene3d__tool", tools);
+      viewLow.type = "button";
+      viewLow.dataset.sceneView = "low";
+      viewLow.textContent = "仰视";
       var reset = createElement("button", "scene3d__tool", tools);
       reset.type = "button";
       reset.dataset.sceneView = "reset";
       reset.textContent = "重置";
       readout = createElement("span", "scene3d__readout", mount);
-      readout.textContent = "3D 网格 · 拖拽旋转 · 滚轮缩放";
+      readout.textContent = "拖拽旋转 · 滚轮缩放 · 点击地面移动角色";
       cursor = createElement("span", "scene3d__cursor", mount);
       cursor.hidden = true;
       return overlay;
@@ -226,6 +241,9 @@
       if (name === "top") {
         camera.rotationX = 1.16;
         camera.distance = 15;
+      } else if (name === "low") {
+        camera.rotationX = 0.075;
+        camera.distance = 12;
       } else if (name === "angle") {
         camera.rotationX = 0.52;
         camera.distance = 14;
@@ -366,6 +384,7 @@
       frameId = global.requestAnimationFrame(loop);
       var dt = lastTime ? Math.min(0.05, (now - lastTime) / 1000) : 0;
       lastTime = now;
+      clampCamera();
       camera.update(dt);
       draw();
       frameHooks.forEach(function (hook) {
@@ -431,6 +450,7 @@
       }
       readout.textContent = "网格 " + point[0].toFixed(1) + " / " + point[2].toFixed(1);
       onPick(null);
+      onGround(point);
     }
 
     function bindPointer() {
@@ -446,6 +466,8 @@
         if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
         if (drag.moved) {
           camera.orbit(dx, dy);
+          clampCamera();
+          camera.update(0);
           drag.x = event.clientX;
           drag.y = event.clientY;
           draw();
@@ -587,6 +609,11 @@
           var index = frameHooks.indexOf(hook);
           if (index >= 0) frameHooks.splice(index, 1);
         };
+      },
+      onGround: function (hook) {
+        if (typeof hook !== "function") return function () {};
+        onGround = hook;
+        return function () { onGround = function () {}; };
       }
     };
     return api;

@@ -75,31 +75,79 @@
     api.setView("focus");
   }
   var params = new URLSearchParams(global.location.search);
+  var requestedView = params.get("view");
+  if (requestedView) api.setView(requestedView);
+  var hostHandle = null;
+  var guideHandle = null;
+  var look = null;
+  if (global.AEVUM.render && global.AEVUM.render.LookController) {
+    look = global.AEVUM.render.LookController.createLookController({
+      maxYaw: 0.48,
+      maxPitch: 0.22,
+      smoothing: 0.22,
+      deadZone: 0.06
+    });
+    api.onFrame(function (now, dt) { look.update(dt); });
+    mount.addEventListener("pointermove", function (event) {
+      var rect = mount.getBoundingClientRect();
+      look.setPointer(
+        ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+        ((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 - 1
+      );
+    });
+    mount.addEventListener("pointerleave", function () { look.clearPointer(); });
+  }
+
+  function moveNearest(point) {
+    var candidates = [];
+    if (hostHandle && hostHandle.moveTo) candidates.push({ title: "角色位 01", handle: hostHandle });
+    if (guideHandle && guideHandle.moveTo) candidates.push({ title: "角色位 02", handle: guideHandle });
+    if (!candidates.length) return;
+    var nearest = null;
+    var nearestDistance = Infinity;
+    candidates.forEach(function (item) {
+      var current = item.handle.getPosition ? item.handle.getPosition() : [0, 0, 0];
+      var distance = Math.hypot(point[0] - current[0], point[2] - current[2]);
+      if (distance < nearestDistance) {
+        nearest = item;
+        nearestDistance = distance;
+      }
+    });
+    if (nearest) {
+      nearest.handle.moveTo(point);
+      api.setStatus(nearest.title + " · 移动中");
+    }
+  }
+
+  api.onGround(moveNearest);
+
   if (global.AEVUM.scene.attachVRM) {
     var yaw = params.get("yaw");
-    global.AEVUM.scene.attachVRM({
+    hostHandle = global.AEVUM.scene.attachVRM({
       mount: mount,
       scene: api,
       slotId: "host",
       height: 1.75,
       yaw: yaw === null ? Math.PI : Number(yaw),
+      look: look,
       modelUrl: "/engine/assets/models/furina/" + encodeURIComponent("f芙宁娜.vrm")
     });
   }
   if (global.AEVUM.scene.attachPMX && params.get("guide") !== "live2d") {
     var pmxYaw = params.get("pmxYaw");
-    global.AEVUM.scene.attachPMX({
+    guideHandle = global.AEVUM.scene.attachPMX({
       mount: mount,
       scene: api,
       slotId: "guide",
       height: 1.75,
       yaw: pmxYaw === null ? Math.PI : Number(pmxYaw),
+      look: look,
       modelUrl: "/engine/assets/models/ganyu/" + encodeURIComponent("甘雨.pmx"),
       baseUrl: "/engine/assets/models/ganyu/"
     });
   }
   if (global.AEVUM.scene.attachLive2D && params.get("guide") === "live2d") {
-    global.AEVUM.scene.attachLive2D({
+    guideHandle = global.AEVUM.scene.attachLive2D({
       mount: mount,
       scene: api,
       slotId: "guide",

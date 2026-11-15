@@ -4,13 +4,14 @@
 
 ## 3D 场景层
 
-`desktop.html` 和 `index.html` 共用一层 WebGL 地面网格：3D 只负责空间、相机、节点选择与角色位，原有窗口、输入、滚动、iframe 和拖拽仍然由 DOM 负责。桌面页把 7 个应用摆成地面节点，展示页用 `#world` 做同一个长页的 3D 索引；桌面页角色位 01 已接入真实 VRM，角色位 02 默认接入 PMX，也可以用 `?guide=live2d` 换成 Live2D。
+`desktop.html` 和 `index.html` 共用一层 WebGL 地面网格：3D 只负责空间、相机、节点选择与角色位，原有窗口、输入、滚动、iframe 和拖拽仍然由 DOM 负责。桌面页把 7 个应用摆成地面节点，展示页用 `#world` 做同一个长页的 3D 索引；桌面页角色位 01 已接入真实 VRM，角色位 02 默认接入 PMX，也可以用 `?guide=live2d` 换成 Live2D。点击空白地面，离点击点最近的角色会走向该位置，走路姿态来自引擎程序化动作，头部朝向来自指针视线控制器。
 
 - 代码：`js/scene/scene-core.js`、`scene-vrm.js`、`scene-pmx.js`、`scene-live2d.js`、`scene-desktop.js`、`scene-showcase.js`
 - 模型：`engine/assets/models/furina/f芙宁娜.vrm`、`engine/assets/models/ganyu/甘雨.pmx`、`engine/assets/models/live2d/xiaoyue/xiaoyue.model3.json`
 - 样式：`styles/scene3d.css`、`styles/showcase/world.css`
 - 沉浸桌面：`desktop.html?scene=1`
-- 完整说明见 [SCENE3D.md](SCENE3D.md)
+- 贴地仰视：`desktop.html?scene=1&view=low`
+- 完整说明见 [SCENE3D.md](SCENE3D.md)，引擎能力见 [ENGINE_INTEGRATION.md](ENGINE_INTEGRATION.md)
 
 ## 目录与归属
 
