@@ -49,7 +49,7 @@
     var actionReady = false;
     var actionUrl = options.actionUrl ||
       (global.AEVUM_MODEL_CONFIG && global.AEVUM_MODEL_CONFIG.actions) ||
-      "/engine/assets/all_animations.glb";
+      "";
     var walkLegFilter = Object.create(null);
     var walkArmLimit = Object.create(null);
     var runMode = false;
@@ -194,6 +194,7 @@
 
     function loadActions() {
       if (actionReady) return Promise.resolve();
+      if (!actionUrl) return Promise.resolve();
       if (!formats.parseGLB || !formats.GLTFAnimation || !Render.AnimationRetarget) return Promise.resolve();
       return fetch(actionUrl)
         .then(function (response) {

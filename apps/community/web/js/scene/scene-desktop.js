@@ -229,7 +229,7 @@
       height: 1.75,
       yaw: yaw === null ? Math.PI : Number(yaw),
       look: look,
-      actionUrl: modelConfig.actions || "/engine/assets/all_animations.glb",
+      actionUrl: modelConfig.actions,
       modelUrl: params.get("vrmUrl") || modelUrl("vrm")
     });
   }
