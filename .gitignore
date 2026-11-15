@@ -29,7 +29,7 @@ apps/console/monitor/build/
 # Model weights and checkpoints never enter the repository
 *.pt
 *.safetensors
-models/
+*.ckpt
 checkpoint*/
 build/trainer.out.log
 build/trainer.err.log
@@ -49,3 +49,5 @@ engine/assets/
 
 # P2P 运行期数据
 runtime/
+# 本地运行配置，按 configs/ 样例生成
+/config.yaml

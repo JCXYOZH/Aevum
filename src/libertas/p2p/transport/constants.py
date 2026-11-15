@@ -1,0 +1,26 @@
+"""P2P 传输常量。"""
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+logger = logging.getLogger(__name__)
+
+MESSAGE_MAGIC = b"LBT1"
+
+MESSAGE_HEADER_SIZE = 8
+
+MAX_MESSAGE_SIZE = 64 * 1024 * 1024
+
+DEFAULT_TIMEOUT = 30.0
+
+HEARTBEAT_INTERVAL = 30.0
+
+HEARTBEAT_TIMEOUT = 90.0
+
+RECONNECT_BASE_DELAY = 1.0
+
+RECONNECT_MAX_DELAY = 60.0
+
+MAX_PENDING_MESSAGES = 1000

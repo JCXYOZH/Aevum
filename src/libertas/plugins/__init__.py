@@ -1,43 +1,74 @@
-"""Libertas 内置插件。
+"""Libertas 插件包。
 
-插件采用统一的 ``register(registry)`` 入口，把工具函数、参数说明、分类注册到
-:class:`PluginRegistry`。默认注册表按需加载，不在导入包时执行网络或文件操作。
+只自动加载按功能分类的普通插件；攻击载荷、爆破、主动扫描和 PoC 模块
+不进入自动加载范围。插件模块必须提供 register(registry)。
 """
 
 from __future__ import annotations
 
 import importlib
 import pkgutil
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
-from .registry import PluginRegistry
+from . import registry as _registry_module
 
-__all__ = ["PluginRegistry", "get_registry", "load_builtin_plugins", "call_tool"]
+CATEGORY_PACKAGES = ("web", "network", "encoding", "analysis", "utility")
 
-_registry: Optional[PluginRegistry] = None
-
-
-def get_registry() -> PluginRegistry:
-    """返回全局注册表；首次调用时加载本包内所有内置插件。"""
-    global _registry
-    if _registry is None:
-        _registry = load_builtin_plugins()
-    return _registry
+_load_lock = None
+_loaded = False
+PLUGIN_LOAD_ERRORS: List[str] = []
 
 
-def load_builtin_plugins(registry: Optional[PluginRegistry] = None) -> PluginRegistry:
-    """加载本包内所有带 ``register`` 入口的模块。"""
-    target = registry or PluginRegistry()
-    for module_info in pkgutil.iter_modules(__path__):
-        if module_info.name.startswith("_") or module_info.name == "registry":
+def _iter_plugin_modules():
+    for category in CATEGORY_PACKAGES:
+        try:
+            category_package = importlib.import_module(f"{__name__}.{category}")
+        except Exception as exc:
+            PLUGIN_LOAD_ERRORS.append(f"{category}: {exc}")
             continue
-        module = importlib.import_module(f"{__name__}.{module_info.name}")
-        register = getattr(module, "register", None)
-        if callable(register):
-            register(target)
+        for module_info in pkgutil.iter_modules(category_package.__path__):
+            if module_info.name.startswith("_"):
+                continue
+            module_name = f"{category_package.__name__}.{module_info.name}"
+            try:
+                module = importlib.import_module(module_name)
+            except Exception as exc:
+                PLUGIN_LOAD_ERRORS.append(f"{module_name}: {exc}")
+                continue
+            if callable(getattr(module, "register", None)):
+                yield module
+
+
+def load_builtin_plugins(registry: Optional[_registry_module.PluginRegistry] = None, force: bool = False) -> _registry_module.PluginRegistry:
+    global _loaded, _load_lock
+    target = registry or _registry_module.get_registry()
+    if _loaded and not force:
+        return target
+    if _load_lock is None:
+        import threading
+        _load_lock = threading.Lock()
+    with _load_lock:
+        if _loaded and not force:
+            return target
+        PLUGIN_LOAD_ERRORS.clear()
+        for module in _iter_plugin_modules():
+            try:
+                module.register(target)
+            except Exception as exc:
+                PLUGIN_LOAD_ERRORS.append(f"{module.__name__}: {exc}")
+        _loaded = True
     return target
 
 
-def call_tool(name: str, **kwargs):
-    """按工具名调用内置插件。"""
+def get_registry() -> _registry_module.PluginRegistry:
+    registry = _registry_module.get_registry()
+    load_builtin_plugins(registry)
+    return registry
+
+
+def call_tool(name: str, **kwargs: Any) -> Any:
     return get_registry().call_tool(name, **kwargs)
+
+
+def list_tools() -> List[Dict[str, Any]]:
+    return get_registry().list_tools()

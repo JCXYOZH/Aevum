@@ -1,11 +1,20 @@
-"""Libertas 核心基础设施。
+"""Libertas 核心基础设施兼容入口。
 
-当前只迁入异常、终端输出、事件总线、缓存、限流、重试、指标、健康检查和计时。
+具体模块已按职责拆分到 foundation、observability、security、identity、release、
+data、workflow、ai、tools、models、media、code、network 子包。
 """
 
-from .cache import CacheManager, LRUCache, TTLCache, cache_get, cache_set, cached, get_cache_manager
-from .event_bus import Event, EventBus, EventTypes, get_event_bus, publish, subscribe
-from .exceptions import (
+from libertas.foundation.cache import (
+    CacheManager,
+    LRUCache,
+    TTLCache,
+    cache_get,
+    cache_set,
+    cached,
+    get_cache_manager,
+)
+from libertas.foundation.event_bus import Event, EventBus, EventTypes, get_event_bus, publish, subscribe
+from libertas.foundation.exceptions import (
     AuthError,
     ConfigError,
     DataError,
@@ -16,7 +25,7 @@ from .exceptions import (
     SecurityError,
     ToolError,
 )
-from .health import (
+from libertas.foundation.health import (
     HealthCheckResult,
     HealthChecker,
     HealthStatus,
@@ -25,7 +34,7 @@ from .health import (
     healthy_result,
     unhealthy_result,
 )
-from .metrics import (
+from libertas.foundation.metrics import (
     Counter,
     Gauge,
     Histogram,
@@ -33,10 +42,10 @@ from .metrics import (
     get_registry,
     metrics_snapshot,
 )
-from .ratelimit import RateLimiter, TokenBucket, get_rate_limiter, rate_limit
-from .retry import CircuitBreaker, RetryExecutor, RetryPolicy, retry, with_timeout
-from .terminal import Color, LogLevel, Terminal, print_banner, terminal
-from .timing import (
+from libertas.foundation.ratelimit import RateLimiter, TokenBucket, get_rate_limiter, rate_limit
+from libertas.foundation.retry import CircuitBreaker, RetryExecutor, RetryPolicy, retry, with_timeout
+from libertas.foundation.terminal import Color, LogLevel, Terminal, print_banner, terminal
+from libertas.foundation.timing import (
     PipelineTimer,
     TimingManager,
     TimingRecord,

@@ -4,7 +4,7 @@
 
 - 仓库：`gitcode.com/AevumArk/Aevum`
 - 许可：Mozilla Public License 2.0
-- 当前状态：展示页 + 多窗口看板 + 纯内存中继 + Memoria C++ 训练/生成内核 + Electron 桌面壳；安装包构建脚本已接入，权重与语料默认不打包
+- 当前状态：展示页 + 多窗口看板 + 纯内存中继 + Memoria C++ 训练/生成内核 + Libertas 安全模块 + Electron 桌面壳；安装包构建脚本已接入，权重与语料默认不打包
 - 维护邮箱：`open@mrhua.cn`
 
 ---
@@ -33,16 +33,16 @@ Aevum 是社区自己的平台，不是某个产品的官网。它的目标是�
 | `data/tinyshakespeare_3000.txt` | 3000 行公开语料，用于小模型冒烟训练；不是权重 | 已入库 |
 | `scripts/` | 构建、训练、生成、桌面栈、Linux 编译、桌面打包 | 可用 |
 | `src/fortuna/` | 内核方向：引导、内核、内存、调度、文件系统、网络、沙箱 | 空骨架 |
-| `src/libertas/` | 安全方向：扫描、蜜罐、取证、SIEM、逆向、响应 | 空骨架 |
+| `src/libertas/` | 安全方向：基础件、工具、扫描、蜜罐、取证、SIEM、逆向、响应；`core` 为兼容入口 | 基础模块已迁入 |
 | `src/common/` | 三个模块共用的基础件（缓存、队列、日志、校验等） | 空骨架 |
 | `src/integrations/` | 外部系统对接（redis / postgres / kafka / openai / huggingface 等） | 空骨架 |
 | `docs/` | 设计、架构、ADR、运维文档 | 入口已补 |
 | `deployment/` | docker-compose、镜像、k8s、helm、ansible、terraform | 占位 |
 | `configs/` | 各模块配置样例 | 占位 |
 | `tests/` | 分层测试（unit / integration / performance / security） | 占位 |
-| `benchmarks/`、`experiments/`、`models/` | 基准、实验记录、模型产物 | 占位 |
+| `benchmarks/`、`experiments/`、`models/` | 基准、实验记录、根目录模型产物占位；源码中的 `models/` 目录是代码 | 占位/代码 |
 
-**边界**：`src/memoria` 里是代码和空接口占位，不是训练权重。`*.pt`、`*.safetensors`、`checkpoint*/`、`build/`、`apps/desktop/node_modules/`、`dist-app/` 都在 `.gitignore` 里；要发布模型，走 Release 附件、对象存储或服务器下载，不把大文件塞进 Git。
+**边界**：`src/memoria` 里是代码和空接口占位，不是训练权重。`*.pt`、`*.safetensors`、`*.ckpt`、`checkpoint*/`、`build/`、`apps/desktop/node_modules/`、`dist-app/` 都在 `.gitignore` 里；根目录 `/models/` 只放模型产物，`src/**/models` 是源码目录，照常入库。要发布模型，走 Release 附件、对象存储或服务器下载，不把大文件塞进 Git。
 
 ## 本地开发
 
@@ -73,6 +73,27 @@ scripts\desktop.ps1 -Stop
 脚本从 `PATH` 找 `python`；没有激活虚拟环境时用 `-Python` 指定解释器。QEMU 从 `PATH`、`QEMU_BIN` 或默认安装位置找，也可以用 `-Qemu`。日志与 pid 状态在 `build\desktop-logs`。
 
 内核是独立进程，不是网页的一部分：QEMU 只提供串口，桥接把串口帧转成 WebSocket；页面只连中继与桥接，不直接碰内核。任何一段挂掉，其余仍能启动。
+
+## Libertas 安全模块
+
+`src/libertas/core` 只保留兼容入口，具体实现按职责分布在 `foundation`、`observability`、`security`、`identity`、`release`、`data`、`workflow`、`ai`、`tools`、`models`、`media`、`code`、`network` 等目录。
+
+- `src/libertas/foundation/`：异常、终端、事件总线、缓存、限流、重试、指标、健康检查、计时、配置。
+- `src/libertas/models/legacy_mrhua/`：从 `mrhua/models` 迁入，35 个 `.py`，32 个不超过 500 行，3 个因单个方法体过大仍超过 500 行；`ModelEngine` 的 107 个方法全部保留。
+- `src/libertas/tools/legacy_mrhua/`：旧工具层迁入；外部扫描工具从 `PATH` 或环境变量解析，不在仓库里写死本机路径。
+- `src/libertas/security/`：隐私、合规、守护、沙箱、规则、漏洞情报等能力。
+
+旧 Web UI 的 `get_MrHua`、`queue_orb_command` 目前是 `_compat_web.py` 的兼容占位，接入 Aevum Web 层前不是完整实现。
+
+外部工具路径约定：`xray`、`nuclei`、`masscan` 通过 `PATH`、`XRAY_PATH`、`NUCLEI_PATH`、`MSF_PATH` 或本地配置解析；仓库不保存 `D:\cybersecurity` 这类本机绝对路径。`config.yaml` 是按 `configs/` 样例生成的本地运行配置，不提交。
+
+验证：
+
+```powershell
+python -m compileall -q src\libertas
+```
+
+当前结果：编译 0 错误；`legacy_mrhua` 6 个子包导入通过，9 个单例工厂返回正确实例，函数全局名检查无实际未定义项。
 
 ## Memoria C++ 内核
 

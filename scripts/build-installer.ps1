@@ -90,16 +90,17 @@ if (-not $SkipModel -and -not (Test-Path -LiteralPath $ModelExe)) {
 $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
 if (-not $iscc) {
     $candidates = @(
-        "D:\cybersecurity\Inno Setup 7\ISCC.exe",
         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-        "C:\Program Files\Inno Setup 6\ISCC.exe"
+        "C:\Program Files\Inno Setup 6\ISCC.exe",
+        "C:\Program Files (x86)\Inno Setup 7\ISCC.exe",
+        "C:\Program Files\Inno Setup 7\ISCC.exe"
     )
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate) { $iscc = $candidate; break }
     }
 }
 if (-not $iscc) {
-    throw "ISCC.exe not found; install Inno Setup 7 or pass it via PATH."
+    throw "ISCC.exe not found; install Inno Setup 6 or 7, or pass it via PATH."
 }
 
 # Assemble the app directory. This mirrors electron-builder's layout without

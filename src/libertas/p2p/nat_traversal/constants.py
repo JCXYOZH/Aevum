@@ -1,0 +1,13 @@
+"""NAT 穿透常量。"""
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+STUN_PORT = 3478
+TURN_PORT = 3478
+STUN_TIMEOUT = 5.0
+HOLE_PUNCH_TIMEOUT = 10.0
+HOLE_PUNCH_ATTEMPTS = 5
+UPNP_TIMEOUT = 5.0
+RELAY_BUFFER_SIZE = 65536
