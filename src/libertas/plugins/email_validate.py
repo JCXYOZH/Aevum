@@ -173,20 +173,20 @@ def email_validate(email: str = "", deep: str = "false") -> dict:
                 code, msg = server.rcpt(email)
                 server.quit()
                 if code == 250:
-                    result["SMTP可达"] = "✅ 邮箱存在"
+                    result["SMTP可达"] = "邮箱存在"
                     result["SMTP状态码"] = code
                 elif code == 251:
-                    result["SMTP可达"] = "⚠️ 邮箱将被转发"
+                    result["SMTP可达"] = "邮箱将被转发"
                     result["SMTP状态码"] = code
                 elif code == 550:
-                    result["SMTP可达"] = "❌ 邮箱不存在"
+                    result["SMTP可达"] = "邮箱不存在"
                     result["SMTP状态码"] = code
                     if result["风险等级"] in ("安全", "未知"):
                         result["风险等级"] = "高风险（邮箱不存在）"
                 else:
-                    result["SMTP可达"] = f"⚠️ 状态码 {code}: {msg.decode(errors='replace')[:100]}"
+                    result["SMTP可达"] = f"状态码 {code}: {msg.decode(errors='replace')[:100]}"
                     result["SMTP状态码"] = code
                 break
             except Exception as e:
-                result["SMTP可达"] = f"❌ 连接失败: {str(e)[:80]}"
+                result["SMTP可达"] = f"连接失败: {str(e)[:80]}"
     return {"success": True, "result": result}
