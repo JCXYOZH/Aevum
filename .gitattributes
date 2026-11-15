@@ -1,0 +1,5 @@
+# Shell scripts and Linux deployment templates must keep LF line endings,
+# otherwise a Windows checkout copied to a server fails at `for arg in "$@"`.
+*.sh text eol=lf
+apps/console/deploy/*.service text eol=lf
+apps/console/deploy/*.conf text eol=lf
