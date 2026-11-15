@@ -85,7 +85,7 @@ scripts\desktop.ps1 -Stop
 
 旧 Web UI 的 `get_MrHua`、`queue_orb_command` 目前是 `_compat_web.py` 的兼容占位，接入 Aevum Web 层前不是完整实现。
 
-外部工具路径约定：`xray`、`nuclei`、`masscan` 通过 `PATH`、`XRAY_PATH`、`NUCLEI_PATH`、`MSF_PATH` 或本地配置解析；仓库不保存 `D:\cybersecurity` 这类本机绝对路径。`config.yaml` 是按 `configs/` 样例生成的本地运行配置，不提交。
+外部工具路径约定：`xray`、`nuclei`、`masscan` 通过 `PATH`、`XRAY_PATH`、`NUCLEI_PATH`、`MSF_PATH` 或本地配置解析；仓库不保存本机安全工具目录的绝对路径。`config.yaml` 是按 `configs/` 样例生成的本地运行配置，不提交。
 
 验证：
 
