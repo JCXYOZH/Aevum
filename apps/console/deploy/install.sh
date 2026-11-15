@@ -272,6 +272,7 @@ fi
 
 nginx -t || die "nginx 配置校验失败，先看 $NGINX_HTTP 和 $NGINX_COMMON"
 systemctl enable nginx >/dev/null 2>&1 || true
+systemctl start nginx >/dev/null 2>&1 || true
 systemctl reload nginx
 sleep 1
 
