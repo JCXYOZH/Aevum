@@ -1,0 +1,51 @@
+    <div class="window" id="win-feedback" data-window="feedback" style="width:680px;height:580px;top:25%;left:30%;">
+        <div class="window-header">
+            <span class="title">🌺 反馈</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;">
+                <button class="fb-tab active" data-tab="submit" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">📝 提交反馈</button>
+                <button class="fb-tab" data-tab="status" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">📊 学习状态</button>
+                <button class="fb-tab" data-tab="history" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">📜 历史记录</button>
+            </div>
+            <div class="fb-panel" data-panel="submit" style="flex:1;padding:16px;overflow-y:auto;">
+                <div style="margin-bottom:10px;color:#666;font-size:0.85rem;">您的反馈帮助花先生成长</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+                    <button class="fb-type-btn active" data-type="bug" style="padding:6px 14px;border:1px solid #ddd;border-radius:20px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.8rem;">🐛 Bug</button>
+                    <button class="fb-type-btn" data-type="feature" style="padding:6px 14px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.8rem;">💡 功能建议</button>
+                    <button class="fb-type-btn" data-type="ui" style="padding:6px 14px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.8rem;">🎨 界面问题</button>
+                    <button class="fb-type-btn" data-type="performance" style="padding:6px 14px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.8rem;">⚡ 性能</button>
+                    <button class="fb-type-btn" data-type="praise" style="padding:6px 14px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.8rem;">👍 表扬</button>
+                    <button class="fb-type-btn" data-type="other" style="padding:6px 14px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.8rem;">📌 其他</button>
+                </div>
+                <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;">
+                    <span style="font-size:0.8rem;color:#888;">优先级:</span>
+                    <select id="fb-priority" style="padding:4px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.8rem;">
+                        <option value="low">低</option>
+                        <option value="normal" selected>普通</option>
+                        <option value="high">高</option>
+                        <option value="urgent">紧急</option>
+                    </select>
+                </div>
+                <textarea id="feedback-text" placeholder="请描述您遇到的问题或建议…" style="width:100%;min-height:120px;padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-family:inherit;font-size:0.9rem;resize:vertical;outline:none;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button id="feedback-submit" style="flex:1;padding:10px 20px;border:none;border-radius:30px;background:#ff6b6b;color:#fff;font-weight:600;cursor:pointer;">提交反馈</button>
+                    <button id="feedback-reset-btn" style="padding:10px 20px;border:1px solid #ddd;border-radius:30px;background:#fff;color:#999;cursor:pointer;">重置学习</button>
+                </div>
+                <div id="feedback-result" style="margin-top:12px;max-height:150px;overflow-y:auto;font-size:0.85rem;color:#555;"></div>
+            </div>
+            <div class="fb-panel" data-panel="status" style="flex:1;display:none;padding:16px;overflow-y:auto;">
+                <button id="feedback-status-btn" style="padding:8px 16px;border:1px solid var(--theme-primary);border-radius:8px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.85rem;margin-bottom:12px;">🔄 刷新学习状态</button>
+                <div id="fb-status-area"></div>
+            </div>
+            <div class="fb-panel" data-panel="history" style="flex:1;display:none;padding:16px;overflow-y:auto;">
+                <div id="fb-history-area" style="font-size:0.85rem;color:#666;">反馈历史将在提交后显示</div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

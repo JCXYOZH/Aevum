@@ -1,0 +1,126 @@
+    <div class="window" id="win-security" data-window="security" style="width:1000px;height:700px;top:3%;left:5%;">
+        <div class="window-header">
+            <span class="title">🛡️ 防护中心</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;overflow-x:auto;">
+                <button type="button" class="sec-tab active" data-tab="sec-targets" style="flex:1;min-width:100px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;white-space:nowrap;">🎯 目标态势</button>
+                <button type="button" class="sec-tab" data-tab="sec-payload" style="flex:1;min-width:100px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">💣 Payload实验室</button>
+                <button type="button" class="sec-tab" data-tab="sec-traffic" style="flex:1;min-width:100px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">📊 流量分析</button>
+                <button type="button" class="sec-tab" data-tab="sec-bypass" style="flex:1;min-width:100px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">🛡️ WAF绕过</button>
+                <button type="button" class="sec-tab" data-tab="sec-rules" style="flex:1;min-width:100px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">📋 规则管理</button>
+                <button type="button" class="sec-tab" data-tab="sec-timeline" style="flex:1;min-width:100px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">⏱️ 时间线</button>
+            </div>
+            <div class="sec-panel" data-panel="sec-targets" style="padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <div id="sec-targets-count" style="margin-bottom:10px;font-size:0.85rem;color:#666;"></div>
+                <div id="sec-targets-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+                <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
+                    <button id="sec-targets-refresh" style="padding:6px 12px;border:1px solid var(--theme-primary);border-radius:6px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.78rem;">🔄 刷新</button>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;color:#666;"><input type="checkbox" id="sec-targets-auto"> 自动刷新(5s)</label>
+                </div>
+            </div>
+            <div class="sec-panel" data-panel="sec-payload" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.78rem;color:#666;">注入位置:</span>
+                    <select id="sec-payload-source" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;background:#fff;">
+                        <option value="url">URL参数</option>
+                        <option value="body">请求体</option>
+                        <option value="header">HTTP头</option>
+                        <option value="cookie">Cookie</option>
+                    </select>
+                    <button type="button" id="sec-payload-test" style="padding:4px 12px;border:none;border-radius:6px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.78rem;font-weight:600;">🧪 沙箱测试</button>
+                    <button type="button" id="sec-payload-test-all" style="padding:4px 12px;border:1px solid var(--theme-primary);border-radius:6px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.78rem;">⚡ 测试所有变形</button>
+                    <button type="button" id="sec-payload-batch" style="padding:4px 12px;border:1px solid #fa8c16;border-radius:6px;background:#fff;color:#fa8c16;cursor:pointer;font-size:0.78rem;">📦 批量测试当前类别</button>
+                </div>
+                <div id="sec-payload-categories" style="margin-bottom:10px;"></div>
+                <textarea id="sec-payload-input" placeholder="输入或粘贴Payload..." style="width:100%;height:80px;padding:8px;border:1px solid #ddd;border-radius:6px;font-family:monospace;font-size:0.8rem;box-sizing:border-box;"></textarea>
+                <div id="sec-transform-btns" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;margin-bottom:8px;"></div>
+                <div id="sec-payload-list" style="margin-top:10px;"></div>
+                <input type="text" id="sec-payload-search" placeholder="搜索Payload..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:0.8rem;margin-top:10px;box-sizing:border-box;">
+                <div id="sec-payload-result" style="margin-top:12px;"></div>
+            </div>
+            <div class="sec-panel" data-panel="sec-traffic" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
+                    <span id="sec-traffic-count" style="font-size:0.78rem;color:#666;font-weight:600;"></span>
+                    <select id="sec-traffic-filter" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;background:#fff;">
+                        <option value="all">全部流量</option>
+                        <option value="blocked">仅被拦截</option>
+                        <option value="error">仅错误(4xx/5xx)</option>
+                        <option value="waf">仅WAF检测</option>
+                    </select>
+                    <button type="button" id="sec-traffic-refresh" style="padding:4px 12px;border:1px solid var(--theme-primary);border-radius:6px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.78rem;">🔄 刷新</button>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;color:#666;"><input type="checkbox" id="sec-traffic-auto"> 自动刷新(3s)</label>
+                </div>
+                <div id="sec-traffic-log" style="font-family:monospace;font-size:0.75rem;"></div>
+            </div>
+            <div class="sec-panel" data-panel="sec-bypass" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
+                    <select id="sec-bypass-waf" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.8rem;background:#fff;">
+                        <option value="generic">通用WAF</option>
+                        <option value="cloudflare">Cloudflare</option>
+                        <option value="modsecurity">ModSecurity</option>
+                        <option value="akamai">Akamai</option>
+                        <option value="imperva">Imperva</option>
+                        <option value="aliyun">阿里云盾</option>
+                        <option value="safedog">安全狗</option>
+                        <option value="leichi">雷池</option>
+                    </select>
+                    <button type="button" id="sec-bypass-load" style="padding:6px 12px;border:1px solid var(--theme-primary);border-radius:6px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.78rem;">🔍 加载绕过技术</button>
+                </div>
+                <div id="sec-bypass-techniques" style="margin-bottom:16px;"></div>
+                <div style="border-top:1px solid #eee;padding-top:12px;margin-bottom:12px;">
+                    <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:8px;">🧪 Payload变形绕过测试</div>
+                    <textarea id="sec-bypass-payload" placeholder="输入要测试的Payload，如：' OR '1'='1" style="width:100%;height:60px;padding:8px;border:1px solid #ddd;border-radius:6px;font-family:monospace;font-size:0.8rem;box-sizing:border-box;margin-bottom:8px;"></textarea>
+                    <button type="button" id="sec-bypass-run" style="padding:6px 16px;border:none;border-radius:6px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.8rem;font-weight:600;">⚡ 运行所有变形测试</button>
+                </div>
+                <div id="sec-bypass-result"></div>
+            </div>
+            <div class="sec-panel" data-panel="sec-rules" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <div style="margin-bottom:16px;">
+                    <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:8px;">⚙️ 防护模式</div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                        <label style="display:flex;align-items:center;gap:4px;padding:6px 12px;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:0.78rem;">
+                            <input type="radio" name="sec-mode" value="off"> 关闭
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;padding:6px 12px;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:0.78rem;background:#f5f0fa;border-color:var(--theme-primary);">
+                            <input type="radio" name="sec-mode" value="detect" checked> 检测（默认）
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;padding:6px 12px;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:0.78rem;">
+                            <input type="radio" name="sec-mode" value="alert"> 告警
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;padding:6px 12px;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:0.78rem;">
+                            <input type="radio" name="sec-mode" value="protect"> IPS阻断
+                        </label>
+                    </div>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:8px;">🚫 黑白名单管理</div>
+                    <div style="display:flex;gap:8px;margin-bottom:8px;">
+                        <input type="text" id="sec-host-input" placeholder="输入域名或IP，如：example.com" style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.8rem;box-sizing:border-box;">
+                        <button type="button" id="sec-block-btn" style="padding:6px 12px;border:1px solid #d9363e;border-radius:6px;background:#fff;color:#d9363e;cursor:pointer;font-size:0.78rem;">🚫 加入黑名单</button>
+                        <button type="button" id="sec-allow-btn" style="padding:6px 12px;border:1px solid #389e0d;border-radius:6px;background:#fff;color:#389e0d;cursor:pointer;font-size:0.78rem;">✅ 加入白名单</button>
+                    </div>
+                    <div id="sec-lists"></div>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:8px;">📜 沙箱检测规则 (<span id="sec-sandbox-rule-count">0</span>条)</div>
+                    <div id="sec-sandbox-rules" style="max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;"></div>
+                </div>
+                <div>
+                    <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:8px;">🏷️ 检测类别</div>
+                    <div id="sec-categories" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;"></div>
+                </div>
+            </div>
+            <div class="sec-panel" data-panel="sec-timeline" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+                    <button type="button" id="sec-timeline-refresh" style="padding:4px 12px;border:1px solid var(--theme-primary);border-radius:6px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.78rem;">🔄 刷新</button>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;color:#666;"><input type="checkbox" id="sec-timeline-auto"> 自动刷新(5s)</label>
+                </div>
+                <div id="sec-timeline-list"></div>
+            </div>
+</div><div class="window-resize-handle"></div></div>

@@ -1,0 +1,22 @@
+    <div class="window" id="win-tasks" data-window="tasks" style="width:780px;height:640px;top:8%;left:14%;">
+        <div class="window-header">
+            <span class="title">📋 任务中心</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:16px;overflow-y:auto;">
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                <button class="task-tab-btn active" data-status="open" style="flex:1;padding:8px;border:1px solid var(--theme-primary);border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">🟢 可接受</button>
+                <button class="task-tab-btn" data-status="assigned" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;">🟡 进行中</button>
+                <button class="task-tab-btn" data-status="completed" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;">✅ 已完成</button>
+                <button class="task-tab-btn" data-status="all" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;">📦 全部</button>
+                <input type="text" id="task-search" placeholder="搜索任务..." style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;width:140px;outline:none;">
+                <button id="task-publish-btn" style="padding:8px 16px;border:none;border-radius:8px;background:#43a047;color:#fff;cursor:pointer;font-weight:600;">+ 发布任务</button>
+            </div>
+            <div id="task-list"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

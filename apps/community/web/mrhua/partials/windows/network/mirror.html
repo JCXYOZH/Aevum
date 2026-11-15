@@ -1,0 +1,66 @@
+    <div class="window" id="win-mirror" data-window="mirror" style="width:820px;height:580px;top:10%;left:15%;">
+        <div class="window-header">
+            <span class="title">🪞 镜像舱</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;overflow:hidden;padding:12px;">
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;">
+                <div id="mirror-room-badge" style="display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:0.8rem;font-weight:600;background:#f5f0fa;color:var(--theme-primary);border:1px solid #ce93d8;">
+                    <span id="mirror-room-icon">🏠</span>
+                    <span id="mirror-room-name">本地模式</span>
+                </div>
+                <button id="mirror-copy-room" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.75rem;" title="复制当前房间ID">📋 复制ID</button>
+                <button id="mirror-join-room" style="padding:6px 10px;border:1px solid var(--theme-primary);border-radius:8px;background:#f5f0fa;color:var(--theme-primary);cursor:pointer;font-size:0.75rem;" title="在广域网中切换或管理房间">🌐 切换房间</button>
+                <button id="mirror-invite-link" style="padding:6px 10px;border:1px solid #43a047;border-radius:8px;background:#e8f5e9;color:#2e7d32;cursor:pointer;font-size:0.75rem;" title="向当前房间推送合作邀请链接">🔗 邀请协作</button>
+                <span style="flex:1;"></span>
+                <label id="mirror-share-label" style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#555;cursor:pointer;padding:4px 10px;border-radius:8px;background:#e8f5e9;border:1px solid #a5d6a7;" title="开启后，你的扫描活动和在线状态会共享到当前房间">
+                    <input type="checkbox" id="mirror-share-toggle" style="width:14px;height:14px;cursor:pointer;accent-color:#43a047;" />
+                    <span>📡 共享我的活动</span>
+                </label>
+            </div>
+            <div id="mirror-share-status" style="font-size:0.72rem;color:#888;margin-bottom:8px;padding:4px 8px;background:#f5f5f5;border-radius:6px;">
+                正在检查连接状态...
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
+                <input type="text" id="mirror-topic" placeholder="项目标签（如 myproject），留空=不分类" style="flex:1;min-width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:30px;font-family:inherit;outline:none;font-size:0.82rem;" />
+                <select id="mirror-intel-type" title="情报类型标签" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.8rem;">
+                    <option value="note">📝 笔记</option>
+                    <option value="finding">🔍 发现</option>
+                    <option value="port">🔌 端口</option>
+                    <option value="cve">🟠 CVE</option>
+                    <option value="subdomain">🌐 子域名</option>
+                    <option value="path">📁 路径</option>
+                    <option value="url">🔗 URL</option>
+                </select>
+                <button id="mirror-refresh" style="padding:8px 14px;border:none;border-radius:30px;background:var(--theme-primary);color:#fff;cursor:pointer;" title="刷新情报列表">🔄 刷新</button>
+                <button id="mirror-from-graph" style="padding:8px 14px;border:1px solid var(--theme-primary);border-radius:30px;background:#f5f0fa;color:var(--theme-primary);cursor:pointer;font-size:0.8rem;" title="把漏洞图谱中的发现一键发布到情报板">🕸 导入图谱</button>
+            </div>
+            <div style="display:flex;gap:10px;flex:1;min-height:0;">
+                <!-- 左：情报/批注流 -->
+                <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+                    <div style="font-size:0.75rem;color:#999;margin-bottom:4px;">📋 情报板 — 记录和分享扫描发现，同房间协作者可见</div>
+                    <div id="mirror-list" class="message-area" style="flex:1;min-height:150px;max-height:none;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:8px;"></div>
+                    <div class="input-row" style="margin-top:8px;">
+                        <input type="text" id="mirror-input" placeholder="输入情报内容，如：80端口开放，运行nginx 1.18…" />
+                        <button id="mirror-post" title="发布到情报板">📤 发布</button>
+                    </div>
+                </div>
+                <!-- 右：协作面板 -->
+                <div style="width:220px;display:flex;flex-direction:column;gap:8px;min-width:200px;">
+                    <div style="border:1px solid #eee;border-radius:8px;padding:8px;flex:1;overflow-y:auto;">
+                        <div style="font-size:0.78rem;font-weight:600;color:var(--theme-primary);margin-bottom:6px;">👥 在线协作 <span id="mirror-online-count" style="color:#999;font-weight:normal;">(0)</span></div>
+                        <div id="mirror-presence" style="font-size:0.75rem;color:#666;"></div>
+                    </div>
+                    <div style="border:1px solid #eee;border-radius:8px;padding:8px;flex:1;overflow-y:auto;">
+                        <div style="font-size:0.78rem;font-weight:600;color:var(--theme-primary);margin-bottom:6px;">⚡ 任务动态</div>
+                        <div id="mirror-activity" style="font-size:0.72rem;color:#666;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

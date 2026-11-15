@@ -1,0 +1,17 @@
+    <div class="window" id="win-manual" data-window="manual" style="width:800px;height:650px;top:5%;left:10%;">
+        <div class="window-header">
+            <span class="title">📖 操作手册</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;">
+            <div style="width:180px;border-right:1px solid #eee;overflow-y:auto;background:#fafafa;padding:8px;">
+                <div id="manual-toc"></div>
+            </div>
+            <div id="manual-content" style="flex:1;overflow-y:auto;padding:20px;font-size:0.88rem;line-height:1.8;color:#333;"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

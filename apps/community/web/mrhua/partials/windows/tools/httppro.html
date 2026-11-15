@@ -1,0 +1,67 @@
+    <div class="window" id="win-httppro" data-window="httppro" style="width:900px;height:700px;top:4%;left:6%;">
+        <div class="window-header">
+            <span class="title">🛰️ HTTP 专业工具</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;">
+            <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;">
+                <button class="hp-tab active" data-tab="repeater" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">🔁 重放器</button>
+                <button class="hp-tab" data-tab="intruder" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">💥 攻击器</button>
+                <button class="hp-tab" data-tab="scanner" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">🔍 扫描器</button>
+                <button class="hp-tab" data-tab="history" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">📜 历史</button>
+            </div>
+            <!-- 重放器 -->
+            <div class="hp-panel" data-panel="repeater" style="flex:1;display:flex;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <div style="display:flex;gap:8px;">
+                    <select id="hp-method" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                        <option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option><option>PATCH</option><option>HEAD</option><option>OPTIONS</option>
+                    </select>
+                    <input type="text" id="hp-url" placeholder="https://example.com/api" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                    <button id="hp-send" style="padding:8px 20px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-weight:600;">发送</button>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;font-size:0.8rem;">
+                    <label><input type="checkbox" id="hp-follow" checked> 跟随重定向</label>
+                    <input type="text" id="hp-name" placeholder="请求名称（选填）" style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.8rem;max-width:200px;">
+                </div>
+                <textarea id="hp-headers" placeholder='请求头 JSON: {"Content-Type":"application/json"}' style="height:70px;padding:8px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.8rem;resize:none;"></textarea>
+                <textarea id="hp-body" placeholder="请求体..." style="height:100px;padding:8px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.8rem;resize:none;"></textarea>
+                <div id="hp-response" style="flex:1;background:#1e1e2e;border-radius:8px;padding:12px;overflow:auto;font-family:monospace;font-size:0.78rem;color:#cdd6f4;white-space:pre-wrap;word-break:break-all;"></div>
+            </div>
+            <!-- 攻击器 -->
+            <div class="hp-panel" data-panel="intruder" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <div style="font-size:0.82rem;color:#666;">在URL中用 § 标记注入位置，如 <code>https://api.example.com/user/§id§</code></div>
+                <div style="display:flex;gap:8px;">
+                    <select id="hp-int-method" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;"><option>GET</option><option>POST</option></select>
+                    <input type="text" id="hp-int-url" placeholder="https://example.com/api/§param§" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                </div>
+                <textarea id="hp-int-payloads" placeholder="Payload列表（每行一个）：&#10;admin&#10;test&#10;root&#10;user" style="height:120px;padding:8px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.8rem;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <label style="font-size:0.8rem;">并发: <input type="number" id="hp-int-concurrency" value="5" min="1" max="20" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;"></label>
+                    <button id="hp-int-attack" style="padding:8px 20px;border:none;border-radius:8px;background:#e53935;color:#fff;cursor:pointer;font-weight:600;">💥 开始攻击</button>
+                </div>
+                <div id="hp-int-results" style="flex:1;overflow:auto;border:1px solid #eee;border-radius:8px;font-size:0.78rem;"></div>
+            </div>
+            <!-- 扫描器 -->
+            <div class="hp-panel" data-panel="scanner" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="hp-scan-url" placeholder="https://example.com" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                    <button id="hp-scan-btn" style="padding:8px 20px;border:none;border-radius:8px;background:var(--theme-warning);color:#fff;cursor:pointer;font-weight:600;">🔍 扫描</button>
+                </div>
+                <div style="display:flex;gap:12px;font-size:0.8rem;">
+                    <label><input type="checkbox" id="hp-scan-headers" checked> 安全头检测</label>
+                    <label><input type="checkbox" id="hp-scan-dirs" checked> 目录探测</label>
+                </div>
+                <div id="hp-scan-results" style="flex:1;overflow:auto;border:1px solid #eee;border-radius:8px;padding:8px;font-size:0.8rem;"></div>
+            </div>
+            <!-- 历史 -->
+            <div class="hp-panel" data-panel="history" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <button id="hp-history-refresh" style="padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">刷新历史</button>
+                <div id="hp-history-list" style="flex:1;overflow:auto;"></div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

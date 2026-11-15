@@ -1150,7 +1150,8 @@
                         // 写成 checked === false 时，若 MR_AUTH 根本没被初始化，
                         // _st 是 {}，checked 为 undefined，!== false 成立会被判成
                         // 未登录 —— 与 fail-open 的初衷相反，界面会永久锁死在认证页。
-                        _preloginOK = !!_st.isLoggedIn || _st.checked !== true;
+                        // 广域网嵌入页只展示通信窗口，不做身份认证拦截。
+                        _preloginOK = !!window.MR_EMBED_WANSHARE || !!_st.isLoggedIn || _st.checked !== true;
                     } catch (e) { _preloginOK = true; }
                     if (!_preloginOK && MR_PRELOGIN_WINDOWS.indexOf(id) === -1) {
                         id = 'identity';

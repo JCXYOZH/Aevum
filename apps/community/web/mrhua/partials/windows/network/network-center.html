@@ -1,0 +1,431 @@
+    <div class="window" id="win-network-center" data-window="network-center" style="width:1024px;height:720px;top:5%;left:6%;">
+        <div class="window-header">
+            <span class="title">🌐 统一网络中心</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+
+            <!-- 全局状态栏 -->
+            <div id="nc-global-bar" style="display:flex;gap:10px;padding:8px 14px;background:linear-gradient(135deg,#1a237e,#283593);color:#fff;">
+                <div style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="ncSwitchTab('assets')" title="点击查看资产列表">
+                    <span style="font-size:1rem;">💾</span>
+                    <div>
+                        <div style="font-size:0.65rem;opacity:0.8;">资产总数</div>
+                        <div style="font-size:1rem;font-weight:700;" id="nc-stat-assets">--</div>
+                    </div>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="ncSwitchTab('wan')" title="点击查看扫描任务">
+                    <span style="font-size:1rem;">⚡</span>
+                    <div>
+                        <div style="font-size:0.65rem;opacity:0.8;">运行中任务</div>
+                        <div style="font-size:1rem;font-weight:700;" id="nc-stat-tasks">0</div>
+                    </div>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="ncSwitchTab('p2p')" title="点击查看P2P节点">
+                    <span style="font-size:1rem;">🤝</span>
+                    <div>
+                        <div style="font-size:0.65rem;opacity:0.8;">P2P在线节点</div>
+                        <div style="font-size:1rem;font-weight:700;" id="nc-stat-peers">0</div>
+                    </div>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:1rem;">🎯</span>
+                    <div>
+                        <div style="font-size:0.65rem;opacity:0.8;">高风险资产</div>
+                        <div style="font-size:1rem;font-weight:700;color:#ff8a80;" id="nc-stat-highrisk">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主Tab导航 -->
+            <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;overflow-x:auto;">
+                <button class="nc-tab active" data-nc-tab="assets" style="flex:1;min-width:120px;padding:10px 8px;border:none;background:none;cursor:pointer;font-size:0.78rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;white-space:nowrap;">💾 资产管理</button>
+                <button class="nc-tab" data-nc-tab="mapper" style="flex:1;min-width:120px;padding:10px 8px;border:none;background:none;cursor:pointer;font-size:0.78rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">🗺️ 网络测绘</button>
+                <button class="nc-tab" data-nc-tab="wan" style="flex:1;min-width:120px;padding:10px 8px;border:none;background:none;cursor:pointer;font-size:0.78rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">🌐 广域网扫描</button>
+                <button class="nc-tab" data-nc-tab="fingerprint" style="flex:1;min-width:120px;padding:10px 8px;border:none;background:none;cursor:pointer;font-size:0.78rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">🔍 指纹库运维</button>
+                <button class="nc-tab" data-nc-tab="p2p" style="flex:1;min-width:120px;padding:10px 8px;border:none;background:none;cursor:pointer;font-size:0.78rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">🤝 P2P网络</button>
+            </div>
+
+            <!-- ========== Tab 1: 资产管理 ========== -->
+            <div class="nc-panel" data-nc-panel="assets" style="display:flex;flex:1;overflow:hidden;flex-direction:column;">
+                <!-- 子Tab -->
+                <div style="display:flex;border-bottom:1px solid #eee;background:#fafafa;">
+                    <button class="nc-subtab active" data-nc-subtab="assets-list" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">资产列表</button>
+                    <button class="nc-subtab" data-nc-subtab="assets-detail" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">资产详情</button>
+                    <button class="nc-subtab" data-nc-subtab="assets-tags" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">标签/快照</button>
+                </div>
+                <!-- 子面板：资产列表 -->
+                <div class="nc-subpanel" data-nc-subpanel="assets-list" style="display:flex;flex:1;overflow:hidden;flex-direction:column;padding:12px;">
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <input type="text" id="nc-asset-search" placeholder="搜索IP/域名/服务..." style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                        <select id="nc-asset-filter-risk" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                            <option value="">全部风险</option>
+                            <option value="critical">严重</option>
+                            <option value="high">高危</option>
+                            <option value="medium">中危</option>
+                            <option value="low">低危</option>
+                        </select>
+                        <button onclick="ncLoadAssets()" style="padding:6px 14px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">🔍 搜索</button>
+                        <button onclick="ncAssetExport()" style="padding:6px 14px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">📤 导出</button>
+                    </div>
+                    <div id="nc-asset-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;"></div>
+                    <div id="nc-asset-list" style="flex:1;overflow-y:auto;border:1px solid #eee;border-radius:8px;background:#fff;">
+                        <div style="text-align:center;padding:30px;color:#999;font-size:0.85rem;">加载中...</div>
+                    </div>
+                    <div id="nc-asset-pagination" style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:10px;font-size:0.75rem;color:#666;"></div>
+                </div>
+                <!-- 子面板：资产详情 -->
+                <div class="nc-subpanel" data-nc-subpanel="assets-detail" style="display:none;flex:1;overflow:hidden;flex-direction:column;min-height:0;padding:12px;">
+                    <div id="nc-asset-detail-content" style="display:none;flex:1;overflow-y:auto;min-height:0;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                            <h3 style="margin:0;font-size:1rem;color:#333;" id="nc-detail-title">资产详情</h3>
+                            <div style="display:flex;gap:6px;">
+                                <button onclick="ncDetailIdentify()" style="padding:5px 12px;background:#1e88e5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.75rem;">🔍 指纹识别</button>
+                                <button onclick="ncDetailSyncP2P()" style="padding:5px 12px;background:#6a4c93;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.75rem;">🤝 同步P2P</button>
+                            </div>
+                        </div>
+                        <div id="nc-detail-basic" style="background:#fafafa;border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid #eee;"></div>
+                        <div id="nc-detail-ports" style="background:#fafafa;border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid #eee;"></div>
+                        <div id="nc-detail-fingerprints" style="background:#fafafa;border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid #eee;"></div>
+                        <div id="nc-detail-cves" style="background:#fafafa;border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid #eee;"></div>
+                        <div id="nc-detail-vulns" style="background:#fff3e0;border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid #ffe0b2;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#e65100;margin-bottom:8px;">💣 漏洞记录（来自安全实战中心）</div>
+                            <div id="nc-detail-vuln-list" style="font-size:0.78rem;color:#666;">暂无漏洞记录</div>
+                        </div>
+                        <div id="nc-detail-ai" style="background:#e3f2fd;border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid #bbdefb;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#1565c0;margin-bottom:8px;">🤖 AI分析记录（来自审议庭）</div>
+                            <div id="nc-detail-ai-list" style="font-size:0.78rem;color:#666;">暂无AI分析记录</div>
+                        </div>
+                    </div>
+                    <div id="nc-asset-detail-empty" style="text-align:center;padding:60px 20px;color:#999;">
+                        <div style="font-size:3rem;margin-bottom:12px;">💾</div>
+                        <div style="font-size:0.9rem;">请从资产列表中选择一个资产查看详情</div>
+                    </div>
+                </div>
+                <!-- 子面板：标签/快照 -->
+                <div class="nc-subpanel" data-nc-subpanel="assets-tags" style="display:none;flex:1;overflow:hidden;flex-direction:column;min-height:0;padding:12px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0;">
+                        <div style="background:#fafafa;border-radius:8px;padding:12px;border:1px solid #eee;display:flex;flex-direction:column;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                                <span style="font-size:0.85rem;font-weight:600;color:#333;">🏷️ 标签管理</span>
+                                <button onclick="ncShowCreateTag()" style="padding:4px 10px;background:var(--theme-primary);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;">+ 新建</button>
+                            </div>
+                            <div id="nc-tag-list" style="flex:1;overflow-y:auto;"></div>
+                        </div>
+                        <div style="background:#fafafa;border-radius:8px;padding:12px;border:1px solid #eee;display:flex;flex-direction:column;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                                <span style="font-size:0.85rem;font-weight:600;color:#333;">📸 扫描快照</span>
+                            </div>
+                            <div id="nc-scan-list" style="flex:1;overflow-y:auto;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== Tab 2: 网络空间测绘 ========== -->
+            <div class="nc-panel" data-nc-panel="mapper" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+                <div style="display:flex;border-bottom:1px solid #eee;background:#fafafa;">
+                    <button class="nc-subtab active" data-nc-subtab="mapper-scan" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">扫描配置</button>
+                    <button class="nc-subtab" data-nc-subtab="mapper-topology" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">拓扑图</button>
+                    <button class="nc-subtab" data-nc-subtab="mapper-monitor" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">资产监控</button>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="mapper-scan" style="display:flex;flex:1;overflow:hidden;flex-direction:column;padding:12px;">
+                    <div style="background:#fafafa;border-radius:8px;padding:14px;margin-bottom:12px;border:1px solid #eee;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">🗺️ 网络空间测绘扫描</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                            <div>
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">目标（IP/CIDR/域名）</label>
+                                <input type="text" id="nc-mapper-target" placeholder="例如: 192.168.1.0/24 或 example.com" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                            <div>
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">端口（逗号分隔，留空用默认Top100）</label>
+                                <input type="text" id="nc-mapper-ports" placeholder="例如: 22,80,443,3306,8080" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button onclick="ncMapperScan()" style="padding:8px 20px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">🚀 开始扫描</button>
+                            <button onclick="ncMapperImportAssets()" id="nc-mapper-import-btn" style="padding:8px 20px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;display:none;">💾 导入资产库</button>
+                        </div>
+                    </div>
+                    <div id="nc-mapper-result" style="flex:1;overflow-y:auto;border:1px solid #eee;border-radius:8px;background:#fff;padding:12px;">
+                        <div style="text-align:center;padding:40px;color:#999;font-size:0.85rem;">配置扫描参数后点击"开始扫描"</div>
+                    </div>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="mapper-topology" style="display:none;flex:1;overflow:hidden;flex-direction:column;padding:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <span style="font-size:0.85rem;font-weight:600;color:#333;">🕸️ 网络拓扑图</span>
+                        <div style="display:flex;gap:6px;">
+                            <button onclick="ncMapperLoadTopology()" style="padding:5px 12px;background:var(--theme-primary);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;">🔄 刷新</button>
+                            <button onclick="ncMapperExportTopology()" style="padding:5px 12px;background:#2e7d32;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;">📤 导出</button>
+                        </div>
+                    </div>
+                    <div id="nc-topology-container" style="flex:1;border:1px solid #eee;border-radius:8px;background:#fff;position:relative;overflow:hidden;">
+                        <canvas id="nc-topology-canvas" style="width:100%;height:100%;display:block;"></canvas>
+                        <div id="nc-topology-empty" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#999;font-size:0.85rem;">
+                            <div style="font-size:2.5rem;margin-bottom:8px;">🕸️</div>
+                            <div>暂无拓扑数据，请先进行网络扫描</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="mapper-monitor" style="display:none;flex:1;overflow:hidden;flex-direction:column;min-height:0;padding:12px;">
+                    <div style="flex:1;overflow-y:auto;min-height:0;">
+                    <div style="background:#fafafa;border-radius:8px;padding:14px;margin-bottom:12px;border:1px solid #eee;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">📊 资产监控统计</div>
+                        <div id="nc-monitor-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;"></div>
+                    </div>
+                    <div style="background:#fafafa;border-radius:8px;padding:14px;border:1px solid #eee;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">📋 内存中的资产列表</div>
+                        <div id="nc-monitor-assets" style="max-height:400px;overflow-y:auto;"></div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== Tab 3: 广域网扫描 ========== -->
+            <div class="nc-panel" data-nc-panel="wan" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+                <div style="display:flex;border-bottom:1px solid #eee;background:#fafafa;">
+                    <button class="nc-subtab active" data-nc-subtab="wan-quick" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">快速扫描</button>
+                    <button class="nc-subtab" data-nc-subtab="wan-tasks" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">任务管理</button>
+                    <button class="nc-subtab" data-nc-subtab="wan-progress" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">进度监控</button>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="wan-quick" style="display:flex;flex:1;overflow:hidden;flex-direction:column;padding:12px;">
+                    <div style="background:#fafafa;border-radius:8px;padding:14px;margin-bottom:12px;border:1px solid #eee;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">⚡ 快速扫描（同步）</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                            <div>
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">目标</label>
+                                <input type="text" id="nc-wan-target" placeholder="IP/CIDR/域名" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                            <div>
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">端口预设</label>
+                                <select id="nc-wan-preset" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                                    <option value="">自定义端口</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+                            <label style="font-size:0.75rem;color:#666;display:flex;align-items:center;gap:4px;">
+                                <input type="checkbox" id="nc-wan-intelligence" checked> 情报收集（子域名/SSL/WHOIS）
+                            </label>
+                            <label style="font-size:0.75rem;color:#666;display:flex;align-items:center;gap:4px;">
+                                <input type="checkbox" id="nc-wan-cve"> CVE关联
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button onclick="ncWanQuickScan()" style="padding:8px 20px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">🚀 快速扫描</button>
+                            <button onclick="ncWanDeepScan()" style="padding:8px 20px;background:#e65100;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">🔬 深度扫描</button>
+                            <button onclick="ncWanImportAssets()" id="nc-wan-import-btn" style="padding:8px 20px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;display:none;">💾 导入资产库</button>
+                        </div>
+                    </div>
+                    <div id="nc-wan-result" style="flex:1;overflow-y:auto;border:1px solid #eee;border-radius:8px;background:#fff;padding:12px;">
+                        <div style="text-align:center;padding:40px;color:#999;font-size:0.85rem;">配置扫描参数后点击"快速扫描"或"深度扫描"</div>
+                    </div>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="wan-tasks" style="display:none;flex:1;overflow:hidden;flex-direction:column;padding:12px;">
+                    <div style="background:#fafafa;border-radius:8px;padding:14px;margin-bottom:12px;border:1px solid #eee;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">📋 创建扫描任务（异步）</div>
+                        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+                            <input type="text" id="nc-wan-task-name" placeholder="任务名称" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                            <input type="text" id="nc-wan-task-targets" placeholder="目标（多个用逗号）" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                            <input type="text" id="nc-wan-task-ports" placeholder="端口（逗号分隔）" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                        </div>
+                        <button onclick="ncWanCreateTask()" style="padding:6px 16px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">➕ 创建任务</button>
+                    </div>
+                    <div style="flex:1;overflow-y:auto;border:1px solid #eee;border-radius:8px;background:#fff;">
+                        <div id="nc-wan-task-list" style="padding:12px;">
+                            <div style="text-align:center;padding:30px;color:#999;font-size:0.85rem;">暂无任务</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="wan-progress" style="display:none;flex:1;overflow:hidden;flex-direction:column;min-height:0;padding:12px;">
+                    <div id="nc-wan-progress-content" style="flex:1;overflow-y:auto;min-height:0;">
+                        <div style="text-align:center;padding:40px;color:#999;font-size:0.85rem;">选择一个运行中的任务查看进度</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== Tab 4: 指纹库运维 ========== -->
+            <div class="nc-panel" data-nc-panel="fingerprint" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+                <div style="display:flex;border-bottom:1px solid #eee;background:#fafafa;">
+                    <button class="nc-subtab active" data-nc-subtab="fp-rules" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">规则列表</button>
+                    <button class="nc-subtab" data-nc-subtab="fp-identify" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">识别测试</button>
+                    <button class="nc-subtab" data-nc-subtab="fp-import" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">导入/学习</button>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="fp-rules" style="display:flex;flex:1;overflow:hidden;flex-direction:column;padding:12px;">
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <input type="text" id="nc-fp-search" placeholder="搜索规则名称..." style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                        <select id="nc-fp-category" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                            <option value="">全部类别</option>
+                        </select>
+                        <button onclick="ncFpLoadRules()" style="padding:6px 14px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">🔍 搜索</button>
+                        <button onclick="ncFpShowCreate()" style="padding:6px 14px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">➕ 新建</button>
+                    </div>
+                    <div id="nc-fp-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;"></div>
+                    <div id="nc-fp-rules-list" style="flex:1;overflow-y:auto;border:1px solid #eee;border-radius:8px;background:#fff;"></div>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="fp-identify" style="display:none;flex:1;overflow:hidden;flex-direction:column;min-height:0;padding:12px;">
+                    <div style="flex:1;overflow-y:auto;min-height:0;">
+                    <div style="background:#fafafa;border-radius:8px;padding:14px;margin-bottom:12px;border:1px solid #eee;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">🔍 指纹识别测试</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                            <div>
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">URL</label>
+                                <input type="text" id="nc-fp-url" placeholder="https://example.com" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                            <div>
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">端口</label>
+                                <input type="number" id="nc-fp-port" placeholder="80" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">响应头（JSON格式，可选）</label>
+                            <textarea id="nc-fp-headers" rows="3" placeholder='{"Server": "nginx", "X-Powered-By": "PHP/7.4"}' style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;font-family:monospace;"></textarea>
+                        </div>
+                        <button onclick="ncFpIdentify()" style="padding:8px 20px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">🔍 开始识别</button>
+                    </div>
+                    <div id="nc-fp-identify-result" style="background:#fff;border-radius:8px;padding:14px;border:1px solid #eee;min-height:200px;">
+                        <div style="text-align:center;padding:30px;color:#999;font-size:0.85rem;">输入目标信息后点击"开始识别"</div>
+                    </div>
+                    </div>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="fp-import" style="display:none;flex:1;overflow:hidden;flex-direction:column;min-height:0;padding:12px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0;overflow-y:auto;">
+                        <div style="background:#fafafa;border-radius:8px;padding:14px;border:1px solid #eee;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">📥 导入指纹规则</div>
+                            <div style="margin-bottom:10px;">
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">格式</label>
+                                <select id="nc-fp-import-format" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                                    <option value="wappalyzer">Wappalyzer</option>
+                                    <option value="whatweb">WhatWeb</option>
+                                    <option value="ehope">EHole</option>
+                                </select>
+                            </div>
+                            <div style="margin-bottom:10px;">
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">文件路径</label>
+                                <input type="text" id="nc-fp-import-path" placeholder="文件绝对路径" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                            <button onclick="ncFpImport()" style="padding:6px 16px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">📥 导入</button>
+                        </div>
+                        <div style="background:#fafafa;border-radius:8px;padding:14px;border:1px solid #eee;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">🧠 自动学习</div>
+                            <div id="nc-fp-learned-list" style="max-height:300px;overflow-y:auto;">
+                                <div style="text-align:center;padding:20px;color:#999;font-size:0.8rem;">暂无学习到的模式</div>
+                            </div>
+                            <button onclick="ncFpLoadLearned()" style="margin-top:10px;padding:6px 16px;background:#6a4c93;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">🔄 刷新学习模式</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== Tab 5: P2P网络 ========== -->
+            <div class="nc-panel" data-nc-panel="p2p" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+                <div style="display:flex;border-bottom:1px solid #eee;background:#fafafa;">
+                    <button class="nc-subtab active" data-nc-subtab="p2p-nodes" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">节点/拓扑/信誉</button>
+                    <button class="nc-subtab" data-nc-subtab="p2p-tasks" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">分布式任务</button>
+                    <button class="nc-subtab" data-nc-subtab="p2p-dht" style="padding:7px 16px;border:none;background:none;cursor:pointer;font-size:0.75rem;color:#888;border-bottom:2px solid transparent;">DHT存储</button>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="p2p-nodes" style="display:flex;flex:1;overflow:hidden;flex-direction:column;padding:12px;">
+                    <div style="background:linear-gradient(135deg,#6a4c93,#8e24aa);border-radius:8px;padding:14px;margin-bottom:12px;color:#fff;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <span style="font-size:0.85rem;font-weight:600;">🤝 P2P节点状态</span>
+                            <div id="nc-p2p-status-badge" style="font-size:0.72rem;background:rgba(255,255,255,0.2);padding:3px 10px;border-radius:10px;">未启动</div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:0.75rem;">
+                            <div>节点ID: <span id="nc-p2p-node-id" style="font-family:monospace;opacity:0.9;">--</span></div>
+                            <div>监听地址: <span id="nc-p2p-listen" style="font-family:monospace;opacity:0.9;">--</span></div>
+                            <div>连接数: <span id="nc-p2p-conn-count" style="font-weight:600;">0</span></div>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-top:10px;">
+                            <button onclick="ncP2PStart()" id="nc-p2p-start-btn" style="padding:5px 14px;background:#fff;color:#6a4c93;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;font-weight:600;">🚀 启动节点</button>
+                            <button onclick="ncP2PStop()" id="nc-p2p-stop-btn" style="padding:5px 14px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;display:none;">⏹ 停止节点</button>
+                            <button onclick="ncP2PShowJoin()" style="padding:5px 14px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;">🔗 加入网络</button>
+                            <button onclick="ncP2PShowConnect()" style="padding:5px 14px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;">➕ 连接节点</button>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;overflow:hidden;">
+                        <div style="background:#fafafa;border-radius:8px;padding:12px;border:1px solid #eee;display:flex;flex-direction:column;overflow:hidden;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:8px;">📡 节点列表</div>
+                            <div id="nc-p2p-peers-list" style="flex:1;overflow-y:auto;font-size:0.78rem;">
+                                <div style="text-align:center;padding:20px;color:#999;">暂无节点</div>
+                            </div>
+                        </div>
+                        <div style="background:#fafafa;border-radius:8px;padding:12px;border:1px solid #eee;display:flex;flex-direction:column;overflow:hidden;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:8px;">⭐ 信誉系统</div>
+                            <div id="nc-p2p-reputation-list" style="flex:1;overflow-y:auto;font-size:0.78rem;">
+                                <div style="text-align:center;padding:20px;color:#999;">暂无信誉数据</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="p2p-tasks" style="display:none;flex:1;overflow:hidden;flex-direction:column;padding:12px;">
+                    <div style="background:#fafafa;border-radius:8px;padding:14px;margin-bottom:12px;border:1px solid #eee;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">⚡ 创建分布式扫描任务</div>
+                        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+                            <input type="text" id="nc-p2p-task-target" placeholder="目标（IP/CIDR/域名）" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                            <input type="text" id="nc-p2p-task-ports" placeholder="端口" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                            <select id="nc-p2p-task-type" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                                <option value="quick">快速扫描</option>
+                                <option value="deep">深度扫描</option>
+                                <option value="vuln_verify">漏洞验证</option>
+                                <option value="weak_password">弱口令检测</option>
+                            </select>
+                            <input type="number" id="nc-p2p-task-priority" value="0" placeholder="优先级" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                        </div>
+                        <button onclick="ncP2PCreateTask()" style="padding:6px 16px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">➕ 创建分布式任务</button>
+                    </div>
+                    <div style="flex:1;overflow-y:auto;border:1px solid #eee;border-radius:8px;background:#fff;">
+                        <div id="nc-p2p-task-list" style="padding:12px;">
+                            <div style="text-align:center;padding:30px;color:#999;font-size:0.85rem;">暂无分布式任务</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="nc-subpanel" data-nc-subpanel="p2p-dht" style="display:none;flex:1;overflow:hidden;flex-direction:column;min-height:0;padding:12px;">
+                    <div style="flex:1;overflow-y:auto;min-height:0;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div style="background:#fafafa;border-radius:8px;padding:14px;border:1px solid #eee;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">💾 DHT存储数据</div>
+                            <div style="margin-bottom:10px;">
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">键（Key）</label>
+                                <input type="text" id="nc-dht-store-key" placeholder="例如: asset:192.168.1.1" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                            <div style="margin-bottom:10px;">
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">值（Value，JSON格式）</label>
+                                <textarea id="nc-dht-store-value" rows="4" placeholder='{"ip": "192.168.1.1", "ports": [80, 443]}' style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;font-family:monospace;"></textarea>
+                            </div>
+                            <div style="margin-bottom:10px;">
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">TTL（秒，默认86400）</label>
+                                <input type="number" id="nc-dht-store-ttl" value="86400" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                            <button onclick="ncDHTStore()" style="padding:8px 20px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">💾 存储到DHT</button>
+                        </div>
+                        <div style="background:#fafafa;border-radius:8px;padding:14px;border:1px solid #eee;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">🔍 DHT检索数据</div>
+                            <div style="margin-bottom:10px;">
+                                <label style="font-size:0.75rem;color:#666;display:block;margin-bottom:4px;">键（Key）</label>
+                                <input type="text" id="nc-dht-retrieve-key" placeholder="例如: asset:192.168.1.1" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                            </div>
+                            <button onclick="ncDHTRetrieve()" style="padding:8px 20px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">🔍 从DHT检索</button>
+                            <div id="nc-dht-result" style="margin-top:12px;background:#fff;border-radius:6px;padding:10px;border:1px solid #eee;min-height:100px;font-size:0.78rem;color:#666;font-family:monospace;word-break:break-all;">
+                                检索结果将显示在这里
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;background:#fff3e0;border-radius:8px;padding:14px;border:1px solid #ffe0b2;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#e65100;margin-bottom:8px;">💡 P2P与广域网通信的区别</div>
+                        <div style="font-size:0.78rem;color:#666;line-height:1.6;">
+                            <strong>广域网通信（MQTT）</strong>：轻量级即时消息，适合聊天、通知、实时消息，中心化架构（MQTT Broker）。<br>
+                            <strong>P2P去中心化网络</strong>：重量级分布式存储和计算，适合资产数据共享、分布式扫描，去中心化架构（DHT）。<br>
+                            两者定位不同，现阶段独立运行，未来可考虑整合。
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

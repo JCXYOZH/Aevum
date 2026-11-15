@@ -1,0 +1,591 @@
+    <div class="window" id="win-ai-center" data-window="ai-center" style="width:1000px;height:700px;top:5%;left:8%;">
+        <div class="window-header">
+            <span class="title">⚖️ 审议庭</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+<div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;overflow-x:auto;">
+                <button class="ai-tab active" data-tab="ai-brain" style="flex:1;min-width:120px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;white-space:nowrap;">🧠 Agent大脑</button>
+                <button class="ai-tab" data-tab="ai-tools" style="flex:1;min-width:120px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">🛠️ 工具编排</button>
+                <button class="ai-tab" data-tab="ai-codebase" style="flex:1;min-width:120px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">💻 代码智能</button>
+                <button class="ai-tab" data-tab="ai-memory" style="flex:1;min-width:120px;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">📚 记忆引擎</button>
+            </div>
+
+            <!-- ========== Tab 1: Agent大脑 ========== -->
+            <div class="ai-panel" data-panel="ai-brain" style="display:block;padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <!-- 状态概览 -->
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+                    <div style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:12px;padding:12px;text-align:center;">
+                        <div style="font-size:0.72rem;color:#666;margin-bottom:4px;">当前状态</div>
+                        <div style="font-size:1rem;font-weight:700;color:#1565c0;" id="brain-status">待机</div>
+                    </div>
+                    <div style="background:linear-gradient(135deg,#f3e5f5,#e1bee7);border-radius:12px;padding:12px;text-align:center;">
+                        <div style="font-size:0.72rem;color:#666;margin-bottom:4px;">当前阶段</div>
+                        <div style="font-size:1rem;font-weight:700;color:#7b1fa2;" id="brain-phase">-</div>
+                    </div>
+                    <div style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border-radius:12px;padding:12px;text-align:center;">
+                        <div style="font-size:0.72rem;color:#666;margin-bottom:4px;">完成任务</div>
+                        <div style="font-size:1rem;font-weight:700;color:#2e7d32;" id="brain-tasks">0</div>
+                    </div>
+                    <div style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border-radius:12px;padding:12px;text-align:center;">
+                        <div style="font-size:0.72rem;color:#666;margin-bottom:4px;">质量评分</div>
+                        <div style="font-size:1rem;font-weight:700;color:#ef6c00;" id="brain-quality">-</div>
+                    </div>
+                </div>
+
+                <!-- 八阶段循环可视化 -->
+                <div style="background:#fafafa;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #eee;">
+                    <div style="font-size:0.85rem;font-weight:600;color:#333;margin-bottom:10px;">🔄 八阶段自主循环</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
+                        <div class="brain-phase" data-phase="perceive" style="flex:1;min-width:70px;text-align:center;padding:8px 4px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:0.72rem;color:#999;">
+                            <div style="font-size:1rem;margin-bottom:2px;">👁️</div>感知
+                        </div>
+                        <div style="color:#ccc;font-size:0.8rem;">→</div>
+                        <div class="brain-phase" data-phase="understand" style="flex:1;min-width:70px;text-align:center;padding:8px 4px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:0.72rem;color:#999;">
+                            <div style="font-size:1rem;margin-bottom:2px;">🧩</div>理解
+                        </div>
+                        <div style="color:#ccc;font-size:0.8rem;">→</div>
+                        <div class="brain-phase" data-phase="plan" style="flex:1;min-width:70px;text-align:center;padding:8px 4px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:0.72rem;color:#999;">
+                            <div style="font-size:1rem;margin-bottom:2px;">📋</div>规划
+                        </div>
+                        <div style="color:#ccc;font-size:0.8rem;">→</div>
+                        <div class="brain-phase" data-phase="decide" style="flex:1;min-width:70px;text-align:center;padding:8px 4px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:0.72rem;color:#999;">
+                            <div style="font-size:1rem;margin-bottom:2px;">⚖️</div>决策
+                        </div>
+                        <div style="color:#ccc;font-size:0.8rem;">→</div>
+                        <div class="brain-phase" data-phase="execute" style="flex:1;min-width:70px;text-align:center;padding:8px 4px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:0.72rem;color:#999;">
+                            <div style="font-size:1rem;margin-bottom:2px;">⚡</div>执行
+                        </div>
+                        <div style="color:#ccc;font-size:0.8rem;">→</div>
+                        <div class="brain-phase" data-phase="observe" style="flex:1;min-width:70px;text-align:center;padding:8px 4px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:0.72rem;color:#999;">
+                            <div style="font-size:1rem;margin-bottom:2px;">🔍</div>观察
+                        </div>
+                        <div style="color:#ccc;font-size:0.8rem;">→</div>
+                        <div class="brain-phase" data-phase="reflect" style="flex:1;min-width:70px;text-align:center;padding:8px 4px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:0.72rem;color:#999;">
+                            <div style="font-size:1rem;margin-bottom:2px;">💭</div>反思
+                        </div>
+                        <div style="color:#ccc;font-size:0.8rem;">→</div>
+                        <div class="brain-phase" data-phase="learn" style="flex:1;min-width:70px;text-align:center;padding:8px 4px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:0.72rem;color:#999;">
+                            <div style="font-size:1rem;margin-bottom:2px;">📖</div>学习
+                        </div>
+                    </div>
+                </div>
+
+                
+                <!-- 思考过程可视化详情 -->
+                <div id="brain-thinking-detail" style="background:#fafafa;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #eee;display:none;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;display:flex;align-items:center;gap:8px;">
+                            <span id="thinking-phase-icon">💭</span>
+                            <span id="thinking-phase-title">思考过程</span>
+                            <span id="thinking-phase-badge" style="font-size:0.68rem;background:var(--theme-primary);color:#fff;padding:2px 8px;border-radius:10px;">进行中</span>
+                        </div>
+                        <button id="thinking-close" style="background:none;border:none;color:#999;cursor:pointer;font-size:1rem;padding:0 4px;">✕</button>
+                    </div>
+                    
+                    <!-- 思考内容 -->
+                    <div id="thinking-content" style="background:#fff;border-radius:8px;padding:12px;border:1px solid #e8e8f0;min-height:100px;">
+                        <div style="color:#999;text-align:center;padding:20px 0;font-size:0.8rem;">点击上方任意阶段查看详细思考过程，或开始自主循环实时查看</div>
+                    </div>
+                    
+                    <!-- 思考时间线 -->
+                    <div id="thinking-timeline" style="margin-top:10px;display:flex;gap:4px;flex-wrap:wrap;">
+                    </div>
+                </div>
+
+                <!-- 任务输入和控制 -->
+                <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+                    <input type="text" id="brain-task-input" placeholder="输入任务需求，Agent大脑将自主完成..." style="flex:1;min-width:250px;padding:10px 14px;border:2px solid #e0d8f0;border-radius:10px;font-size:0.85rem;outline:none;" onfocus="this.style.borderColor='var(--theme-primary)'" onblur="this.style.borderColor='#e0d8f0'">
+                    <button id="brain-start" style="padding:10px 18px;border:none;border-radius:10px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;">🚀 开始自主循环</button>
+                    <button id="brain-pause" style="padding:10px 14px;border:1px solid #fb8c00;border-radius:10px;background:#fff;color:#fb8c00;cursor:pointer;font-size:0.8rem;" disabled>⏸ 暂停</button>
+                    <button id="brain-stop" style="padding:10px 14px;border:1px solid #e53935;border-radius:10px;background:#fff;color:#e53935;cursor:pointer;font-size:0.8rem;" disabled>⏹ 停止</button>
+                    <button id="brain-step" style="padding:10px 14px;border:1px solid #1e88e5;border-radius:10px;background:#fff;color:#1e88e5;cursor:pointer;font-size:0.8rem;">👣 单步思考</button>
+                </div>
+
+                <!-- 目标追踪 + 执行日志 -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                    <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                        <div style="font-size:0.82rem;font-weight:600;color:#333;margin-bottom:8px;">🎯 目标追踪</div>
+                        <div id="brain-goals" style="max-height:180px;overflow-y:auto;font-size:0.76rem;color:#666;display:flex;flex-direction:column;gap:6px;">
+                            <div style="color:#999;text-align:center;padding:20px 0;">暂无活动目标</div>
+                        </div>
+                    </div>
+                    <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                        <div style="font-size:0.82rem;font-weight:600;color:#333;margin-bottom:8px;">📋 执行日志</div>
+                        <div id="brain-log" style="max-height:180px;overflow-y:auto;font-size:0.74rem;color:#666;display:flex;flex-direction:column;gap:4px;font-family:monospace;">
+                            <div style="color:#999;">[系统] 等待任务输入...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 检查点 + 质量评估 -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                        <div style="font-size:0.82rem;font-weight:600;color:#333;margin-bottom:8px;">📍 检查点管理</div>
+                        <div id="brain-checkpoints" style="max-height:150px;overflow-y:auto;font-size:0.76rem;color:#666;display:flex;flex-direction:column;gap:4px;">
+                            <div style="color:#999;text-align:center;padding:15px 0;">暂无检查点</div>
+                        </div>
+                    </div>
+                    <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                        <div style="font-size:0.82rem;font-weight:600;color:#333;margin-bottom:8px;">📊 质量评估</div>
+                        <div id="brain-quality-report" style="max-height:150px;overflow-y:auto;font-size:0.76rem;color:#666;">
+                            <div style="color:#999;text-align:center;padding:15px 0;">暂无评估数据</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 任务历史 + 经验库 -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+                    <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <div style="font-size:0.82rem;font-weight:600;color:#333;">📜 任务历史</div>
+                            <button id="brain-history-clear" style="padding:3px 8px;border:1px solid #e53935;border-radius:4px;background:#fff;color:#e53935;cursor:pointer;font-size:0.68rem;">清空</button>
+                        </div>
+                        <div id="brain-task-history" style="max-height:200px;overflow-y:auto;font-size:0.74rem;color:#666;display:flex;flex-direction:column;gap:6px;">
+                            <div style="color:#999;text-align:center;padding:20px 0;">暂无任务记录</div>
+                        </div>
+                    </div>
+                    <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <div style="font-size:0.82rem;font-weight:600;color:#333;">🧠 经验库</div>
+                            <div style="font-size:0.68rem;color:#999;">已积累 <span id="brain-experience-count">0</span> 条</div>
+                        </div>
+                        <div id="brain-experience-list" style="max-height:200px;overflow-y:auto;font-size:0.74rem;color:#666;display:flex;flex-direction:column;gap:6px;">
+                            <div style="color:#999;text-align:center;padding:20px 0;">暂无经验积累</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== Tab 2: 工具编排 ========== -->
+            <div class="ai-panel" data-panel="ai-tools" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <!-- 工具链模板 -->
+                <div style="background:#fafafa;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #eee;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;">📦 工具链模板</div>
+                        <button id="toolchain-new" style="padding:6px 12px;border:none;border-radius:6px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.75rem;">➕ 新建</button>
+                    </div>
+                    <div id="toolchain-templates" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;">
+                        <div class="toolchain-template" data-id="recon" style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:10px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--theme-primary)';this.style.boxShadow='0 2px 8px rgba(106,76,147,0.15)'" onmouseout="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">
+                            <div style="font-size:0.8rem;font-weight:600;color:#333;margin-bottom:4px;">🔍 信息收集链</div>
+                            <div style="font-size:0.7rem;color:#888;line-height:1.4;">子域名→端口→服务→WHOIS</div>
+                            <div style="font-size:0.68rem;color:var(--theme-primary);margin-top:4px;">4个工具</div>
+                        </div>
+                        <div class="toolchain-template" data-id="vuln" style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:10px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--theme-primary)';this.style.boxShadow='0 2px 8px rgba(106,76,147,0.15)'" onmouseout="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">
+                            <div style="font-size:0.8rem;font-weight:600;color:#333;margin-bottom:4px;">🕷️ 漏洞扫描链</div>
+                            <div style="font-size:0.7rem;color:#888;line-height:1.4;">目录爆破→Web扫描→SQL注入→报告</div>
+                            <div style="font-size:0.68rem;color:var(--theme-primary);margin-top:4px;">4个工具</div>
+                        </div>
+                        <div class="toolchain-template" data-id="full" style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:10px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--theme-primary)';this.style.boxShadow='0 2px 8px rgba(106,76,147,0.15)'" onmouseout="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">
+                            <div style="font-size:0.8rem;font-weight:600;color:#333;margin-bottom:4px;">⚔️ 完整审计链</div>
+                            <div style="font-size:0.7rem;color:#888;line-height:1.4;">信息收集→漏洞扫描→利用验证→报告</div>
+                            <div style="font-size:0.68rem;color:var(--theme-primary);margin-top:4px;">8个工具</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 可拖拽工具库 -->
+                <div style="background:#fafafa;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #eee;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;">🧰 工具库（拖拽到画布）</div>
+                        <div style="display:flex;gap:4px;align-items:center;">
+                            <input type="text" id="tool-search" placeholder="搜索工具..." style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.7rem;width:120px;">
+                            <select id="tool-category-filter" style="padding:4px 6px;border:1px solid #ddd;border-radius:4px;font-size:0.7rem;">
+                                <option value="all">全部</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="draggable-tools" style="display:flex;gap:6px;flex-wrap:wrap;max-height:180px;overflow-y:auto;padding:4px;">
+                        <!-- 工具项由JS动态生成 -->
+                    </div>
+                    <div style="margin-top:8px;font-size:0.68rem;color:#999;">💡 提示：拖拽工具到画布进行编排，画布内拖拽可调整顺序，点击工具可移除</div>
+                </div>
+
+                <!-- 目标输入 -->
+                <div style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #ffcc80;">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                        <span style="font-size:1rem;">🎯</span>
+                        <span style="font-size:0.85rem;font-weight:600;color:#e65100;">执行目标</span>
+                        <span style="font-size:0.68rem;color:#ef6c00;background:#fff;padding:2px 8px;border-radius:10px;">所有工具将使用此目标</span>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="text" id="toolchain-target" placeholder="输入目标：IP / 域名 / URL，如 example.com 或 192.168.1.1" 
+                            style="flex:1;padding:10px 14px;border:2px solid #ffcc80;border-radius:10px;font-size:0.85rem;background:#fff;outline:none;"
+                            onfocus="this.style.borderColor='#ef6c00'" onblur="this.style.borderColor='#ffcc80'">
+                        <select id="toolchain-target-type" style="padding:10px 12px;border:2px solid #ffcc80;border-radius:10px;font-size:0.8rem;background:#fff;outline:none;">
+                            <option value="auto">自动识别</option>
+                            <option value="ip">IP地址</option>
+                            <option value="domain">域名</option>
+                            <option value="url">URL</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                        <input type="text" id="toolchain-ports" placeholder="端口范围（可选），如 1-1000 或 22,80,443" 
+                            style="flex:1;padding:8px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:0.8rem;background:#fff;outline:none;"
+                            onfocus="this.style.borderColor='#ef6c00'" onblur="this.style.borderColor='#e0e0e0'">
+                    </div>
+                    <div style="margin-top:6px;font-size:0.68rem;color:#ef6c00;">
+                        💡 提示：目标会自动传递给工具链中的每个工具，如子域名枚举、端口扫描、漏洞探测等。端口范围可选，不填则使用工具默认值
+                    </div>
+                </div>
+
+                <!-- 编排画布 -->
+                <div style="background:#fafafa;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #eee;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;">🎨 编排画布</div>
+                        <div style="display:flex;gap:6px;">
+                            <button id="toolchain-run" style="padding:6px 12px;border:none;border-radius:6px;background:#43a047;color:#fff;cursor:pointer;font-size:0.75rem;">▶️ 执行</button>
+                            <button id="toolchain-pause" style="padding:6px 12px;border:1px solid #fb8c00;border-radius:6px;background:#fff;color:#fb8c00;cursor:pointer;font-size:0.75rem;" disabled>⏸️ 暂停</button>
+                            <button id="toolchain-stop" style="padding:6px 12px;border:1px solid #e53935;border-radius:6px;background:#fff;color:#e53935;cursor:pointer;font-size:0.75rem;" disabled>⏹️ 停止</button>
+                            <button id="toolchain-save" style="padding:6px 12px;border:1px solid var(--theme-primary);border-radius:6px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.75rem;">💾 保存</button>
+                            <button id="toolchain-clear" style="padding:6px 12px;border:1px solid #e53935;border-radius:6px;background:#fff;color:#e53935;cursor:pointer;font-size:0.75rem;">🗑️ 清空</button>
+                        </div>
+                    </div>
+                    <div id="toolchain-canvas" style="min-height:220px;background:#fff;border:2px dashed #e0e0e0;border-radius:8px;padding:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;transition:all 0.2s;">
+                        <div id="canvas-placeholder" style="color:#999;font-size:0.78rem;text-align:center;width:100%;padding:20px 0;">
+                            从上方选择工具链模板，或拖拽工具到此处进行编排
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 执行过程实时展示 -->
+                <div id="toolchain-execution" style="background:#fafafa;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #eee;display:none;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;">⚡ 执行过程</div>
+                        <div id="toolchain-progress-text" style="font-size:0.75rem;color:var(--theme-primary);font-weight:600;">0/0</div>
+                    </div>
+                    <!-- 进度条 -->
+                    <div style="height:6px;background:#e0e0e0;border-radius:3px;margin-bottom:12px;overflow:hidden;">
+                        <div id="toolchain-progress-bar" style="height:100%;width:0%;background:linear-gradient(to right,var(--theme-primary),#9c27b0);border-radius:3px;transition:width 0.3s;"></div>
+                    </div>
+                    <!-- 执行步骤列表 -->
+                    <div id="toolchain-steps" style="display:flex;flex-direction:column;gap:6px;max-height:250px;overflow-y:auto;"></div>
+                    <!-- 执行总结 -->
+                    <div id="toolchain-summary" style="margin-top:10px;padding:10px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;display:none;">
+                        <div style="font-size:0.78rem;color:#333;font-weight:600;margin-bottom:6px;">📊 执行总结</div>
+                        <div id="toolchain-summary-content" style="font-size:0.72rem;color:#666;line-height:1.6;"></div>
+                    </div>
+                </div>
+
+                <!-- 工具健康状态 + 执行历史 -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                        <div style="font-size:0.82rem;font-weight:600;color:#333;margin-bottom:8px;">💚 工具健康状态</div>
+                        <div id="tool-health" style="max-height:200px;overflow-y:auto;font-size:0.74rem;color:#666;display:flex;flex-direction:column;gap:4px;">
+                            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0;">
+                                <span>nmap_scan</span><span style="color:#43a047;">✓ 可用</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0;">
+                                <span>whois_lookup</span><span style="color:#43a047;">✓ 可用</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0;">
+                                <span>sqlmap_scan</span><span style="color:#fb8c00;">⚠ 未安装</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                                <span>hydra_brute</span><span style="color:#fb8c00;">⚠ 未安装</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                        <div style="font-size:0.82rem;font-weight:600;color:#333;margin-bottom:8px;">📜 执行历史</div>
+                        <div id="tool-history" style="max-height:200px;overflow-y:auto;font-size:0.74rem;color:#666;display:flex;flex-direction:column;gap:6px;">
+                            <div style="color:#999;text-align:center;padding:20px 0;">暂无执行记录</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== Tab 3: 代码智能 ========== -->
+            <div class="ai-panel" data-panel="ai-codebase" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 42px);">
+                <!-- 项目索引 -->
+                <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+                    <input type="text" id="code-project-path" placeholder="项目路径，如：D:\我的项目" style="flex:1;min-width:200px;padding:9px 12px;border:2px solid #e0d8f0;border-radius:10px;font-size:0.82rem;outline:none;" onfocus="this.style.borderColor='var(--theme-primary)'" onblur="this.style.borderColor='#e0d8f0'">
+                    <button id="code-index-btn" style="padding:9px 16px;border:none;border-radius:10px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.82rem;font-weight:500;">📂 索引项目</button>
+                </div>
+
+                <!-- 分析操作按钮 -->
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+                    <button id="code-review-btn" style="padding:12px;border:1px solid #e57373;border-radius:10px;background:#fff;color:#c62828;cursor:pointer;font-size:0.8rem;font-weight:500;transition:all 0.2s;" onmouseover="this.style.background='#ffebee'" onmouseout="this.style.background='#fff'">
+                        🔍 代码审查<br><span style="font-size:0.68rem;font-weight:400;color:#999;">发现潜在问题和漏洞</span>
+                    </button>
+                    <button id="code-test-btn" style="padding:12px;border:1px solid #64b5f6;border-radius:10px;background:#fff;color:#1565c0;cursor:pointer;font-size:0.8rem;font-weight:500;transition:all 0.2s;" onmouseover="this.style.background='#e3f2fd'" onmouseout="this.style.background='#fff'">
+                        🧪 运行测试<br><span style="font-size:0.68rem;font-weight:400;color:#999;">执行测试并查看覆盖率</span>
+                    </button>
+                    <button id="code-refactor-btn" style="padding:12px;border:1px solid #81c784;border-radius:10px;background:#fff;color:#2e7d32;cursor:pointer;font-size:0.8rem;font-weight:500;transition:all 0.2s;" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='#fff'">
+                        ♻️ 重构建议<br><span style="font-size:0.68rem;font-weight:400;color:#999;">代码异味和优化建议</span>
+                    </button>
+                    <button id="code-patch-btn" style="padding:12px;border:1px solid #ffb74d;border-radius:10px;background:#fff;color:#ef6c00;cursor:pointer;font-size:0.8rem;font-weight:500;transition:all 0.2s;" onmouseover="this.style.background='#fff3e0'" onmouseout="this.style.background='#fff'">
+                        🩹 补丁预览<br><span style="font-size:0.68rem;font-weight:400;color:#999;">生成修复补丁并预览</span>
+                    </button>
+                    <button id="code-deps-btn" style="padding:12px;border:1px solid #ba68c8;border-radius:10px;background:#fff;color:#7b1fa2;cursor:pointer;font-size:0.8rem;font-weight:500;transition:all 0.2s;" onmouseover="this.style.background='#f3e5f5'" onmouseout="this.style.background='#fff'">
+                        📦 依赖分析<br><span style="font-size:0.68rem;font-weight:400;color:#999;">依赖图和版本冲突检测</span>
+                    </button>
+                    <button id="code-template-btn" style="padding:12px;border:1px solid #4db6ac;border-radius:10px;background:#fff;color:#00695c;cursor:pointer;font-size:0.8rem;font-weight:500;transition:all 0.2s;" onmouseover="this.style.background='#e0f2f1'" onmouseout="this.style.background='#fff'">
+                        ✨ 模板生成<br><span style="font-size:0.68rem;font-weight:400;color:#999;">根据描述生成代码模板</span>
+                    </button>
+                    <button id="code-complexity-btn" style="padding:12px;border:1px solid #ab47bc;border-radius:10px;background:#fff;color:#6a1b9a;cursor:pointer;font-size:0.8rem;font-weight:500;transition:all 0.2s;" onmouseover="this.style.background='#f3e5f5'" onmouseout="this.style.background='#fff'">
+                        📊 复杂度分析<br><span style="font-size:0.68rem;font-weight:400;color:#999;">圈复杂度/代码质量评估</span>
+                    </button>
+                </div>
+                
+                <!-- 复杂度分析结果区域 -->
+                <div id="code-complexity-result" style="display:none;background:#fafafa;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #eee;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;">📊 代码复杂度分析报告</div>
+                        <div id="complexity-score-badge" style="padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;">-</div>
+                    </div>
+                    <!-- 概览指标 -->
+                    <div id="complexity-overview" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;"></div>
+                    <!-- 复杂度分布 -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div style="background:#fff;border-radius:8px;padding:10px;border:1px solid #eee;">
+                            <div style="font-size:0.78rem;font-weight:600;color:#333;margin-bottom:8px;">📈 复杂度分布</div>
+                            <div id="complexity-distribution" style="font-size:0.72rem;color:#666;"></div>
+                        </div>
+                        <div style="background:#fff;border-radius:8px;padding:10px;border:1px solid #eee;">
+                            <div style="font-size:0.78rem;font-weight:600;color:#333;margin-bottom:8px;">⚠️ 高风险文件</div>
+                            <div id="complexity-high-risk" style="font-size:0.72rem;color:#666;max-height:120px;overflow-y:auto;"></div>
+                        </div>
+                    </div>
+                    <!-- 优化建议 -->
+                    <div style="margin-top:12px;background:#fff;border-radius:8px;padding:10px;border:1px solid #eee;">
+                        <div style="font-size:0.78rem;font-weight:600;color:#333;margin-bottom:8px;">💡 优化建议</div>
+                        <div id="complexity-suggestions" style="font-size:0.72rem;color:#666;line-height:1.6;"></div>
+                    </div>
+                </div>
+
+                <!-- 结果展示区 -->
+                <div style="background:#fafafa;border-radius:12px;padding:14px;border:1px solid #eee;min-height:300px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#333;" id="code-result-title">📋 分析结果</div>
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                            <!-- 筛选按钮（仅审查结果显示） -->
+                            <div id="code-review-filters" style="display:none;gap:4px;align-items:center;margin-right:8px;">
+                                <span style="font-size:0.7rem;color:#999;">筛选:</span>
+                                <button class="code-filter-btn active" data-filter="all" style="padding:3px 8px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;color:#666;cursor:pointer;font-size:0.68rem;">全部</button>
+                                <button class="code-filter-btn" data-filter="high" style="padding:3px 8px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;color:#c62828;cursor:pointer;font-size:0.68rem;">高危</button>
+                                <button class="code-filter-btn" data-filter="medium" style="padding:3px 8px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;color:#ef6c00;cursor:pointer;font-size:0.68rem;">中危</button>
+                                <button class="code-filter-btn" data-filter="low" style="padding:3px 8px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;color:#1565c0;cursor:pointer;font-size:0.68rem;">低危</button>
+                                <button class="code-filter-btn" data-filter="pending" style="padding:3px 8px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;color:#999;cursor:pointer;font-size:0.68rem;">待处理</button>
+                            </div>
+                            <button id="code-result-export" style="padding:5px 10px;border:1px solid var(--theme-primary);border-radius:6px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.72rem;display:none;">📥 导出报告</button>
+                            <button id="code-result-apply" style="padding:5px 10px;border:none;border-radius:6px;background:#43a047;color:#fff;cursor:pointer;font-size:0.72rem;display:none;">✅ 应用修复</button>
+                        </div>
+                    </div>
+                    <!-- 审查结果统计 -->
+                    <div id="code-review-stats" style="display:none;gap:12px;margin-bottom:10px;padding:8px 12px;background:#fff;border-radius:6px;border:1px solid #e0e0e0;font-size:0.72rem;color:#666;">
+                        <span>总计: <b id="stat-total">0</b></span>
+                        <span style="color:#c62828;">高危: <b id="stat-high">0</b></span>
+                        <span style="color:#ef6c00;">中危: <b id="stat-medium">0</b></span>
+                        <span style="color:#1565c0;">低危: <b id="stat-low">0</b></span>
+                        <span style="color:#43a047;">已修复: <b id="stat-fixed">0</b></span>
+                        <span style="color:#999;">已忽略: <b id="stat-ignored">0</b></span>
+                    </div>
+                    <div id="code-results" style="font-size:0.78rem;color:#666;">
+                        <div style="text-align:center;padding:40px 20px;color:#999;">
+                            <div style="font-size:2rem;margin-bottom:10px;">💻</div>
+                            <div style="font-size:0.85rem;margin-bottom:4px;">选择上方的分析操作</div>
+                            <div style="font-size:0.75rem;">代码审查、测试运行、重构建议等</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            
+            <!-- ========== Tab 4: 记忆引擎 ========== -->
+            <div class="ai-panel" data-panel="ai-memory" style="display:none;padding:0;overflow:hidden;height:calc(100% - 42px);flex-direction:column;">
+                <!-- 子Tab切换 -->
+                <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;">
+                    <button class="mem-subtab active" data-subtab="overview" style="flex:1;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">📊 概览</button>
+                    <button class="mem-subtab" data-subtab="timeline" style="flex:1;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;">📅 时间线</button>
+                    <button class="mem-subtab" data-subtab="replay" style="flex:1;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;">▶️ 回放</button>
+                    <button class="mem-subtab" data-subtab="graph" style="flex:1;padding:10px 12px;border:none;background:none;cursor:pointer;font-size:0.8rem;color:#888;border-bottom:2px solid transparent;">🕸️ 图谱</button>
+                </div>
+
+                <!-- 子Tab: 概览 -->
+                <div class="mem-subpanel" data-subpanel="overview" style="padding:12px;overflow-y:auto;flex:1;">
+                    <!-- 记忆状态概览 -->
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+                        <div style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:12px;padding:12px;text-align:center;">
+                            <div style="font-size:1.4rem;font-weight:700;color:#1565c0;" id="mem-total">0</div>
+                            <div style="font-size:0.72rem;color:#666;">记忆总数</div>
+                        </div>
+                        <div style="background:linear-gradient(135deg,#f3e5f5,#e1bee7);border-radius:12px;padding:12px;text-align:center;">
+                            <div style="font-size:1.4rem;font-weight:700;color:#7b1fa2;" id="mem-active">0</div>
+                            <div style="font-size:0.72rem;color:#666;">活跃记忆</div>
+                        </div>
+                        <div style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border-radius:12px;padding:12px;text-align:center;">
+                            <div style="font-size:1.4rem;font-weight:700;color:#2e7d32;" id="mem-decaying">0</div>
+                            <div style="font-size:0.72rem;color:#666;">衰减中</div>
+                        </div>
+                        <div style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border-radius:12px;padding:12px;text-align:center;">
+                            <div style="font-size:1.4rem;font-weight:700;color:#ef6c00;" id="mem-forgotten">0</div>
+                            <div style="font-size:0.72rem;color:#666;">已遗忘</div>
+                        </div>
+                    </div>
+
+                    <!-- 激活度可视化 -->
+                    <div style="background:#fafafa;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #eee;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <div style="font-size:0.85rem;font-weight:600;color:#333;">🔥 记忆激活度热力图</div>
+                            <div style="display:flex;gap:6px;align-items:center;font-size:0.7rem;color:#999;">
+                                <span>低</span>
+                                <div style="width:60px;height:8px;border-radius:4px;background:linear-gradient(to right,#e3f2fd,#1565c0,#7b1fa2);"></div>
+                                <span>高</span>
+                            </div>
+                        </div>
+                        <div id="mem-heatmap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:4px;min-height:80px;">
+                            <div style="color:#999;font-size:0.75rem;text-align:center;grid-column:1/-1;padding:20px 0;">暂无记忆数据</div>
+                        </div>
+                    </div>
+
+                    <!-- 遗忘曲线 + Top记忆 -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                            <div style="font-size:0.82rem;font-weight:600;color:#333;margin-bottom:8px;">📉 遗忘曲线</div>
+                            <div id="mem-forgetting-curve" style="height:150px;display:flex;align-items:flex-end;gap:2px;padding:10px 0;">
+                                <div style="color:#999;font-size:0.72rem;text-align:center;width:100%;align-self:center;">暂无数据</div>
+                            </div>
+                        </div>
+                        <div style="background:#fafafa;border-radius:10px;padding:12px;border:1px solid #eee;">
+                            <div style="font-size:0.82rem;font-weight:600;color:#333;margin-bottom:8px;">⭐ Top活跃记忆</div>
+                            <div id="mem-top-list" style="max-height:150px;overflow-y:auto;font-size:0.74rem;color:#666;display:flex;flex-direction:column;gap:6px;">
+                                <div style="color:#999;text-align:center;padding:20px 0;">暂无记忆</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 子Tab: 时间线 -->
+                <div class="mem-subpanel" data-subpanel="timeline" style="display:none;padding:12px;overflow-y:auto;flex:1;">
+                    <!-- 筛选和搜索 -->
+                    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+                        <input type="text" id="mem-timeline-search" placeholder="搜索记忆内容..." style="flex:1;min-width:150px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.8rem;">
+                        <select id="mem-timeline-type" style="padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.78rem;">
+                            <option value="">全部类型</option>
+                            <option value="conversation">对话</option>
+                            <option value="fact">事实</option>
+                            <option value="preference">偏好</option>
+                            <option value="task">任务</option>
+                            <option value="emotion">情感</option>
+                        </select>
+                        <select id="mem-timeline-sort" style="padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.78rem;">
+                            <option value="time">按时间</option>
+                            <option value="activation">按激活度</option>
+                        </select>
+                        <button id="mem-timeline-add" style="padding:8px 14px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.78rem;">➕ 添加记忆</button>
+                        <button id="mem-timeline-refresh" style="padding:8px 14px;border:1px solid var(--theme-primary);border-radius:8px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.78rem;">🔄 刷新</button>
+                    </div>
+
+                    <!-- 时间线内容 -->
+                    <div id="mem-timeline-content" style="display:flex;flex-direction:column;gap:16px;">
+                        <div style="color:#999;text-align:center;padding:40px 0;">
+                            <div style="font-size:2rem;margin-bottom:10px;">📅</div>
+                            <div style="font-size:0.85rem;">暂无记忆</div>
+                            <div style="font-size:0.75rem;margin-top:4px;">点击"添加记忆"或与AI对话，记忆会自动保存</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 子Tab: 回放 -->
+                <div class="mem-subpanel" data-subpanel="replay" style="display:none;padding:0;overflow:hidden;flex:1;position:relative;flex-direction:column;">
+                    <!-- 控制栏 -->
+                    <div style="padding:10px 12px;background:#fafafa;border-bottom:1px solid #eee;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:0.82rem;font-weight:600;color:#333;">▶️ 记忆回放</span>
+                                <span id="replay-status" style="font-size:0.68rem;color:#999;">就绪</span>
+                            </div>
+                            <div style="display:flex;gap:4px;align-items:center;">
+                                <select id="replay-filter" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.7rem;color:#666;">
+                                    <option value="all">全部记忆</option>
+                                    <option value="conversation">对话</option>
+                                    <option value="fact">事实</option>
+                                    <option value="preference">偏好</option>
+                                    <option value="task">任务</option>
+                                    <option value="emotion">情感</option>
+                                </select>
+                                <select id="replay-speed" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.7rem;color:#666;">
+                                    <option value="2000">0.5x</option>
+                                    <option value="1000" selected>1x</option>
+                                    <option value="500">2x</option>
+                                    <option value="250">4x</option>
+                                </select>
+                            </div>
+                        </div>
+                        <!-- 播放控制 -->
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <button id="replay-prev" style="padding:5px 10px;border:1px solid #ddd;border-radius:4px;background:#fff;color:#666;cursor:pointer;font-size:0.75rem;">⏮</button>
+                            <button id="replay-play" style="padding:6px 16px;border:none;border-radius:4px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.8rem;font-weight:600;">▶ 播放</button>
+                            <button id="replay-next" style="padding:5px 10px;border:1px solid #ddd;border-radius:4px;background:#fff;color:#666;cursor:pointer;font-size:0.75rem;">⏭</button>
+                            <button id="replay-reset" style="padding:5px 10px;border:1px solid #ddd;border-radius:4px;background:#fff;color:#666;cursor:pointer;font-size:0.75rem;">🔄</button>
+                            <div style="flex:1;height:4px;background:#e0e0e0;border-radius:2px;cursor:pointer;position:relative;" id="replay-progress-bar">
+                                <div id="replay-progress-fill" style="height:100%;width:0%;background:linear-gradient(to right,var(--theme-primary),#9c27b0);border-radius:2px;transition:width 0.3s;"></div>
+                            </div>
+                            <span id="replay-counter" style="font-size:0.68rem;color:#999;min-width:50px;text-align:right;">0/0</span>
+                        </div>
+                    </div>
+                    <!-- 回放内容区 -->
+                    <div id="replay-container" style="flex:1;overflow-y:auto;padding:16px;background:#fafbfc;">
+                        <div id="replay-empty" style="text-align:center;padding:60px 20px;color:#999;">
+                            <div style="font-size:3rem;margin-bottom:16px;">🎬</div>
+                            <div style="font-size:1rem;font-weight:600;color:#666;margin-bottom:8px;">准备回放</div>
+                            <div style="font-size:0.8rem;line-height:1.6;max-width:400px;margin:0 auto;">
+                                点击"播放"按钮，AI将按时间顺序回放你的记忆。<br>
+                                每条记忆会显示当时的情境、内容和影响。
+                            </div>
+                        </div>
+                        <div id="replay-timeline" style="display:none;position:relative;padding-left:30px;">
+                            <!-- 时间线 -->
+                            <div style="position:absolute;left:10px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--theme-primary),#e0e0e0);"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 子Tab: 图谱 -->
+                <div class="mem-subpanel" data-subpanel="graph" style="display:none;padding:0;overflow:hidden;flex:1;position:relative;flex-direction:column;">
+                    <!-- 控制栏 -->
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#fafafa;border-bottom:1px solid #eee;flex-wrap:wrap;gap:6px;">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span style="font-size:0.78rem;font-weight:600;color:#333;">🕸️ 记忆关联图谱</span>
+                            <span style="font-size:0.68rem;color:#999;">节点: <b id="graph-node-count">0</b></span>
+                            <span style="font-size:0.68rem;color:#999;">连线: <b id="graph-edge-count">0</b></span>
+                        </div>
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                            <button id="graph-refresh" style="padding:4px 10px;border:1px solid var(--theme-primary);border-radius:4px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.68rem;">🔄 刷新</button>
+                            <button id="graph-force" style="padding:4px 10px;border:1px solid var(--theme-primary);border-radius:4px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.68rem;">⚡ 重新布局</button>
+                            <button id="graph-zoom-in" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;background:#fff;color:#666;cursor:pointer;font-size:0.68rem;">➕</button>
+                            <button id="graph-zoom-out" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;background:#fff;color:#666;cursor:pointer;font-size:0.68rem;">➖</button>
+                            <button id="graph-reset" style="padding:4px 10px;border:1px solid #ddd;border-radius:4px;background:#fff;color:#666;cursor:pointer;font-size:0.68rem;">🎯 重置视图</button>
+                        </div>
+                    </div>
+                    <!-- 图例 -->
+                    <div style="display:flex;gap:12px;padding:6px 12px;background:#fff;border-bottom:1px solid #f0f0f0;flex-wrap:wrap;">
+                        <div style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:#1565c0;display:inline-block;"></span><span style="font-size:0.65rem;color:#666;">对话</span></div>
+                        <div style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:#2e7d32;display:inline-block;"></span><span style="font-size:0.65rem;color:#666;">事实</span></div>
+                        <div style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:#7b1fa2;display:inline-block;"></span><span style="font-size:0.65rem;color:#666;">偏好</span></div>
+                        <div style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:#ef6c00;display:inline-block;"></span><span style="font-size:0.65rem;color:#666;">任务</span></div>
+                        <div style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:#c62828;display:inline-block;"></span><span style="font-size:0.65rem;color:#666;">情感</span></div>
+                        <div style="margin-left:auto;font-size:0.65rem;color:#999;">节点大小=激活度 · 连线粗细=关联强度 · 拖拽节点可调整位置</div>
+                    </div>
+                    <!-- Canvas容器 -->
+                    <div id="graph-canvas-container" style="flex:1;position:relative;overflow:hidden;background:#fafbfc;">
+                        <canvas id="memory-graph-canvas" style="width:100%;height:100%;display:block;cursor:grab;"></canvas>
+                        <!-- 节点详情浮层 -->
+                        <div id="graph-node-tooltip" style="display:none;position:absolute;background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.15);font-size:0.72rem;color:#333;max-width:250px;z-index:10;pointer-events:none;">
+                            <div id="tooltip-title" style="font-weight:600;margin-bottom:4px;"></div>
+                            <div id="tooltip-type" style="font-size:0.65rem;color:#999;margin-bottom:4px;"></div>
+                            <div id="tooltip-content" style="color:#666;line-height:1.4;max-height:80px;overflow:hidden;"></div>
+                            <div id="tooltip-meta" style="font-size:0.65rem;color:#999;margin-top:6px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="window-resize-handle"></div>
+    </div>

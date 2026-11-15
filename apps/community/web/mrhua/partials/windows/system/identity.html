@@ -1,0 +1,178 @@
+    <div class="window" id="win-identity" data-window="identity" style="width:560px;height:560px;top:10%;left:20%;">
+        <div class="window-header">
+            <span class="title">🪪 身份认证</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:20px;overflow-y:auto;">
+            <div id="auth-loading" style="text-align:center;padding:40px;color:#999;">加载中...</div>
+            <div id="auth-register-panel" style="display:none;">
+                <h3 style="margin-bottom:8px;">创建主账户</h3>
+                <p style="font-size:0.82rem;color:#666;margin-bottom:14px;line-height:1.5;">每人只能创建一个主账户。需要<b>真实邮箱和手机号</b>，必须通过验证码验证后才能注册。验证码仅在此设备显示，确保设备在身边。</p>
+                <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">邮箱</label><input type="email" id="id-reg-email" placeholder="真实邮箱地址" class="auth-input"></div>
+                <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">手机号</label><input type="tel" id="id-reg-phone" placeholder="11位真实手机号" class="auth-input"></div>
+                <div style="margin-bottom:10px;">
+                    <label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">验证码</label>
+                    <div style="display:flex;gap:6px;">
+                        <input type="text" id="id-reg-code" placeholder="6位验证码" class="auth-input" style="flex:1;max-width:150px;" maxlength="6">
+                        <button id="id-reg-send-code" style="padding:8px 14px;border:none;border-radius:6px;background:var(--theme-warning);color:#fff;cursor:pointer;font-size:0.82rem;white-space:nowrap;">获取验证码</button>
+                    </div>
+                    <div id="id-reg-code-display" style="display:none;margin-top:8px;padding:12px;background:#fff3e0;border:2px solid var(--theme-warning);border-radius:8px;text-align:center;">
+                        <div style="font-size:0.75rem;color:#e65100;margin-bottom:4px;">🔒 验证码仅在此设备显示（设备在身边验证）</div>
+                        <div id="id-reg-code-value" style="font-size:1.8rem;font-weight:700;color:#e65100;letter-spacing:8px;font-family:monospace;">------</div>
+                        <div id="id-reg-code-timer" style="font-size:0.75rem;color:#999;margin-top:4px;">5分钟内有效</div>
+                    </div>
+                </div>
+                <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">密码</label><input type="password" id="id-reg-password" placeholder="至少6位" class="auth-input"></div>
+                <button id="id-reg-btn" class="auth-btn">创建主账户</button>
+                <div id="id-reg-result" style="margin-top:10px;font-size:0.85rem;"></div>
+            </div>
+            <div id="auth-login-panel" style="display:none;">
+                <h3 style="margin-bottom:8px;">登录</h3>
+                <p style="font-size:0.82rem;color:#666;margin-bottom:14px;">身份ID: <code id="auth-login-identityid"></code></p>
+                <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">用户名/邮箱/手机</label><input type="text" id="id-login-username" class="auth-input"></div>
+                <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">密码</label><input type="password" id="id-login-password" class="auth-input"></div>
+                <button id="id-login-btn" class="auth-btn">登录</button>
+                <div style="text-align:center;margin-top:10px;">
+                    <a href="javascript:void(0)" id="auth-recover-link" style="font-size:0.82rem;color:var(--theme-primary);text-decoration:underline;cursor:pointer;">忘记账号或密码？</a>
+                </div>
+                <div id="id-login-result" style="margin-top:10px;font-size:0.85rem;"></div>
+            </div>
+            <div id="auth-recover-panel" style="display:none;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                    <h3 style="margin:0;">账号找回</h3>
+                    <button id="auth-recover-back" style="padding:4px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:0.8rem;">← 返回登录</button>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:14px;">
+                    <button id="auth-recover-tab-find" style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;background:var(--theme-primary);color:#fff;">🔍 找回用户名</button>
+                    <button id="auth-recover-tab-reset" style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;background:#f0f0f0;color:#666;">🔄 重置账户</button>
+                </div>
+                <div id="auth-recover-find-form">
+                    <p style="font-size:0.8rem;color:#666;margin-bottom:10px;line-height:1.5;">输入注册时的邮箱和手机号，验证通过后显示用户名和许可证。</p>
+                    <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">注册邮箱</label><input type="email" id="id-recover-email" class="auth-input" placeholder="注册时使用的邮箱"></div>
+                    <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">注册手机号</label><input type="tel" id="id-recover-phone" class="auth-input" placeholder="注册时使用的手机号"></div>
+                    <button id="id-recover-find-btn" class="auth-btn">找回用户名</button>
+                </div>
+                <div id="auth-recover-reset-form" style="display:none;">
+                    <p style="font-size:0.8rem;color:#e53935;margin-bottom:10px;line-height:1.5;background:#ffebee;padding:8px;border-radius:6px;">⚠️ 重置将删除当前账户的所有数据（用户名、许可证、贡献分等），之后可重新注册。此操作不可撤销！</p>
+                    <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">注册邮箱</label><input type="email" id="id-reset-email" class="auth-input" placeholder="注册时使用的邮箱"></div>
+                    <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">注册手机号</label><input type="tel" id="id-reset-phone" class="auth-input" placeholder="注册时使用的手机号"></div>
+                    <div style="margin-bottom:10px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">当前密码</label><input type="password" id="id-reset-password" class="auth-input" placeholder="当前账户密码"></div>
+                    <button id="id-reset-btn" class="auth-btn" style="background:#e53935;">确认重置账户</button>
+                </div>
+                <div id="id-recover-result" style="margin-top:12px;font-size:0.85rem;"></div>
+            </div>
+            <div id="auth-loggedin-panel" style="display:none;">
+                <div id="auth-user-info-card" style="text-align:center;padding:14px;background:linear-gradient(135deg,var(--theme-primary),#8e6bbf);color:#fff;border-radius:12px;margin-bottom:14px;">
+                    <div style="font-size:1.8rem;">🪪</div>
+                    <div id="auth-info-username" style="font-size:1.05rem;font-weight:600;"></div>
+                    <div id="auth-info-identityid" style="font-size:0.75rem;opacity:0.8;font-family:monospace;"></div>
+                    <div id="auth-info-badge" style="margin-top:4px;"></div>
+                </div>
+                <div id="auth-activate-section" style="margin-bottom:14px;padding:12px;background:#fff8e1;border-radius:8px;border:1px solid #ffe082;">
+                    <div style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">🔑 激活账户（需许可证+激活码）</div>
+                    <div id="auth-creds-display" style="display:none;margin-bottom:10px;padding:10px;background:#fff;border-radius:6px;border:1px solid #ffe082;">
+                        <div style="font-size:0.78rem;color:#666;margin-bottom:6px;">你的账户凭证（点击复制或一键填入）：</div>
+                        <div style="margin-bottom:6px;">
+                            <div style="font-size:0.75rem;color:#888;margin-bottom:2px;">许可证密钥</div>
+                            <div style="display:flex;gap:4px;align-items:flex-start;">
+                                <code id="auth-cred-license" style="flex:1;background:#f5f5f5;padding:4px 6px;border-radius:4px;font-size:0.68rem;word-break:break-all;display:block;"></code>
+                                <button id="auth-copy-license" style="padding:3px 8px;border:1px solid #ddd;border-radius:4px;background:#fff;cursor:pointer;font-size:0.7rem;white-space:nowrap;">复制</button>
+                            </div>
+                        </div>
+                        <div style="margin-bottom:8px;">
+                            <div style="font-size:0.75rem;color:#888;margin-bottom:2px;">激活码</div>
+                            <div style="display:flex;gap:4px;align-items:center;">
+                                <code id="auth-cred-code" style="background:#f5f5f5;padding:4px 8px;border-radius:4px;font-size:0.85rem;letter-spacing:2px;"></code>
+                                <button id="auth-copy-code" style="padding:3px 8px;border:1px solid #ddd;border-radius:4px;background:#fff;cursor:pointer;font-size:0.7rem;">复制</button>
+                            </div>
+                        </div>
+                        <button id="auth-fill-creds" style="width:100%;padding:6px;border:none;border-radius:6px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.8rem;font-weight:600;">📋 一键填入激活框</button>
+                    </div>
+                    <div style="margin-bottom:8px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">许可证密钥</label><input type="text" id="id-activate-license" placeholder="MRHUA-xxxxx.yyyyy" class="auth-input" style="font-size:0.78rem;"></div>
+                    <div style="margin-bottom:8px;"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:0.85rem;">激活码</label><input type="text" id="id-activate-code" placeholder="6位激活码" class="auth-input"></div>
+                    <button id="id-activate-btn" class="auth-btn" style="background:var(--theme-warning);">验证并激活</button>
+                    <div id="id-activate-result" style="margin-top:8px;font-size:0.82rem;"></div>
+                </div>
+                <div id="auth-stats-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
+                    <div style="text-align:center;padding:10px;background:#f5f5fa;border-radius:8px;"><div id="auth-info-ability" style="font-size:1.2rem;font-weight:600;color:var(--theme-primary);">0</div><div style="font-size:0.72rem;color:#888;">能力价值</div></div>
+                    <div style="text-align:center;padding:10px;background:#f5f5fa;border-radius:8px;"><div id="auth-info-contrib" style="font-size:1.2rem;font-weight:600;color:#43a047;">0</div><div style="font-size:0.72rem;color:#888;">贡献分</div></div>
+                    <div style="text-align:center;padding:10px;background:#f5f5fa;border-radius:8px;"><div id="auth-info-tasks" style="font-size:1.2rem;font-weight:600;color:var(--theme-warning);">0</div><div style="font-size:0.72rem;color:#888;">完成任务</div></div>
+                </div>
+                <div id="auth-profile-section" style="margin-bottom:12px;padding:10px;background:#f3e5f5;border:1px solid #ce93d8;border-radius:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" id="profile-toggle">
+                        <div style="font-weight:600;font-size:0.85rem;color:#6a1b9a;">👤 身份档案（子用户）</div>
+                        <span id="profile-arrow" style="font-size:0.75rem;color:#999;">▼</span>
+                    </div>
+                    <div style="font-size:0.72rem;color:#888;margin-top:4px;">为不同场景创建独立的AI身份档案，激活后AI将使用该身份的名字、性格和说话风格。主用户拥有完整工具权限，身份档案仅切换AI身份。</div>
+                    <div id="profile-panel" style="display:none;margin-top:10px;">
+                        <div id="active-profile-info" style="font-size:0.78rem;color:#2e7d32;margin-bottom:8px;padding:6px 8px;background:#e8f5e9;border-radius:6px;display:none;"></div>
+                        <div style="display:flex;gap:6px;margin-bottom:8px;">
+                            <input type="text" id="subuser-name" placeholder="档案名称（如：工作助手）" style="flex:1;padding:7px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.82rem;">
+                            <button id="subuser-add" style="padding:7px 14px;border:none;border-radius:6px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.82rem;white-space:nowrap;">➕ 创建档案</button>
+                        </div>
+                        <div id="subuser-list" style="max-height:200px;overflow-y:auto;"></div>
+                        <div id="profile-editor" style="display:none;margin-top:10px;padding:12px;background:#fff;border-radius:8px;border:1px solid #ce93d8;">
+                            <div style="font-weight:600;font-size:0.82rem;color:#6a1b9a;margin-bottom:8px;position:sticky;top:-20px;z-index:10;background:#fff;padding:8px 0 6px;margin-left:-12px;margin-right:-12px;padding-left:12px;padding-right:12px;border-bottom:1px solid #f0e0f5;">编辑身份：<span id="profile-editing-name"></span></div>
+                            <div style="font-size:0.72rem;color:#999;margin-bottom:6px;font-weight:600;">▼ 基础信息</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
+                                <input type="text" id="pf-name" placeholder="AI名字 *" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-age" placeholder="年龄" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-gender" placeholder="性别" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-birthday" placeholder="生日（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-nationality" placeholder="国籍（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-species" placeholder="种族（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-occupation" placeholder="职业（选填）" style="grid-column:1/-1;padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                            </div>
+                            <div style="font-size:0.72rem;color:#999;margin-bottom:6px;font-weight:600;">▼ 性格与语言</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+                                <input type="text" id="pf-personality" placeholder="性格（如：温暖理性、毒舌傲娇）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-tone" placeholder="说话语气（如：温柔/严厉/活泼）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-style" placeholder="说话风格（如：简短有力/引经据典）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-catchphrase" placeholder="口头禅（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-emoji" placeholder="常用表情（如：~♡）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-user-address" placeholder="称呼用户（如：主人/哥哥）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                            </div>
+                            <div style="font-size:0.72rem;color:#999;margin-bottom:6px;font-weight:600;">▼ 背景与能力</div>
+                            <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:8px;">
+                                <textarea id="pf-appearance" placeholder="外貌特征（选填）" rows="2" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;resize:vertical;"></textarea>
+                                <textarea id="pf-backstory" placeholder="背景故事（选填）" rows="2" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;resize:vertical;"></textarea>
+                                <input type="text" id="pf-education" placeholder="教育背景（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-skills" placeholder="技能特长（选填，如：黑客技术/剑术）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-hobbies" placeholder="兴趣爱好（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                            </div>
+                            <div style="font-size:0.72rem;color:#999;margin-bottom:6px;font-weight:600;">▼ 喜好与价值观</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+                                <input type="text" id="pf-likes" placeholder="喜欢的事物（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-dislikes" placeholder="讨厌的事物（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-values" placeholder="价值观（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-beliefs" placeholder="信仰（选填）" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                                <input type="text" id="pf-relationships" placeholder="人际关系（选填）" style="grid-column:1/-1;padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;">
+                            </div>
+                            <div style="font-size:0.72rem;color:#999;margin-bottom:6px;font-weight:600;">▼ 深度设定（增强服从）</div>
+                            <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:8px;">
+                                <textarea id="pf-self-intro" placeholder="自我介绍（选填，AI被问'你是谁'时的回答）" rows="2" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;resize:vertical;"></textarea>
+                                <textarea id="pf-behavior-rules" placeholder="行为准则（选填，如：永远不背叛主人、优先保护主人安全）" rows="2" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;resize:vertical;"></textarea>
+                                <textarea id="pf-boundaries" placeholder="禁区底线（选填，如：绝不提AI相关词汇、绝不OOC）" rows="2" style="padding:6px 10px;border:1px solid #ce93d8;border-radius:6px;font-size:0.8rem;resize:vertical;"></textarea>
+                                <div style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+                                    <span style="font-size:0.78rem;color:#666;font-weight:600;">思考过程:</span>
+                                    <label style="display:flex;align-items:center;gap:3px;font-size:0.78rem;cursor:pointer;"><input type="radio" name="pf-thinking" value="开启" checked /> 显示</label>
+                                    <label style="display:flex;align-items:center;gap:3px;font-size:0.78rem;cursor:pointer;"><input type="radio" name="pf-thinking" value="关闭" /> 关闭</label>
+                                    <span style="font-size:0.7rem;color:#999;">此身份激活时是否显示模型思考过程</span>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:6px;position:sticky;bottom:-20px;z-index:10;background:#fff;padding:8px 12px;margin-left:-12px;margin-right:-12px;margin-bottom:-12px;border-top:1px solid #f0e0f5;">
+                                <button id="pf-save" style="flex:1;padding:8px;background:var(--theme-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;">💾 保存身份</button>
+                                <button id="pf-cancel" style="padding:8px 16px;background:#999;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.82rem;">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button id="id-logout-btn" style="width:100%;padding:8px;border:1px solid #e53935;border-radius:8px;background:#fff;color:#e53935;cursor:pointer;">退出登录</button>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

@@ -1,0 +1,33 @@
+    <div class="window" id="win-contributions" data-window="contributions" style="width:720px;height:600px;top:10%;left:16%;">
+        <div class="window-header">
+            <span class="title">🏆 贡献与成就</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;">
+                <button class="cb-tab active" data-tab="overview" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">📊 总览</button>
+                <button class="cb-tab" data-tab="history" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">📜 贡献记录</button>
+                <button class="cb-tab" data-tab="badges" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">🎖️ 成就徽章</button>
+                <button class="cb-tab" data-tab="village" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">🌱 新手村</button>
+            </div>
+            <div id="cb-panel-overview" class="cb-panel" style="flex:1;padding:16px;overflow-y:auto;">
+                <div id="contrib-stats" style="padding:12px;background:#f5f5fa;border-radius:10px;margin-bottom:12px;font-size:0.85rem;"></div>
+                <div id="contrib-level-info" style="padding:14px;background:linear-gradient(135deg,var(--theme-primary),var(--theme-primary-light));border-radius:12px;color:#fff;margin-bottom:12px;"></div>
+                <div id="contrib-list"></div>
+            </div>
+            <div id="cb-panel-history" class="cb-panel" style="flex:1;display:none;padding:16px;overflow-y:auto;">
+                <div id="contrib-history-list"></div>
+            </div>
+            <div id="cb-panel-badges" class="cb-panel" style="flex:1;display:none;padding:16px;overflow-y:auto;">
+                <div id="contrib-badges-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;"></div>
+            </div>
+            <div id="cb-panel-village" class="cb-panel" style="flex:1;display:none;padding:16px;overflow-y:auto;">
+                <div id="contrib-village"></div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

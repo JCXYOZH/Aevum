@@ -1,0 +1,20 @@
+    <!-- ===== 主容器 ===== -->
+    <div id="main-stage" style="opacity:0;">
+        <div class="main-content">
+            <div class="status-bar" id="statusBar">
+                <span class="status-dot online" id="statusDot"></span><span id="statusText">在线</span>|
+                <span class="status-memory" id="memoryCount">💾 0</span>|
+                <span id="modelMode">连接中</span>|
+                <span class="user-info" id="userInfo">👤 未登录</span>
+                <span style="cursor:pointer;" id="lang-switch">中文</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部任务栏（必须在 #main-stage 外部，否则会被父容器 opacity:0 隐藏） -->
+    <div id="taskbar" style="position:fixed;bottom:0;left:0;right:0;height:44px;background:rgba(30,30,40,0.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:none;align-items:center;padding:0 12px;gap:8px;z-index:10000;border-top:1px solid rgba(255,255,255,0.08);">
+        <button id="taskbar-home" title="返回启动器" style="width:32px;height:32px;border:none;border-radius:8px;background:rgba(106,76,147,0.6);color:#fff;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;">🏠</button>
+        <div id="taskbar-orb-slot" title="灵体停靠" style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;transition:background .2s;"></div>
+        <div id="taskbar-items" style="display:flex;gap:6px;flex:1;overflow-x:auto;"></div>
+        <button id="taskbar-exit" title="退出 MrHua" style="width:32px;height:32px;border:none;border-radius:8px;background:rgba(231,76,60,0.6);color:#fff;cursor:pointer;font-size:0.9rem;display:flex;align-items:center;justify-content:center;">⏻</button>
+    </div>

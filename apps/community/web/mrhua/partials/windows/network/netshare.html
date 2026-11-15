@@ -1,0 +1,42 @@
+    <div class="window" id="win-netshare" data-window="netshare" style="width:820px;height:600px;top:8%;left:12%;">
+        <div class="window-header">
+            <span class="title">📡 局域网对话与文件共享</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;gap:10px;padding:12px;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <label style="font-size:0.82rem;color:#555;">我的昵称：</label>
+                <input type="text" id="ns-nickname" placeholder="输入昵称" style="padding:5px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.82rem;width:140px;" />
+                <button id="ns-nickname-btn" style="padding:5px 12px;background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">设置</button>
+                <button id="ns-refresh-btn" style="padding:5px 12px;background:#43a047;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">🔄 刷新</button>
+                <span id="ns-status" style="font-size:0.75rem;color:#888;margin-left:auto;"></span>
+            </div>
+            <div style="display:flex;gap:10px;flex:1;min-height:0;">
+                <div style="width:200px;display:flex;flex-direction:column;gap:6px;">
+                    <div style="font-size:0.8rem;font-weight:600;color:#555;">在线用户</div>
+                    <div id="ns-peers" style="flex:1;overflow-y:auto;border:1px solid #e0e0e0;border-radius:8px;padding:6px;background:#fafafa;"></div>
+                </div>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span id="ns-chat-title" style="font-size:0.82rem;font-weight:600;color:#555;">选择一个用户开始对话</span>
+                        <input type="file" id="ns-file-input" style="display:none;" />
+                        <button id="ns-send-file-btn" style="padding:4px 10px;background:var(--theme-warning);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.75rem;display:none;">📎 发文件</button>
+                    </div>
+                    <div id="ns-messages" style="flex:1;overflow-y:auto;border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fafafa;display:flex;flex-direction:column;gap:4px;"></div>
+                    <div style="display:flex;gap:6px;">
+                        <input type="text" id="ns-msg-input" placeholder="输入消息..." style="flex:1;padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.82rem;" />
+                        <button id="ns-send-btn" style="padding:6px 16px;background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.82rem;">发送</button>
+                    </div>
+                </div>
+            </div>
+            <div style="border-top:1px solid #eee;padding-top:8px;">
+                <div style="font-size:0.8rem;font-weight:600;color:#555;margin-bottom:4px;">📁 已接收文件</div>
+                <div id="ns-files" style="max-height:80px;overflow-y:auto;font-size:0.78rem;color:#666;"></div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

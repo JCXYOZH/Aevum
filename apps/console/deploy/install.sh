@@ -13,11 +13,13 @@
 set -euo pipefail
 
 DOMAIN="${DOMAIN:-www.mrhua.cn}"
+EMAIL="${EMAIL:-}"
 WITH_TLS="no"
 for arg in "$@"; do
     case "$arg" in
         --tls) WITH_TLS="yes" ;;
         --domain=*) DOMAIN="${arg#--domain=}" ;;
+        --email=*) EMAIL="${arg#--email=}" ;;
         *) echo "未知参数：$arg" >&2; exit 2 ;;
     esac
 done
@@ -29,7 +31,8 @@ die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 
 CONSOLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_ROOT="$(cd "$CONSOLE_DIR/../.." && pwd)"
-IMAGE="$CONSOLE_DIR/kernel/disk.img"
+IMAGE="$CONSOLE_DIR/kernel/robot/disk.img"
+[ -f "$IMAGE" ] || IMAGE="$CONSOLE_DIR/kernel/disk.img"
 BUILD_DIR="$APP_ROOT/build/linux"
 MODEL_EXE="$BUILD_DIR/memoria_gen_cpu"
 MODEL_DATA="$APP_ROOT/data/tinyshakespeare_3000.txt"
@@ -86,14 +89,10 @@ done
 log "QEMU：$QEMU_BIN"
 
 # ---------------------------------------------------------------- 2 Python
-# 环境变量优先；没有就按 pyvenv.cfg 自动发现，不自动创建 .venv。
-# 选中的解释器会写进 systemd 单元。
+# 优先使用显式指定的解释器或已有 venv；新机器上如果都没有，就在仓库根目录
+# 建一个只装 websockets 的 .venv（不装 torch，模型生成器是可选的）。
 log "选择 Python 环境"
 
-# 1) 显式 MEMORIA_PYTHON 最优先；2) 再看当前激活的 VIRTUAL_ENV。
-# 3) 如果 sudo 把环境变量清了，就自己找带 pyvenv.cfg 的 venv：
-#    仓库内、仓库上一级、/opt、SUDO_USER 的家目录、/home，最多四层。
-#    不自动创建 .venv，也不使用仓库里的 .venv 兜底。
 PYTHON=""
 if [ -n "${MEMORIA_PYTHON:-}" ]; then
     PYTHON="$(command -v "$MEMORIA_PYTHON" 2>/dev/null || true)"
@@ -113,39 +112,47 @@ else
     for root in "$APP_ROOT" "$(cd "$APP_ROOT/.." && pwd)" "${SUDO_HOME:-}" /opt /home; do
         [ -n "$root" ] && [ -d "$root" ] || continue
         while IFS= read -r cfg; do
-            case "$cfg" in
-                */.venv/*) continue ;;
-            esac
             py="$(dirname "$cfg")/bin/python"
             [ -x "$py" ] && CANDIDATES+=("$py")
         done < <(find "$root" -maxdepth 4 -type f -name pyvenv.cfg -print 2>/dev/null)
     done
-    PYTHON=""
-    PYTHON_NO_TORCH=""
     for py in "${CANDIDATES[@]}"; do
         [ -n "$py" ] || continue
         log "  发现：$py"
-        if "$py" -c 'import torch' >/dev/null 2>&1; then
+        if "$py" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
             PYTHON="$py"
             break
         fi
-        [ -z "$PYTHON_NO_TORCH" ] && PYTHON_NO_TORCH="$py"
     done
-    [ -n "$PYTHON" ] || PYTHON="$PYTHON_NO_TORCH"
-    [ -n "$PYTHON" ] || die "找不到任何 venv：环境变量没给，APP_ROOT/上一级、/opt、/home 下也没有 pyvenv.cfg。
-    请用：
-      sudo env MEMORIA_PYTHON=/path/to/venv/bin/python bash apps/console/deploy/install.sh"
-    log "Python（自动发现）：$PYTHON"
 fi
 
+if [ -z "$PYTHON" ]; then
+    PYTHON=""
+    for cand in python3.13 python3.12 python3.11 python3.10 python3; do
+        if command -v "$cand" >/dev/null 2>&1 \
+            && "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+            PYTHON="$(command -v "$cand")"
+            break
+        fi
+    done
+    [ -n "$PYTHON" ] || die "服务器上找不到 Python >= 3.10；请先安装 python3.10 或更高版本"
+    log "新建仓库 venv：$APP_ROOT/.venv"
+    "$PYTHON" -m venv "$APP_ROOT/.venv" \
+        || die "创建 venv 失败：RHEL 系先 dnf install -y python3-pip，Debian 系先 apt install -y python3-venv"
+    PYTHON="$APP_ROOT/.venv/bin/python"
+fi
+
+"$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+    || die "选中的 Python 版本低于 3.10：$PYTHON"
 if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
     "$PYTHON" -m ensurepip --upgrade >/dev/null 2>&1 \
-        || die "Python 里没有 pip：RHEL 系先 dnf install -y python3-pip 再重跑"
+        || die "Python 里没有 pip：RHEL 系先 dnf install -y python3-pip；Debian 系先 apt install -y python3-venv"
 fi
 if ! "$PYTHON" -c 'import websockets' >/dev/null 2>&1; then
     "$PYTHON" -m pip install --quiet websockets \
         || die "装不上 websockets：检查网络或换 MEMORIA_PYTHON 指向已有 venv"
 fi
+log "Python：$PYTHON"
 
 # ---------------------------------------------------------------- 2.1 torch 运行库
 # 生成器是 C++ 二进制，运行时需要 libtorch；从选中的 Python 里取 torch/lib。
@@ -164,19 +171,32 @@ fi
 
 # ---------------------------------------------------------------- 3 内核镜像
 log "检查内核镜像"
-[ -f "$IMAGE" ] || die "缺少 $IMAGE：请在开发机上 make disk.img 后提交到仓库"
-printf '    %s（%s 字节）\n' "$IMAGE" "$(stat -c%s "$IMAGE")"
-[ "$(stat -c%s "$IMAGE")" -eq 16384 ] || die "disk.img 大小不是 16384 字节，镜像不对劲"
+[ -f "$IMAGE" ] || die "缺少 $IMAGE：请在开发机上构建 apps/console/kernel/robot/disk.img 后提交到仓库"
+IMAGE_SIZE="$(stat -c%s "$IMAGE")"
+printf '    %s（%s 字节）\n' "$IMAGE" "$IMAGE_SIZE"
+# boot.asm 从第 2 扇区读 16 个扇区；镜像至少要能容下这 8KB 内核。
+[ "$IMAGE_SIZE" -ge 16384 ] || die "disk.img 太小（$IMAGE_SIZE 字节），至少需要 16384 字节"
+if [ "$IMAGE_SIZE" -ne 16384 ] && [ "$IMAGE_SIZE" -ne 1474560 ]; then
+    log "警告：disk.img 不是 16KB 或 1.44MB，确认 QEMU 的 BIOS 能按这个几何读到第 2~17 扇区"
+fi
 
 # ---------------------------------------------------------------- 3.1 模型
+# 模型生成器不是页面启动的必要条件：没有编译产物时，看板与 MrHua/内核照常，
+# 只是「模型对话」窗口取不到可执行文件。这样云端可以先把网站部署起来。
 log "检查模型生成器与检查点"
 if [ -f "$MODEL_EXE" ] && [ ! -x "$MODEL_EXE" ]; then
-    chmod +x "$MODEL_EXE"
+    chmod +x "$MODEL_EXE" 2>/dev/null || true
 fi
-[ -x "$MODEL_EXE" ] || die "缺少可执行生成器：$MODEL_EXE
-    先在服务器上编译：MEMORIA_PYTHON=python bash scripts/build-linux.sh --cpu-only"
-[ -f "$MODEL_DATA" ] || die "缺少模型语料：$MODEL_DATA"
-printf '    %s（%s 字节）\n' "$MODEL_EXE" "$(stat -c%s "$MODEL_EXE")"
+if [ -x "$MODEL_EXE" ]; then
+    printf '    %s（%s 字节）\n' "$MODEL_EXE" "$(stat -c%s "$MODEL_EXE")"
+else
+    log "未发现 $MODEL_EXE；模型窗口保持不可用，页面和其它服务继续部署"
+fi
+if [ -f "$MODEL_DATA" ]; then
+    printf '    语料：%s（%s 字节）\n' "$MODEL_DATA" "$(stat -c%s "$MODEL_DATA")"
+else
+    log "未发现模型语料 $MODEL_DATA；模型加载入口会提示缺文件"
+fi
 CHECKPOINT="$(find "$APP_ROOT/build" -maxdepth 4 -type f \( -name memoria_model.pt -o -name pytorch_model.bin \) -print -quit 2>/dev/null || true)"
 if [ -n "$CHECKPOINT" ]; then
     CHECKPOINT_DIR="$(dirname "$CHECKPOINT")"
@@ -186,18 +206,18 @@ if [ -n "$CHECKPOINT" ]; then
         log "警告：$CHECKPOINT_DIR 有权重，但没有 memoria_config.txt 或 config.json"
     fi
 else
-    log "警告：$APP_ROOT/build 下没有 memoria_model.pt 或 pytorch_model.bin，看板可以启动，但模型窗口没有可加载的检查点"
+    log "提示：$APP_ROOT/build 下没有 memoria_model.pt 或 pytorch_model.bin；只影响模型窗口"
 fi
 
 # ---------------------------------------------------------------- 4 systemd
 log "写入 systemd 单元并启动"
-sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@QEMU_BIN@|$QEMU_BIN|g" \
+sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@QEMU_BIN@|$QEMU_BIN|g" -e "s|@KERNEL_IMAGE@|$IMAGE|g" \
     "$CONSOLE_DIR/deploy/aevum-kernel.service" > /etc/systemd/system/aevum-kernel.service
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" \
     "$CONSOLE_DIR/deploy/aevum-bridge.service" > /etc/systemd/system/aevum-bridge.service
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" \
     "$CONSOLE_DIR/deploy/aevum-relay.service" > /etc/systemd/system/aevum-relay.service
-sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" -e "s|@TORCH_LIB@|$TORCH_LIB|g" \
+sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" -e "s|@TORCH_LIB@|$TORCH_LIB|g" -e "s|@WEB_ROOT@|$WEB_ROOT|g" \
     "$CONSOLE_DIR/deploy/aevum-monitor.service" > /etc/systemd/system/aevum-monitor.service
 
 systemctl daemon-reload
@@ -215,6 +235,9 @@ sleep 1
 log "写 nginx 配置"
 [ -d "$WEB_ROOT" ] || die "缺少静态目录：$WEB_ROOT"
 [ -f "$WEB_ROOT/index.html" ] || die "缺少首页：$WEB_ROOT/index.html"
+[ -f "$WEB_ROOT/desktop.html" ] || die "缺少桌面页：$WEB_ROOT/desktop.html"
+[ -f "$WEB_ROOT/mrhua/index.html" ] || die "缺少 MrHua 页面：$WEB_ROOT/mrhua/index.html"
+[ -f "$APP_ROOT/apps/console/ui/shell/app-shell.js" ] || die "缺少 MrHua 前端脚本：$APP_ROOT/apps/console/ui/shell/app-shell.js"
 [ -f "$ENGINE_ROOT/validate.html" ] || die "缺少验证页：$ENGINE_ROOT/validate.html"
 
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@DOMAIN@|$DOMAIN|g" \
@@ -228,11 +251,12 @@ rm -f "$NGINX_TLS"
 # 就会返回 500，而 nginx -t 仍然是成功的。这里只补“可穿过 + 静态文件可读”，
 # 不递归打开整个仓库。
 log "修正静态目录权限"
-for dir in "$APP_ROOT" "$APP_ROOT/apps" "$APP_ROOT/apps/community" "$WEB_ROOT" "$ENGINE_ROOT"; do
+for dir in "$APP_ROOT" "$APP_ROOT/apps" "$APP_ROOT/apps/community" "$APP_ROOT/apps/console" "$APP_ROOT/apps/console/ui" "$WEB_ROOT" "$ENGINE_ROOT"; do
     [ -d "$dir" ] && chmod o+x "$dir" 2>/dev/null || true
 done
 chmod -R o+rX "$WEB_ROOT" 2>/dev/null || true
 chmod -R o+rX "$ENGINE_ROOT" 2>/dev/null || true
+chmod -R o+rX "$APP_ROOT/apps/console/ui" 2>/dev/null || true
 
 # RHEL 系默认 SELinux 会拦 nginx 的 127.0.0.1 反代
 if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = "Enforcing" ]; then
@@ -247,6 +271,18 @@ systemctl enable nginx >/dev/null 2>&1 || true
 systemctl reload nginx
 sleep 1
 
+# 云主机常见组合：RHEL 系 firewalld、Ubuntu ufw。安全组仍需要在云控制台放行 80/443。
+if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
+    log "放行 firewalld 的 80/443"
+    firewall-cmd --permanent --add-service=http >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-service=https >/dev/null 2>&1 || true
+    firewall-cmd --reload >/dev/null 2>&1 || true
+elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+    log "放行 ufw 的 80/443"
+    ufw allow 80/tcp >/dev/null 2>&1 || true
+    ufw allow 443/tcp >/dev/null 2>&1 || true
+fi
+
 # ---------------------------------------------------------------- 6 TLS
 if [ "$WITH_TLS" = "yes" ]; then
     log "申请证书"
@@ -260,8 +296,9 @@ if [ "$WITH_TLS" = "yes" ]; then
         fi
     fi
     command -v certbot >/dev/null 2>&1 || die "certbot 不可用，先装 epel-release 再重跑"
+    EMAIL="${EMAIL:-admin@${DOMAIN#*.}}"
     certbot certonly --nginx -d "$DOMAIN" --non-interactive --agree-tos \
-        --keep-until-expiring -m "admin@${DOMAIN#*.}"
+        --keep-until-expiring -m "$EMAIL"
 fi
 
 # 已有证书时自动启用 443，不再依赖 certbot 去改站点配置。

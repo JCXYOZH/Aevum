@@ -1,0 +1,28 @@
+    <div class="window" id="win-notifications" data-window="notifications" style="width:620px;height:560px;top:10%;left:18%;">
+        <div class="window-header">
+            <span class="title">🔔 通知中心</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="padding:10px 16px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #eee;">
+                <select id="notif-filter" style="padding:4px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.82rem;">
+                    <option value="">全部</option>
+                    <option value="system">系统</option>
+                    <option value="scan">扫描</option>
+                    <option value="task">任务</option>
+                    <option value="security">安全</option>
+                    <option value="network">网络</option>
+                </select>
+                <label style="font-size:0.8rem;color:#888;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="notif-unread-only"> 仅未读</label>
+                <span style="flex:1;"></span>
+                <button id="notif-read-all" style="padding:4px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:0.78rem;">全部已读</button>
+                <button id="notif-clear" style="padding:4px 10px;border:1px solid #ff6b6b;border-radius:6px;background:#fff;color:#ff6b6b;cursor:pointer;font-size:0.78rem;">清空</button>
+            </div>
+            <div id="notif-list" style="flex:1;overflow-y:auto;padding:8px 16px;"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

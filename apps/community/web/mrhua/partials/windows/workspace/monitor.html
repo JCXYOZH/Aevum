@@ -1,0 +1,95 @@
+    <div class="window" id="win-monitor" data-window="monitor" style="width:820px;height:620px;top:6%;left:10%;">
+        <div class="window-header">
+            <span class="title">📊 系统监控</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;">
+                <button class="mon-tab active" data-tab="overview" style="flex:1;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">📈 概览</button>
+                <button class="mon-tab" data-tab="processes" style="flex:1;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;">⚙️ 进程</button>
+                <button class="mon-tab" data-tab="ports" style="flex:1;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;">🔌 端口</button>
+                <button class="mon-tab" data-tab="disks" style="flex:1;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;">💾 磁盘</button>
+                <button class="mon-tab" data-tab="perf" style="flex:1;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;">⚡ 性能</button>
+                <button class="mon-tab" data-tab="tools" style="flex:1;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;">🛠️ 工具</button>
+                <button class="mon-tab" data-tab="audit" style="flex:1;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;">📋 审计</button>
+            </div>
+            <div style="padding:8px 16px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #f0f0f0;">
+                <label style="font-size:0.8rem;color:#888;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="mon-auto-refresh" checked> 自动刷新(2s)</label>
+                <button id="mon-refresh" style="padding:4px 12px;border:1px solid var(--theme-primary);border-radius:6px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.78rem;">🔄 立即刷新</button>
+            </div>
+            <div class="mon-panel" data-panel="overview" style="padding:16px;overflow-y:auto;height:calc(100% - 85px);">
+                <div id="mon-overview"></div>
+            </div>
+            <div class="mon-panel" data-panel="processes" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 85px);">
+                <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;">
+                    <button id="mon-sort-cpu" style="padding:4px 10px;border:1px solid var(--theme-primary);border-radius:6px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.78rem;">按CPU</button>
+                    <button id="mon-sort-mem" style="padding:4px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;color:#666;cursor:pointer;font-size:0.78rem;">按内存</button>
+                </div>
+                <div id="mon-processes"></div>
+            </div>
+            <div class="mon-panel" data-panel="ports" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 85px);">
+                <div id="mon-ports"></div>
+            </div>
+            <div class="mon-panel" data-panel="disks" style="display:none;padding:16px;overflow-y:auto;height:calc(100% - 85px);">
+                <div id="mon-disks"></div>
+            </div>
+            <div class="mon-panel" data-panel="perf" style="display:none;padding:16px;overflow-y:auto;height:calc(100% - 85px);">
+                <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+                    <button id="perf-refresh" style="padding:6px 14px;border:1px solid var(--theme-primary);border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.82rem;">🔄 刷新</button>
+                    <button id="perf-clear-cache" style="padding:6px 14px;border:1px solid var(--theme-warning);border-radius:8px;background:#fff;color:var(--theme-warning);cursor:pointer;font-size:0.82rem;">🧹 清理缓存</button>
+                    <button id="perf-reset" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#666;cursor:pointer;font-size:0.82rem;">📊 重置统计</button>
+                </div>
+                <div id="perf-content"></div>
+            </div>
+            <div class="mon-panel" data-panel="tools" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 85px);">
+                <div id="mon-tools-summary" style="margin-bottom:12px;"></div>
+                <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+                    <input type="text" id="mon-tools-search" placeholder="搜索工具..." style="flex:1;min-width:120px;padding:6px 12px;border:1px solid #ddd;border-radius:16px;font-size:0.82rem;">
+                    <select id="mon-tools-filter-type" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.8rem;">
+                        <option value="">全部类型</option>
+                        <option value="web">Web工具</option>
+                        <option value="native">原生工具</option>
+                        <option value="external">外部工具</option>
+                        <option value="plugin">插件</option>
+                        <option value="wordlist">字典</option>
+                        <option value="installable">可安装</option>
+                    </select>
+                    <select id="mon-tools-filter-status" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.8rem;">
+                        <option value="">全部状态</option>
+                        <option value="available">可用</option>
+                        <option value="missing">未安装</option>
+                        <option value="disabled">已禁用</option>
+                        <option value="failed">调用失败</option>
+                    </select>
+                    <button id="mon-tools-refresh" style="padding:6px 12px;border:1px solid var(--theme-primary);border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.78rem;">🔄 刷新</button>
+                    <button id="mon-tools-scan" style="padding:6px 12px;border:1px solid #2196f3;border-radius:8px;background:#fff;color:#2196f3;cursor:pointer;font-size:0.78rem;">🔍 扫描系统</button>
+                </div>
+                <div id="mon-tools-list" style="margin-bottom:16px;"></div>
+                <div id="mon-tools-failures" style="margin-bottom:12px;"></div>
+                <div id="mon-tools-recent"></div>
+            </div>
+            <div class="mon-panel" data-panel="audit" style="display:none;padding:12px;overflow-y:auto;height:calc(100% - 85px);">
+                <div style="padding:10px 14px;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input type="text" id="audit-search" placeholder="搜索操作..." style="flex:1;min-width:120px;padding:6px 12px;border:1px solid #ddd;border-radius:16px;font-size:0.82rem;">
+                    <select id="audit-cat" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.8rem;">
+                        <option value="">全部分类</option>
+                    </select>
+                    <select id="audit-sev" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.8rem;">
+                        <option value="">全部级别</option>
+                        <option value="info">信息</option>
+                        <option value="warning">警告</option>
+                        <option value="critical">严重</option>
+                    </select>
+                    <button id="audit-export" style="padding:6px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.78rem;white-space:nowrap;">📥 导出</button>
+                    <button id="audit-clear" style="padding:6px 12px;border:1px solid #ffcdd2;border-radius:8px;background:#fff;color:#e53935;cursor:pointer;font-size:0.78rem;white-space:nowrap;">清空</button>
+                </div>
+                <div id="audit-stats" style="padding:8px 14px;font-size:0.78rem;color:#666;border-bottom:1px solid #f0f0f0;"></div>
+                <div id="audit-list" style="padding:8px 14px;"></div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

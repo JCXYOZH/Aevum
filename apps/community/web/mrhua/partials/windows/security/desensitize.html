@@ -1,0 +1,27 @@
+    <div class="window" id="win-desensitize" data-window="desensitize" style="width:720px;height:580px;top:8%;left:15%;">
+        <div class="window-header"><span class="title">🎭 数据脱敏与匿名化</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="padding:10px 16px;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="mask-ip" checked> IP</label>
+                <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="mask-email" checked> 邮箱</label>
+                <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="mask-phone" checked> 手机号</label>
+                <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="mask-domain"> 域名</label>
+                <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="mask-url"> URL</label>
+                <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="mask-hash"> 密钥/Hash</label>
+                <button id="mask-run" style="margin-left:auto;padding:6px 14px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;">脱敏</button>
+                <button id="mask-copy" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;">复制</button>
+            </div>
+            <div style="flex:1;display:flex;overflow:hidden;">
+                <div style="flex:1;display:flex;flex-direction:column;padding:10px;">
+                    <div style="font-size:0.78rem;color:#888;margin-bottom:4px;">原始数据</div>
+                    <textarea id="mask-input" placeholder="粘贴需要脱敏的文本..." style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.8rem;resize:none;"></textarea>
+                </div>
+                <div style="flex:1;display:flex;flex-direction:column;padding:10px;">
+                    <div style="font-size:0.78rem;color:#888;margin-bottom:4px;">脱敏结果</div>
+                    <textarea id="mask-output" readonly placeholder="脱敏后..." style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.8rem;resize:none;background:#fafafa;"></textarea>
+                </div>
+            </div>
+            <div id="mask-stats" style="padding:6px 16px;font-size:0.75rem;color:#888;border-top:1px solid #eee;"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

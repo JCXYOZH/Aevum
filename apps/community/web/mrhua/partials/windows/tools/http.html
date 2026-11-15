@@ -1,0 +1,26 @@
+    <div class="window" id="win-http" data-window="http" style="width:650px;height:500px;top:15%;left:20%;">
+        <div class="window-header">
+            <span class="title">🌐 HTTP 请求工具</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <div class="http-form">
+                <label>请求方法</label>
+                <select id="http-method"><option value="GET">GET</option><option value="POST">POST</option><option value="PUT">PUT</option><option value="DELETE">DELETE</option><option value="PATCH">PATCH</option></select>
+                <label>URL</label>
+                <input type="text" id="http-url" placeholder="https://api.example.com/endpoint" />
+                <label>请求头 (JSON 格式)</label>
+                <textarea id="http-headers" rows="3" placeholder='{"Content-Type": "application/json"}'></textarea>
+                <label>请求体 (Body)</label>
+                <textarea id="http-body" rows="5" placeholder='{"key": "value"}'></textarea>
+                <label><input type="checkbox" id="http-follow-redirect" checked /> 跟随重定向</label>
+                <button id="http-send" style="margin-top:12px;padding:10px 30px;border:none;border-radius:30px;background:var(--theme-primary);color:#fff;font-weight:600;cursor:pointer;width:100%;">发送请求</button>
+            </div>
+            <div id="http-response" class="message-area" style="margin-top:16px;min-height:150px;max-height:400px;overflow-y:auto;background:#f8f8f8;white-space:pre-wrap;font-family:monospace;"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

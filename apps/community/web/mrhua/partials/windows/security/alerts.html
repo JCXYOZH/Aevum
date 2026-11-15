@@ -1,0 +1,34 @@
+    <div class="window" id="win-alerts" data-window="alerts" style="width:700px;height:580px;top:8%;left:15%;">
+        <div class="window-header"><span class="title">🚨 事件告警规则</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:16px;overflow-y:auto;">
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px;">创建告警规则</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <select id="alert-event" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                        <option value="scan_failed">工具执行失败</option>
+                        <option value="port_scan_detected">检测到端口扫描</option>
+                        <option value="new_device">新设备上线</option>
+                        <option value="brute_force">暴力破解尝试</option>
+                        <option value="disk_full">磁盘空间不足</option>
+                        <option value="high_cpu">CPU使用率过高</option>
+                        <option value="wan_message">广域网新消息</option>
+                        <option value="task_completed">任务完成</option>
+                    </select>
+                    <select id="alert-severity" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                        <option value="info">ℹ️ 信息</option>
+                        <option value="warning">⚠️ 警告</option>
+                        <option value="critical">🚨 严重</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <input type="text" id="alert-threshold" placeholder="阈值（如3次/分钟，留空=每次）" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                    <button id="alert-add" style="padding:8px 16px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;">添加规则</button>
+                </div>
+            </div>
+            <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px;">活跃规则</div>
+            <div id="alert-rules"></div>
+            <div style="font-weight:600;font-size:0.85rem;margin:14px 0 8px;">告警历史</div>
+            <div id="alert-history" style="max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:10px;"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

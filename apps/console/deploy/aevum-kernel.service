@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=@QEMU_BIN@ -drive format=raw,file=@APP_ROOT@/apps/console/kernel/disk.img -display none -monitor none -no-reboot -serial tcp:127.0.0.1:5555,server=on,wait=off
+ExecStart=@QEMU_BIN@ -drive format=raw,file=@KERNEL_IMAGE@ -display none -monitor none -no-reboot -serial tcp:127.0.0.1:5555,server=on,wait=off
 Restart=always
 RestartSec=2
 

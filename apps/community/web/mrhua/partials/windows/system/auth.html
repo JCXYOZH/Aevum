@@ -1,0 +1,62 @@
+    <div class="window" id="win-auth" data-window="auth" style="width:700px;height:600px;top:8%;left:18%;">
+        <div class="window-header">
+            <span class="title">🎭 人格设置</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;gap:14px;overflow-y:auto;min-height:0;">
+            <div style="text-align:center;padding:10px;background:linear-gradient(135deg,var(--theme-primary),#8e6bbf);color:#fff;border-radius:10px;">
+                <span style="font-size:1.1rem;">🌸</span>
+                <span id="persona-current-name" style="font-weight:600;margin-left:6px;">花先生</span>
+                <span id="persona-current-mode" style="font-size:0.78rem;opacity:0.8;margin-left:8px;">规则模式</span>
+            </div>
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">人格预设（一键切换）:</label>
+                <div id="persona-mgmt-presets" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;"></div>
+            </div>
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">场景模式:</label>
+                <div id="persona-mgmt-scenarios" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"></div>
+            </div>
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">服从等级:</label>
+                <div id="persona-mgmt-obedience" style="display:flex;gap:6px;margin-top:6px;"></div>
+            </div>
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">沉浸感增强:</label>
+                <div id="persona-mgmt-immersion" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;"></div>
+            </div>
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">思考过程:</label>
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;padding:6px 12px;border:1px solid #ddd;border-radius:8px;">
+                        <input type="radio" name="thinking-toggle" value="on" checked /> 显示思考
+                    </label>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;padding:6px 12px;border:1px solid #ddd;border-radius:8px;">
+                        <input type="radio" name="thinking-toggle" value="off" /> 关闭思考
+                    </label>
+                    <span style="font-size:0.72rem;color:#999;align-self:center;">关闭后模型不输出思考过程，直接回答</span>
+                </div>
+            </div>
+
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">自定义指令:</label>
+                <div style="display:flex;gap:6px;margin-top:6px;">
+                    <input type="text" id="custom-instr-input" placeholder="添加一条自定义指令..." style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid #ddd;font-size:0.85rem;" />
+                    <button id="add-instr-btn" style="padding:8px 16px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">添加</button>
+                </div>
+                <div id="custom-instr-list" style="margin-top:8px;display:flex;flex-direction:column;gap:4px;"></div>
+            </div>
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">当前系统提示词预览:</label>
+                <pre id="prompt-preview" style="background:#f5f0fa;border:1px solid #e0d4f0;border-radius:10px;padding:12px;font-size:0.78rem;max-height:160px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#444;margin-top:6px;"></pre>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button id="persona-open-identity" style="flex:1;padding:10px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-weight:600;">🪪 身份认证</button>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

@@ -1,0 +1,121 @@
+    <div class="window" id="win-knowledge" data-window="knowledge" style="width:780px;height:620px;top:6%;left:12%;">
+        <div class="window-header">
+            <span class="title">📚 知识库与搜索</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="kb-tab active" data-tab="search" style="padding:6px 16px;border:1px solid var(--theme-primary);border-radius:20px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.85rem;">🔍 外部搜索</button>
+                <button class="kb-tab" data-tab="collect" style="padding:6px 16px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.85rem;">🌐 网页采集</button>
+                <button class="kb-tab" data-tab="add" style="padding:6px 16px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.85rem;">➕ 添加文档</button>
+                <button class="kb-tab" data-tab="docs" style="padding:6px 16px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.85rem;">📄 文档列表</button>
+                <button class="kb-tab" data-tab="query" style="padding:6px 16px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.85rem;">💡 知识库问答</button>
+                <button class="kb-tab" data-tab="feeds" style="padding:6px 16px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.85rem;">🛡️ 漏洞情报</button>
+                <button class="kb-tab" data-tab="history" style="padding:6px 16px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#666;cursor:pointer;font-size:0.85rem;">📜 版本历史</button>
+            </div>
+
+            <div id="kb-panel-search" class="kb-panel" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+                <div style="display:flex;gap:6px;">
+                    <input type="text" id="kb-search-input" placeholder="搜索互联网…（支持 site: inurl: filetype: intitle: &quot;精确短语&quot; -排除词）" style="flex:1;padding:8px 14px;border:1px solid #ddd;border-radius:20px;font-size:0.9rem;" />
+                    <button id="kb-search-btn" style="padding:8px 20px;border:none;border-radius:20px;background:var(--theme-primary);color:#fff;cursor:pointer;">搜索</button>
+                </div>
+                <div style="font-size:0.75rem;color:#999;margin-top:-2px;line-height:1.7;">
+                    高级搜索语法：
+                    <code style="background:#f3eff8;padding:1px 5px;border-radius:4px;">site:example.com</code>
+                    <code style="background:#f3eff8;padding:1px 5px;border-radius:4px;">inurl:admin</code>
+                    <code style="background:#f3eff8;padding:1px 5px;border-radius:4px;">filetype:pdf</code>
+                    <code style="background:#f3eff8;padding:1px 5px;border-radius:4px;">intitle:"index of"</code>
+                    <code style="background:#f3eff8;padding:1px 5px;border-radius:4px;">-排除词</code>
+                    <span id="kb-dork-demo" style="color:var(--theme-primary);cursor:pointer;text-decoration:underline;">填入示例</span>
+                </div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#888;margin-top:4px;">
+                    <input type="checkbox" id="kb-search-to-rag" checked /> 搜索结果自动存入知识库
+                </label>
+                <div id="kb-search-results" style="margin-top:10px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;min-height:0;"></div>
+            </div>
+
+            <div id="kb-panel-collect" class="kb-panel" style="display:none;flex:1;flex-direction:column;">
+                <div style="background:#f5f0fa;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:0.8rem;color:var(--theme-primary);line-height:1.6;">
+                    💡 输入网址，自动抓取网页正文并存入知识库。存入后AI对话时可自动检索引用。也可以用 🧭内置浏览器 打开网页后一键存入。
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <input type="text" id="kb-collect-url" placeholder="输入网址或搜索关键词，如 https://example.com 或 Python教程" style="flex:1;padding:8px 14px;border:1px solid #ddd;border-radius:20px;font-size:0.9rem;" />
+                    <button id="kb-collect-btn" style="padding:8px 20px;border:none;border-radius:20px;background:#27ae60;color:#fff;cursor:pointer;font-weight:600;">抓取并入库</button>
+                    <button id="kb-collect-preview" style="padding:8px 16px;border:1px solid var(--theme-primary);border-radius:20px;background:#fff;color:var(--theme-primary);cursor:pointer;">预览</button>
+                </div>
+                <div id="kb-collect-status" style="font-size:0.82rem;margin-top:6px;min-height:20px;"></div>
+                <div id="kb-collect-preview-box" style="display:none;margin-top:8px;flex:1;overflow-y:auto;border:1px solid #ddd;border-radius:10px;padding:14px;background:#fafafa;">
+                    <div id="kb-collect-title" style="font-weight:600;font-size:0.95rem;margin-bottom:8px;"></div>
+                    <div id="kb-collect-text" style="font-size:0.82rem;color:#444;line-height:1.7;white-space:pre-wrap;"></div>
+                </div>
+            </div>
+
+            <div id="kb-panel-add" class="kb-panel" style="display:none;flex:1;flex-direction:column;overflow-y:auto;">
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <input type="text" id="kb-add-title" placeholder="文档标题" style="padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:0.9rem;" />
+                    <textarea id="kb-add-content" placeholder="粘贴文档内容..." rows="8" style="padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;resize:vertical;font-family:inherit;line-height:1.6;min-height:150px;"></textarea>
+                    <div style="display:flex;gap:8px;">
+                        <button id="kb-add-btn" style="flex:1;padding:10px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-weight:600;">添加到知识库</button>
+                        <button id="kb-add-file-btn" style="padding:10px 16px;border:1px solid var(--theme-primary);border-radius:8px;background:#fff;color:var(--theme-primary);cursor:pointer;">从文件导入</button>
+                    </div>
+                    <input type="text" id="kb-add-filepath" placeholder="或输入本地文件路径，如 /Users/xxx/doc.txt" style="padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;display:none;" />
+                    <div id="kb-add-status" style="font-size:0.82rem;color:#2e7d32;min-height:20px;"></div>
+                </div>
+            </div>
+
+            <div id="kb-panel-docs" class="kb-panel" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">
+                    <input type="text" id="kb-docs-search" placeholder="搜索文档..." style="flex:1;padding:6px 12px;border:1px solid #ddd;border-radius:16px;font-size:0.82rem;" />
+                    <span id="kb-docs-count" style="font-size:0.82rem;color:#888;white-space:nowrap;"></span>
+                    <button id="kb-refresh-btn" style="padding:4px 12px;border:1px solid #ddd;border-radius:12px;background:#fff;color:#666;cursor:pointer;font-size:0.8rem;">刷新</button>
+                </div>
+                <div id="kb-docs-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+
+            <div id="kb-panel-query" class="kb-panel" style="display:none;flex:1;flex-direction:column;min-height:0;">
+                <div style="display:flex;gap:6px;">
+                    <input type="text" id="kb-query-input" placeholder="查询知识库..." style="flex:1;padding:8px 14px;border:1px solid #ddd;border-radius:20px;font-size:0.9rem;" />
+                    <button id="kb-query-btn" style="padding:8px 20px;border:none;border-radius:20px;background:var(--theme-primary);color:#fff;cursor:pointer;">查询</button>
+                </div>
+                <div style="font-size:0.78rem;color:#aaa;margin-top:4px;">模型对话时会自动检索知识库，这里可手动测试检索效果。</div>
+                <div id="kb-query-results" style="margin-top:10px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;min-height:0;"></div>
+            </div>
+
+            <div id="kb-panel-feeds" class="kb-panel" style="display:none;flex:1;flex-direction:column;min-height:0;">
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                    <input type="text" id="feed-lookup-input" placeholder="按编号直查：CVE-2021-44228 / GHSA-xxxx-xxxx-xxxx（本地没有会自动联网取这一条）" style="flex:1;padding:6px 12px;border:1px solid #bbb;border-radius:16px;font-size:0.82rem;" />
+                    <button id="feed-lookup-btn" style="padding:6px 14px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;font-size:0.8rem;font-weight:600;white-space:nowrap;">🔎 查情报</button>
+                </div>
+                <div id="feed-lookup-result" style="display:none;margin-bottom:8px;padding:10px 12px;border:1px solid #e1bee7;border-left:3px solid #6a4c93;border-radius:8px;background:#faf5fc;max-height:45%;overflow-y:auto;font-size:0.78rem;line-height:1.6;"></div>
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+                    <input type="text" id="feed-search" placeholder="搜索CVE/漏洞..." style="flex:1;padding:6px 12px;border:1px solid #ddd;border-radius:16px;font-size:0.82rem;" />
+                    <select id="feed-severity" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.8rem;">
+                        <option value="">全部等级</option>
+                        <option value="critical">严重</option>
+                        <option value="high">高危</option>
+                        <option value="medium">中危</option>
+                        <option value="low">低危</option>
+                    </select>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;color:#666;white-space:nowrap;cursor:pointer;">
+                        <input type="checkbox" id="feed-only-saved" style="width:13px;height:13px;" />只看收藏
+                    </label>
+                    <button id="feed-sync-all" style="padding:6px 14px;border:none;border-radius:8px;background:#e65100;color:#fff;cursor:pointer;font-size:0.8rem;font-weight:600;">🔄 同步全部</button>
+                </div>
+                <div id="feed-sources" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
+                <div id="feed-items" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:0;"></div>
+            </div>
+
+            <div id="kb-panel-history" class="kb-panel" style="display:none;flex:1;flex-direction:column;min-height:0;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <span style="font-size:0.82rem;color:#666;">知识库文档的修改历史，可回滚到任意版本</span>
+                    <button id="kb-history-refresh" style="padding:4px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.78rem;">刷新</button>
+                </div>
+                <div id="kb-history-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:0;"></div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

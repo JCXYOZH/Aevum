@@ -1,0 +1,20 @@
+    <div class="window" id="win-contacts" data-window="contacts" style="width:640px;height:560px;top:12%;left:18%;">
+        <div class="window-header">
+            <span class="title">👥 联系人</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:16px;overflow-y:auto;">
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <input type="text" id="contact-name" placeholder="联系人名称" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                <input type="text" id="contact-id" placeholder="身份ID（选填）" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                <button id="contact-add-btn" style="padding:8px 16px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">添加</button>
+            </div>
+            <input type="text" id="contact-search" placeholder="搜索联系人..." style="width:100%;padding:6px 12px;border:1px solid #eee;border-radius:16px;font-size:0.82rem;margin-bottom:10px;box-sizing:border-box;">
+            <div id="contact-list"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

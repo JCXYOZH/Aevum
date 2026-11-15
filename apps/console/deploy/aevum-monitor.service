@@ -1,12 +1,16 @@
 [Unit]
-Description=Aevum desktop monitor and model generator
-After=network-online.target aevum-relay.service
+Description=Aevum desktop monitor, identity API and model generator
+After=network-online.target aevum-relay.service aevum-bridge.service
 Wants=network-online.target
 Wants=aevum-relay.service
 
 [Service]
 Type=simple
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@APP_ROOT@/src
+Environment=MEMORIA_ROOT=@APP_ROOT@
+Environment=MEMORIA_WEB_ROOT=@WEB_ROOT@
+Environment=MEMORIA_ERROR_TABLE=@APP_ROOT@/apps/relay/contracts/errors.json
 Environment=MEMORIA_BUILD_ROOT=@APP_ROOT@/build
 Environment=MEMORIA_TORCH_LIB=@TORCH_LIB@
 WorkingDirectory=@APP_ROOT@/apps/console/monitor

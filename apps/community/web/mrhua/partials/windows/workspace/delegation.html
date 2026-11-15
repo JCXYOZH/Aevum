@@ -1,0 +1,64 @@
+    <div class="window" id="win-delegation" data-window="delegation" style="width:720px;height:600px;top:8%;left:15%;">
+        <div class="window-header"><span class="title">🗝️ 权限委托</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:16px;overflow-y:auto;">
+            <div style="background:#fff3e0;border:1px solid #ffe0b2;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.82rem;color:#e65100;">
+                ⚠️ 委托权限会临时授予其他用户指定能力，到期自动收回。请谨慎操作。
+            </div>
+            <div style="margin-bottom:14px;border:1px solid #eee;border-radius:10px;padding:14px;background:#fafafa;">
+                <div style="font-weight:600;font-size:0.85rem;margin-bottom:10px;">创建委托</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                    <div>
+                        <label style="font-size:0.75rem;color:#888;display:block;margin-bottom:3px;">被委托人身份ID</label>
+                        <input type="text" id="del-user" placeholder="输入对方的身份ID" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;font-family:monospace;box-sizing:border-box;">
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div>
+                            <label style="font-size:0.75rem;color:#888;display:block;margin-bottom:3px;">权限范围</label>
+                            <select id="del-scope" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;box-sizing:border-box;">
+                                <option value="tool_execute">执行安全工具</option>
+                                <option value="tool_view">查看工具结果</option>
+                                <option value="room_create">创建/管理房间</option>
+                                <option value="tool_manage">安装/配置工具</option>
+                                <option value="report_view">查看扫描报告</option>
+                                <option value="workflow_manage">管理工作流</option>
+                                <option value="node_sync">节点数据同步</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.75rem;color:#888;display:block;margin-bottom:3px;">操作级别</label>
+                            <select id="del-level" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;box-sizing:border-box;">
+                                <option value="view">只读</option>
+                                <option value="execute" selected>执行</option>
+                                <option value="manage">管理</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-bottom:8px;">
+                    <label style="font-size:0.75rem;color:#888;display:block;margin-bottom:4px;">工具类别限制（不勾选=不限制）</label>
+                    <div id="del-tools" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:8px;border:1px solid #eee;border-radius:8px;background:#fff;">
+                        <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer;padding:3px 6px;border-radius:4px;"><input type="checkbox" value="recon:*"> 信息收集</label>
+                        <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer;padding:3px 6px;border-radius:4px;"><input type="checkbox" value="network:*"> 网络诊断</label>
+                        <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer;padding:3px 6px;border-radius:4px;"><input type="checkbox" value="web:*"> Web安全</label>
+                        <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer;padding:3px 6px;border-radius:4px;"><input type="checkbox" value="exploit:*"> 高级渗透</label>
+                        <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer;padding:3px 6px;border-radius:4px;"><input type="checkbox" value="crypto:*"> 编码解码</label>
+                        <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer;padding:3px 6px;border-radius:4px;"><input type="checkbox" value="external:*"> 外部工具</label>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
+                    <div>
+                        <label style="font-size:0.75rem;color:#888;display:block;margin-bottom:3px;">目标限制（如 *.example.com，留空不限制）</label>
+                        <input type="text" id="del-target" placeholder="留空=不限制目标" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;box-sizing:border-box;">
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <input type="number" id="del-hours" value="24" min="1" max="720" style="width:70px;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                        <span style="font-size:0.8rem;color:#888;white-space:nowrap;">小时</span>
+                        <button id="del-create" style="padding:8px 18px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;">委托</button>
+                    </div>
+                </div>
+            </div>
+            <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px;">活跃委托</div>
+            <div id="del-list"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

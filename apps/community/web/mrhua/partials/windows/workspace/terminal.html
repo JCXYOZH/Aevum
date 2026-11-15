@@ -1,0 +1,63 @@
+    <div class="window" id="win-terminal" data-window="terminal" style="width:1100px;height:720px;top:4%;left:5%;">
+        <div class="window-header">
+            <span class="title">⌨️ 终端 · 运行记录</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <!-- 工具条 -->
+            <div style="display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #e0e0e0;background:#fafafa;flex-wrap:wrap;">
+                <button id="term-record" title="暂停/继续记录新的运行" style="padding:5px 12px;border:1px solid #2e7d32;border-radius:6px;background:#e8f5e9;color:#2e7d32;cursor:pointer;font-size:0.75rem;font-weight:600;">● 记录中</button>
+                <span id="term-count" style="font-size:0.72rem;color:#666;">0 条</span>
+                <span style="width:1px;height:18px;background:#ddd;"></span>
+                <select id="term-filter-source" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:0.72rem;background:#fff;">
+                    <option value="all">全部来源</option>
+                    <option value="安全实战中心">安全实战中心</option>
+                    <option value="统一网络中心">统一网络中心</option>
+                    <option value="审议庭">审议庭</option>
+                    <option value="工具箱">工具箱</option>
+                    <option value="其他">其他</option>
+                </select>
+                <select id="term-filter-status" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:0.72rem;background:#fff;">
+                    <option value="all">全部状态</option>
+                    <option value="ok">成功 (2xx)</option>
+                    <option value="err">失败 (4xx/5xx)</option>
+                    <option value="pending">进行中</option>
+                </select>
+                <input id="term-search" placeholder="搜索 URL / 工具名 / 输出内容…" style="flex:1;min-width:160px;padding:5px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.72rem;">
+                <button id="term-only-tools" title="只看工具/扫描类运行" style="padding:5px 12px;border:1px solid #6a4c93;border-radius:6px;background:#f3e5f5;color:#6a4c93;cursor:pointer;font-size:0.72rem;">🔬 只看工具运行</button>
+                <button id="term-clear" style="padding:5px 12px;border:1px solid #ddd;border-radius:6px;background:#fff;color:#666;cursor:pointer;font-size:0.72rem;">🗑 清空</button>
+                <button id="term-export" style="padding:5px 12px;border:1px solid #1565c0;border-radius:6px;background:#fff;color:#1565c0;cursor:pointer;font-size:0.72rem;">📤 导出</button>
+            </div>
+            <!-- 双栏：左列表 / 右完整输出 -->
+            <div style="flex:1;display:flex;overflow:hidden;">
+                <div id="term-list" style="width:44%;min-width:280px;overflow-y:auto;border-right:1px solid #eee;background:#fff;">
+                    <div style="text-align:center;padding:40px 20px;color:#999;font-size:0.78rem;">
+                        <div style="font-size:1.8rem;margin-bottom:8px;">⌨️</div>
+                        <div>还没有运行记录</div>
+                        <div style="font-size:0.72rem;margin-top:4px;">在三个中心里执行任何操作，这里都会出现完整输出</div>
+                    </div>
+                </div>
+                <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fafafa;">
+                    <div id="term-detail-head" style="padding:8px 12px;border-bottom:1px solid #eee;font-size:0.75rem;color:#666;background:#fff;">← 从左侧选择一条记录</div>
+                    <div id="term-detail-req" style="display:none;padding:10px 12px 0 12px;">
+                        <div style="font-size:0.72rem;font-weight:600;color:#333;margin-bottom:4px;">请求</div>
+                        <pre id="term-detail-req-body" style="margin:0;padding:8px;background:#fff;border:1px solid #eee;border-radius:6px;font-size:0.7rem;white-space:pre-wrap;word-break:break-all;max-height:140px;overflow:auto;color:#555;"></pre>
+                    </div>
+                    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:10px 12px 12px 12px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <div style="font-size:0.72rem;font-weight:600;color:#333;">完整输出（未截断）</div>
+                            <div style="display:flex;gap:6px;">
+                                <button id="term-copy" style="padding:3px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;color:#666;cursor:pointer;font-size:0.68rem;">复制全文</button>
+                            </div>
+                        </div>
+                        <pre id="term-detail-res-body" style="flex:1;margin:0;padding:10px;background:#fff;border:1px solid #eee;border-radius:6px;font-size:0.7rem;white-space:pre-wrap;word-break:break-all;overflow:auto;color:#333;">← 从左侧选择一条记录</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

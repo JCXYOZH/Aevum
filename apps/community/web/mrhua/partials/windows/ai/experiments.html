@@ -1,0 +1,18 @@
+    <div class="window" id="win-experiments" data-window="experiments" style="width:750px;height:550px;top:10%;left:15%;">
+        <div class="window-header">
+            <span class="title">📊 实验管理</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <span style="color:#888;font-size:0.9rem;" id="exp-stability-hint">💡 系统稳定度：--</span>
+                <button id="exp-create-btn" style="padding:8px 20px;border:none;border-radius:30px;background:var(--theme-primary);color:#fff;cursor:pointer;">➕ 创建实验</button>
+            </div>
+            <div id="exp-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;max-height:calc(100vh - 180px);overflow-y:auto;padding-bottom:10px;"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

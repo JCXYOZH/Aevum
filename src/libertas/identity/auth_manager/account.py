@@ -26,7 +26,7 @@ from libertas.foundation.config import get_data_dir
 from libertas.foundation.terminal import terminal
 
 from .constants import LICENSE_SECRET, LICENSE_VERSION
-from .crypto import generate_identity_id, generate_license_key, hash_password, verify_license_key, verify_password
+from .crypto import generate_identity_id, generate_license_key, hash_password, validate_email, validate_phone, verify_license_key, verify_password
 from .models import PermissionAction, Role, ACLItem
 
 
@@ -104,20 +104,14 @@ class AuthAccountMixin:
             return {"success": False, "error": "必须同时提供许可证密钥和激活码",
                     "message": "必须同时提供许可证密钥和激活码"}
         with self._lock:
-            # 检查是否已激活
-            for key, lic in self._licenses.items():
-                if lic.get("activated"):
-                    return {"success": True, "message": "账户已激活", "tier": lic.get("tier", "activated"),
-                            "license_key": key, "already_activated": True}
-            # 查找注册时生成的许可证（未激活的）
-            target_lic = None
-            for key, lic in self._licenses.items():
-                if not lic.get("activated"):
-                    target_lic = lic
-                    break
-            if not target_lic:
-                return {"success": False, "error": "未找到注册许可证，请先注册",
-                        "message": "未找到注册许可证，请先注册"}
+            # 指定许可证优先：多账户/多次注册时不能用“第一个未激活”的许可证代替。
+            target_lic = self._licenses.get(license_key.strip())
+            if target_lic is None:
+                return {"success": False, "error": "许可证密钥不存在，请检查输入",
+                        "message": "许可证密钥不存在，请检查输入"}
+            if target_lic.get("activated"):
+                return {"success": True, "message": "账户已激活", "tier": target_lic.get("tier", "activated"),
+                        "license_key": license_key, "already_activated": True}
             # 验证许可证密钥
             stored_license = target_lic.get("license_key", "")
             if not hmac.compare_digest(license_key.strip(), stored_license):

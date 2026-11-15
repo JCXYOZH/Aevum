@@ -1,0 +1,26 @@
+    <div class="window" id="win-chat" data-window="chat" style="width:800px;height:600px;top:50%;left:50%;transform:translate(-50%,-50%);">
+        <div class="window-header">
+            <span class="title" id="chat-window-title">💬 对话 · 花先生</span>
+            <div class="window-controls">
+                <button class="btn-clear-chat" title="清空对话" style="border:none;background:none;cursor:pointer;font-size:0.85rem;padding:2px 8px;border-radius:6px;color:#888;">🗑</button>
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <div id="chat-messages" class="message-area" style="overflow-y:auto;"></div>
+            <div class="input-row" style="position:relative;">
+                <textarea id="chat-input" placeholder="输入您的心声…（Enter发送，Shift+Enter换行，输入/查看命令）" autocomplete="off" rows="1" style="resize:none;max-height:120px;min-height:40px;line-height:20px;padding:10px 14px;border:1px solid #ddd;border-radius:22px;font-size:14px;font-family:inherit;flex:1;outline:none;overflow-y:auto;"></textarea>
+                <div id="cmd-suggest" style="display:none;position:absolute;bottom:100%;left:0;right:60px;background:#fff;border:1px solid #ddd;border-radius:12px;box-shadow:0 -4px 20px rgba(0,0,0,0.15);max-height:180px;overflow-y:auto;z-index:100;margin-bottom:4px;"></div>
+                <button id="attach-btn" style="padding:10px 14px; border:none; border-radius:30px; background:#5a7fa8; color:#fff; cursor:pointer; " title="附加本地文件">📎</button>
+                <input type="file" id="attach-file" style="display:none;" />
+                <button id="quick-browser-btn" style="padding:10px 14px; border:none; border-radius:30px; background:#e67e22; color:#fff; cursor:pointer; " title="打开内置浏览器（搜索/采集网页）">🧭</button>
+                <button id="voice-btn" style="padding:10px 16px; border:none; border-radius:30px; background:var(--theme-primary); color:#fff; cursor:pointer; ">🎤</button>
+                <button id="chat-send" style="padding:10px 18px;border:none;border-radius:30px;background:var(--theme-primary);color:#fff;cursor:pointer;font-weight:600;">发送</button>
+                <button id="chat-stop" style="display:none;padding:10px 18px;border:none;border-radius:30px;background:var(--theme-accent);color:#fff;cursor:pointer;font-weight:600;">⏹ 停止</button>
+            </div>
+            <div id="attach-info" style="display:none; padding:6px 12px; font-size:12px; color:#888; background:#f5f5f5; border-radius:8px; margin-top:4px;"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

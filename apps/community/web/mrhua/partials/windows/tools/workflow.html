@@ -1,0 +1,54 @@
+    <div class="window" id="win-workflow" data-window="workflow" style="width:780px;height:620px;top:6%;left:12%;">
+        <div class="window-header"><span class="title">🔗 自动化工作流</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="display:flex;gap:0;border-bottom:1px solid #eee;">
+                <button class="wf-tab active" data-wftab="editor" style="padding:8px 20px;border:none;background:#f5f0fa;color:#6a4c93;cursor:pointer;font-size:0.85rem;font-weight:600;border-bottom:2px solid #6a4c93;">🔗 工作流编辑</button>
+                <button class="wf-tab" data-wftab="scheduler" style="padding:8px 20px;border:none;background:#fff;color:#888;cursor:pointer;font-size:0.85rem;border-bottom:2px solid transparent;">⏰ 定时任务</button>
+            </div>
+            <div id="wf-panel-editor" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="padding:10px 16px;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;">
+                <button id="wf-new" style="padding:6px 14px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;font-size:0.82rem;">+ 新建工作流</button>
+                <button id="wf-run" style="padding:6px 14px;border:none;border-radius:8px;background:#43a047;color:#fff;cursor:pointer;font-size:0.82rem;">▶ 执行</button>
+                <button id="wf-save" style="padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#666;cursor:pointer;font-size:0.82rem;">保存</button>
+                <select id="wf-list" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;flex:1;"></select>
+            </div>
+            <div style="flex:1;display:flex;overflow:hidden;">
+                <div style="width:200px;border-right:1px solid #eee;padding:10px;overflow-y:auto;">
+                    <div style="font-size:0.78rem;color:#888;margin-bottom:8px;font-weight:600;">可用步骤</div>
+                    <div id="wf-steps-palette"></div>
+                </div>
+                <div style="flex:1;padding:14px;overflow-y:auto;">
+                    <input type="text" id="wf-name" placeholder="工作流名称" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.9rem;margin-bottom:10px;box-sizing:border-box;">
+                    <div id="wf-canvas" style="min-height:300px;"></div>
+                    <div id="wf-log" style="margin-top:10px;padding:10px;background:#1e1e2e;border-radius:8px;font-family:monospace;font-size:0.75rem;color:#cdd6f4;max-height:150px;overflow-y:auto;display:none;"></div>
+                </div>
+            </div>
+            </div>
+            <div id="wf-panel-scheduler" style="flex:1;display:none;flex-direction:column;overflow-y:auto;padding:16px;">
+                <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
+                    <input type="text" id="sched-name" placeholder="任务名称" style="flex:1;min-width:150px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                    <select id="sched-type" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                        <option value="workflow">执行工作流</option>
+                        <option value="scan">执行扫描</option>
+                        <option value="report">生成报告</option>
+                        <option value="feed_sync">同步漏洞库</option>
+                    </select>
+                    <select id="sched-cron" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                        <option value="daily@02:00">每天 02:00</option>
+                        <option value="daily@08:00">每天 08:00</option>
+                        <option value="daily@22:00">每天 22:00</option>
+                        <option value="weekly@6:03:00">每周日 03:00</option>
+                        <option value="weekly@0:09:00">每周一 09:00</option>
+                        <option value="interval@60">每小时</option>
+                        <option value="interval@360">每6小时</option>
+                        <option value="interval@1440">每天(间隔)</option>
+                    </select>
+                    <input type="text" id="sched-params" placeholder='参数JSON, 如 {"target":"127.0.0.1"}' style="flex:2;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.8rem;font-family:monospace;">
+                    <button id="sched-add" style="padding:8px 16px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;font-weight:600;">+ 添加</button>
+                </div>
+                <div style="font-size:0.82rem;color:#888;margin-bottom:10px;">定时任务在后台自动执行，无需保持窗口打开。支持工作流、扫描、报告生成和漏洞库同步。</div>
+                <div id="sched-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

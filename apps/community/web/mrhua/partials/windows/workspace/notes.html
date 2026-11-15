@@ -1,0 +1,35 @@
+    <div class="window" id="win-notes" data-window="notes" style="width:700px;height:560px;top:8%;left:15%;">
+        <div class="window-header">
+            <span class="title">📝 速记板</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;">
+            <div style="width:220px;border-right:1px solid #eee;display:flex;flex-direction:column;">
+                <div style="padding:10px;border-bottom:1px solid #eee;">
+                    <button id="note-new" style="width:100%;padding:8px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;font-size:0.85rem;">+ 新建笔记</button>
+                </div>
+                <div style="padding:6px 10px;border-bottom:1px solid #f0f0f0;">
+                    <input type="text" id="note-search" placeholder="搜索笔记..." style="width:100%;padding:5px 8px;border:1px solid #eee;border-radius:6px;font-size:0.78rem;box-sizing:border-box;">
+                </div>
+                <div id="note-list" style="flex:1;overflow-y:auto;"></div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;">
+                <div style="padding:8px 12px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #eee;">
+                    <input type="text" id="note-title" placeholder="笔记标题" style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.9rem;font-weight:600;">
+                    <input type="color" id="note-color" value="#6a4c93" style="width:32px;height:32px;border:1px solid #ddd;border-radius:6px;cursor:pointer;padding:2px;">
+                    <button id="note-pin" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:0.85rem;">📌</button>
+                    <button id="note-delete" style="padding:6px 10px;border:1px solid #ff6b6b;border-radius:6px;background:#fff;color:#ff6b6b;cursor:pointer;font-size:0.85rem;">🗑</button>
+                </div>
+                <textarea id="note-content" placeholder="开始记录..." style="flex:1;padding:14px;border:none;outline:none;resize:none;font-family:inherit;font-size:0.9rem;line-height:1.6;"></textarea>
+                <div style="padding:6px 12px;border-top:1px solid #eee;font-size:0.75rem;color:#999;display:flex;justify-content:space-between;">
+                    <span id="note-save-status">已保存</span>
+                    <span id="note-word-count">0 字</span>
+                </div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

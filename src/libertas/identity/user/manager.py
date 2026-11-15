@@ -287,6 +287,7 @@ class UserManager(UserStorageMixin):
         if user:
             user.status = UserStatus.DELETED
             self._users.pop(user.username, None)
+            self._users.pop(user.user_id, None)
             self._save()
             return True
         return False

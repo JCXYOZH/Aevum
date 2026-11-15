@@ -1,5 +1,10 @@
 # Deployment
 
+> This is the standalone **relay-only** installer. For the current Aevum desktop
+> (MrHua, kernel VGA, exhibit page, auth/chat APIs and relay), use
+> `apps/console/deploy/install.sh` instead. It installs all four services and
+> the nginx routes those pages need.
+
 One command brings up the static site and the in-memory relay on one host:
 
 ```bash

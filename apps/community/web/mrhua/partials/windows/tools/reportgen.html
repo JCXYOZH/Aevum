@@ -1,0 +1,33 @@
+    <div class="window" id="win-reportgen" data-window="reportgen" style="width:720px;height:600px;top:8%;left:15%;">
+        <div class="window-header"><span class="title">📄 自动化报告生成</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:16px;overflow-y:auto;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+                <div><label style="font-size:0.82rem;color:#666;">报告标题</label><input type="text" id="rpt-title" placeholder="安全扫描报告" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;margin-top:4px;box-sizing:border-box;"></div>
+                <div><label style="font-size:0.82rem;color:#666;">目标</label><input type="text" id="rpt-target" placeholder="192.168.1.0/24 或 example.com" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;margin-top:4px;box-sizing:border-box;"></div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="font-size:0.82rem;color:#666;">数据来源</label>
+                <div style="display:flex;gap:12px;margin-top:4px;flex-wrap:wrap;">
+                    <label style="font-size:0.82rem;"><input type="checkbox" id="rpt-src-scan" checked> 扫描记忆</label>
+                    <label style="font-size:0.82rem;"><input type="checkbox" id="rpt-src-native" checked> 原生工具结果</label>
+                    <label style="font-size:0.82rem;"><input type="checkbox" id="rpt-src-kb"> 知识库</label>
+                    <label style="font-size:0.82rem;"><input type="checkbox" id="rpt-src-notes"> 速记板</label>
+                </div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="font-size:0.82rem;color:#666;">输出格式</label>
+                <div style="display:flex;gap:8px;margin-top:4px;">
+                    <button class="rpt-fmt active" data-fmt="markdown" style="padding:6px 16px;border:2px solid #6a4c93;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;font-size:0.82rem;">Markdown</button>
+                    <button class="rpt-fmt" data-fmt="html" style="padding:6px 16px;border:2px solid #ddd;border-radius:8px;background:#fff;color:#666;cursor:pointer;font-size:0.82rem;">HTML</button>
+                    <button class="rpt-fmt" data-fmt="json" style="padding:6px 16px;border:2px solid #ddd;border-radius:8px;background:#fff;color:#666;cursor:pointer;font-size:0.82rem;">JSON</button>
+                </div>
+            </div>
+            <button id="rpt-generate" style="width:100%;padding:12px;border:none;border-radius:10px;background:#6a4c93;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">📊 生成报告</button>
+            <div id="rpt-preview" style="margin-top:14px;max-height:300px;overflow-y:auto;border:1px solid #eee;border-radius:10px;padding:14px;background:#fafafa;font-size:0.82rem;line-height:1.6;display:none;"></div>
+            <div id="rpt-actions" style="margin-top:10px;display:none;gap:8px;">
+                <button id="rpt-download" style="flex:1;padding:8px;border:1px solid #6a4c93;border-radius:8px;background:#fff;color:#6a4c93;cursor:pointer;">💾 下载</button>
+                <button id="rpt-save-kb" style="flex:1;padding:8px;border:1px solid #43a047;border-radius:8px;background:#fff;color:#43a047;cursor:pointer;">📚 存入知识库</button>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

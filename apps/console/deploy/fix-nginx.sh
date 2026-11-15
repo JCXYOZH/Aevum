@@ -59,6 +59,9 @@ TLS_ACTIVE="no"
 
 [ -f "$ENGINE_ROOT/validate.html" ] || die "找不到验证页：$ENGINE_ROOT/validate.html"
 [ -f "$WEB_ROOT/index.html" ] || die "找不到首页：$WEB_ROOT/index.html"
+[ -f "$WEB_ROOT/desktop.html" ] || die "找不到桌面页：$WEB_ROOT/desktop.html"
+[ -f "$WEB_ROOT/mrhua/index.html" ] || die "找不到 MrHua 页面：$WEB_ROOT/mrhua/index.html"
+[ -f "$APP_ROOT/apps/console/ui/shell/app-shell.js" ] || die "找不到 MrHua 前端脚本：$APP_ROOT/apps/console/ui/shell/app-shell.js"
 
 log "仓库根目录：$APP_ROOT"
 log "域名：$DOMAIN"
@@ -73,11 +76,12 @@ rm -f "$NGINX_TLS"
 
 # ---------------------------------------------------------------- 2 权限
 log "修正 engine 与静态目录权限"
-for dir in "$APP_ROOT" "$APP_ROOT/apps" "$APP_ROOT/apps/community" "$WEB_ROOT" "$ENGINE_ROOT"; do
+for dir in "$APP_ROOT" "$APP_ROOT/apps" "$APP_ROOT/apps/community" "$APP_ROOT/apps/console" "$APP_ROOT/apps/console/ui" "$WEB_ROOT" "$ENGINE_ROOT"; do
     [ -d "$dir" ] && chmod o+x "$dir" 2>/dev/null || true
 done
 chmod -R o+rX "$WEB_ROOT" 2>/dev/null || true
 chmod -R o+rX "$ENGINE_ROOT" 2>/dev/null || true
+chmod -R o+rX "$APP_ROOT/apps/console/ui" 2>/dev/null || true
 
 if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = "Enforcing" ]; then
     setsebool -P httpd_can_network_connect 1 || true

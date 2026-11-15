@@ -1,0 +1,9 @@
+[
+  "./js/dialog.js",
+  "/engine/legacy/orb/core/orb-index.js",
+  "/apps/console/ui/shell/app-shell.js",
+  "/apps/console/ui/orb/orb-ui.js",
+  "/apps/console/ui/skin/skin-app.js",
+  "/apps/console/ui/world/world-app.js",
+  "/apps/console/ui/dialogue/voice.js"
+]

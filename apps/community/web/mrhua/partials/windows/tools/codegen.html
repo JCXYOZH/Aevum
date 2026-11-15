@@ -1,0 +1,60 @@
+    <div class="window" id="win-codegen" data-window="codegen" style="width:880px;height:680px;top:4%;left:8%;">
+        <div class="window-header">
+            <span class="title">💻 代码工坊</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <label style="font-size:0.85rem;color:#666;">语言:</label>
+                <select id="cg-lang" style="padding:6px 12px;border-radius:8px;border:1px solid #ddd;font-size:0.9rem;">
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="html">HTML</option>
+                    <option value="css">CSS</option>
+                    <option value="c">C</option>
+                    <option value="cpp">C++</option>
+                    <option value="go">Go</option>
+                    <option value="rust">Rust</option>
+                    <option value="bash">Bash</option>
+                    <option value="sql">SQL</option>
+                </select>
+                <label style="font-size:0.85rem;color:#666;">保存路径:</label>
+                <input type="text" id="cg-path" placeholder="留空则不保存，如 ./output.py" style="flex:1;min-width:180px;padding:6px 12px;border-radius:8px;border:1px solid #ddd;font-size:0.85rem;" />
+                <label style="font-size:0.85rem;color:#666;">速度:</label>
+                <select id="cg-speed" style="padding:6px 8px;border-radius:8px;border:1px solid #ddd;font-size:0.85rem;">
+                    <option value="0">极速</option>
+                    <option value="15" selected>正常</option>
+                    <option value="35">慢速</option>
+                    <option value="70">打字机</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">需求描述:</label>
+                <textarea id="cg-task" rows="2" placeholder="描述你想要的代码，如：写一个端口扫描器，支持多线程" style="width:100%;padding:10px 14px;border-radius:10px;border:1px solid #ddd;font-size:0.9rem;resize:vertical;margin-top:4px;"></textarea>
+            </div>
+            <div>
+                <label style="font-size:0.85rem;color:#666;font-weight:600;">现有代码（可选，用于修改/扩展）:</label>
+                <textarea id="cg-context" rows="3" placeholder="粘贴需要修改的代码..." style="width:100%;padding:10px 14px;border-radius:10px;border:1px solid #ddd;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:0.85rem;resize:vertical;margin-top:4px;"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button id="cg-generate" style="flex:1;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--theme-primary),var(--theme-primary-light));color:#fff;font-size:0.95rem;font-weight:600;cursor:pointer;">⚡ 生成代码</button>
+                <button id="cg-stop" style="display:none;padding:10px 20px;border:none;border-radius:10px;background:var(--theme-accent);color:#fff;cursor:pointer;font-size:0.9rem;">⏹ 停止</button>
+                <button id="cg-save" style="padding:10px 20px;border:none;border-radius:10px;background:#27ae60;color:#fff;cursor:pointer;font-size:0.9rem;">💾 保存</button>
+                <button id="cg-copy" style="padding:10px 20px;border:none;border-radius:10px;background:#3498db;color:#fff;cursor:pointer;font-size:0.9rem;">📋 复制</button>
+                <button id="cg-open-editor" style="padding:10px 16px;border:none;border-radius:10px;background:#e67e22;color:#fff;cursor:pointer;font-size:0.9rem;">📂 编辑器</button>
+            </div>
+            <div id="cg-status" style="display:none;padding:8px 14px;border-radius:8px;font-size:0.85rem;"></div>
+            <div id="cg-thinking-box" style="display:none;max-height:120px;overflow:auto;background:#f5f0fa;border:1px solid #d5c5e8;border-radius:8px;padding:8px 12px;">
+                <div style="font-size:0.75rem;color:var(--theme-primary-light);font-weight:600;margin-bottom:4px;">💭 模型思考中...</div>
+                <div id="cg-thinking" style="font-size:0.8rem;color:#666;white-space:pre-wrap;line-height:1.5;"></div>
+            </div>
+            <div id="cg-result" style="flex:1;overflow:auto;background:#1e1e2e;border-radius:10px;padding:14px;min-height:200px;">
+                <pre id="cg-code" style="margin:0;color:#cdd6f4;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:0.85rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;"></pre>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

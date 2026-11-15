@@ -1,0 +1,46 @@
+    <div class="window" id="win-rulewriter" data-window="rulewriter" style="width:820px;height:680px;top:5%;left:10%;">
+        <div class="window-header"><span class="title">🤖 AI辅助规则编写器</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="padding:12px 16px;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <label style="font-size:0.82rem;color:#666;">规则类型:</label>
+                <select id="rw-type" style="padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                    <option value="waf">🛡️ WAF规则 (ModSecurity)</option>
+                    <option value="yara">🔍 YARA规则</option>
+                    <option value="snort">🐗 Snort/Suricata规则</option>
+                    <option value="sigma">📊 Sigma规则</option>
+                    <option value="nuclei">💉 Nuclei模板</option>
+                    <option value="custom">📝 自定义脚本</option>
+                </select>
+                <button id="rw-generate" style="margin-left:auto;padding:7px 18px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;font-weight:600;font-size:0.85rem;">✨ AI生成</button>
+            </div>
+            <div style="flex:1;display:flex;overflow:hidden;">
+                <div style="flex:1;display:flex;flex-direction:column;padding:12px;border-right:1px solid #eee;">
+                    <div style="font-size:0.8rem;color:#888;margin-bottom:6px;">📝 描述你的需求（自然语言）</div>
+                    <textarea id="rw-desc" placeholder="例如：检测SQL注入攻击，拦截包含UNION SELECT和OR 1=1的请求，记录日志并返回403..." style="flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:0.85rem;resize:none;line-height:1.6;"></textarea>
+                    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                        <button class="rw-preset" data-desc="检测SQL注入攻击，拦截包含UNION、SELECT、OR 1=1等特征的请求" style="padding:4px 10px;border:1px solid #e0d4f0;border-radius:12px;background:#f5f0fa;color:#6a4c93;cursor:pointer;font-size:0.72rem;">SQL注入</button>
+                        <button class="rw-preset" data-desc="检测XSS跨站脚本攻击，拦截script标签、onerror、javascript:等特征" style="padding:4px 10px;border:1px solid #e0d4f0;border-radius:12px;background:#f5f0fa;color:#6a4c93;cursor:pointer;font-size:0.72rem;">XSS</button>
+                        <button class="rw-preset" data-desc="检测目录遍历攻击，拦截../和..\等路径穿越字符" style="padding:4px 10px;border:1px solid #e0d4f0;border-radius:12px;background:#f5f0fa;color:#6a4c93;cursor:pointer;font-size:0.72rem;">目录遍历</button>
+                        <button class="rw-preset" data-desc="检测暴力破解SSH，5分钟内同一IP超过10次失败登录" style="padding:4px 10px;border:1px solid #e0d4f0;border-radius:12px;background:#f5f0fa;color:#6a4c93;cursor:pointer;font-size:0.72rem;">SSH爆破</button>
+                        <button class="rw-preset" data-desc="检测恶意PE文件，包含可疑节区名和导入表特征" style="padding:4px 10px;border:1px solid #e0d4f0;border-radius:12px;background:#f5f0fa;color:#6a4c93;cursor:pointer;font-size:0.72rem;">恶意PE</button>
+                    </div>
+                </div>
+                <div style="flex:1;display:flex;flex-direction:column;padding:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:0.8rem;color:#888;">⚙️ 生成结果</span>
+                        <div style="display:flex;gap:6px;">
+                            <button id="rw-copy" style="padding:4px 12px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:0.75rem;">复制</button>
+                            <button id="rw-save" style="padding:4px 12px;border:1px solid #43a047;border-radius:6px;background:#fff;color:#43a047;cursor:pointer;font-size:0.75rem;">保存</button>
+                            <button id="rw-import" style="padding:4px 12px;border:1px solid #6a4c93;border-radius:6px;background:#fff;color:#6a4c93;cursor:pointer;font-size:0.75rem;">导入工具链</button>
+                        </div>
+                    </div>
+                    <textarea id="rw-result" readonly placeholder="点击「AI生成」，AI将根据你的描述生成可直接使用的规则..." style="flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;font-family:monospace;font-size:0.8rem;resize:none;background:#fafafa;line-height:1.5;"></textarea>
+                    <div id="rw-status" style="margin-top:6px;font-size:0.75rem;color:#888;"></div>
+                </div>
+            </div>
+            <div style="padding:8px 16px;border-top:1px solid #eee;font-size:0.72rem;color:#aaa;">
+                支持 WAF(ModSecurity) / YARA / Snort / Suricata / Sigma / Nuclei 模板。生成的规则可保存到 ~/MrHuaData/rules/ 或直接导入工作流使用。
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

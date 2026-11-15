@@ -24,6 +24,7 @@ from datetime import datetime
 from enum import Enum
 from libertas.foundation.config import get_data_dir
 from libertas.foundation.terminal import terminal
+from libertas.identity.accounts.constants import ACCOUNT_TIERS
 
 from .constants import LICENSE_SECRET, LICENSE_VERSION
 from .crypto import generate_identity_id, generate_license_key, hash_password, verify_license_key, verify_password
@@ -132,7 +133,7 @@ class AuthSyncMixin:
             "created_at": created_at,
             "license_key": license_key,
             "activation_code": activation_code,
-            "features": TIERS.get(tier, TIERS.get("unregistered", {}).get("features", [])),
+            "features": ACCOUNT_TIERS.get(tier, ACCOUNT_TIERS.get("unregistered", {})).get("features", []),
             # 系统统计（原有）
             "has_license": len(activated_licenses) > 0,
             "total_roles": len(self._roles),

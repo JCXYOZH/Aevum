@@ -1,0 +1,56 @@
+    <div class="window" id="win-plugins" data-window="plugins" style="width:760px;height:620px;top:8%;left:15%;">
+        <div class="window-header"><span class="title">🧩 插件系统</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:0;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="display:flex;border-bottom:1px solid #eee;background:#fafafa;">
+                <button class="plugin-tab active" data-tab="local" style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:0.88rem;font-weight:600;color:#6a4c93;border-bottom:2px solid #6a4c93;">📂 本地插件</button>
+                <button class="plugin-tab" data-tab="market" style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:0.88rem;font-weight:600;color:#999;border-bottom:2px solid transparent;">🌐 插件市场</button>
+                <button class="plugin-tab" data-tab="editor" style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:0.88rem;font-weight:600;color:#999;border-bottom:2px solid transparent;">✏️ 编写插件</button>
+            </div>
+            <div id="plugin-panel-local" style="flex:1;overflow-y:auto;padding:16px;">
+                <div style="background:#f5f0fa;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.82rem;color:#6a4c93;">
+                    插件是放在 <code>~/MrHuaData/plugins/</code> 的Python脚本，加载后可扩展工具箱、搜索后端和钩子，无需修改核心代码。
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:14px;">
+                    <button id="plugin-reload" style="padding:8px 16px;border:none;border-radius:8px;background:#6a4c93;color:#fff;cursor:pointer;">🔄 重新加载</button>
+                    <button id="plugin-open-dir" style="padding:8px 16px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;">📂 打开目录</button>
+                    <button id="plugin-new" style="padding:8px 16px;border:1px solid #43a047;border-radius:8px;background:#fff;color:#43a047;cursor:pointer;">+ 新建插件</button>
+                </div>
+                <div id="plugin-list"></div>
+            </div>
+            <div id="plugin-panel-market" style="flex:1;overflow-y:auto;padding:16px;display:none;">
+                <div style="background:#e3f2fd;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.82rem;color:#1565c0;">
+                    🌐 插件市场通过广域网（WAN）共享插件。连接WAN后可以看到其他用户发布的插件，一键下载安装。你也可以将自己的插件发布到市场供他人使用。
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:14px;">
+                    <button id="plugin-market-refresh" style="padding:8px 16px;border:none;border-radius:8px;background:#2196f3;color:#fff;cursor:pointer;">🔄 刷新市场</button>
+                </div>
+                <div id="plugin-market-list"></div>
+            </div>
+            <div id="plugin-panel-editor" style="flex:1;overflow-y:auto;padding:16px;display:none;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                    <input type="text" id="plugin-new-name" placeholder="插件名（如 my_tool）" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;">
+                    <input type="text" id="plugin-new-desc" placeholder="插件描述" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;">
+                    <select id="plugin-new-cat" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                        <option value="扫描">🔍 扫描</option>
+                        <option value="爆破">🔑 爆破</option>
+                        <option value="信息收集">📡 信息收集</option>
+                        <option value="Web安全">🌐 Web安全</option>
+                        <option value="工具">🔧 工具</option>
+                        <option value="未分类" selected>📦 未分类</option>
+                    </select>
+                    <input type="text" id="plugin-new-ver" placeholder="版本（如1.0.0）" value="1.0.0" style="padding:8px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;">
+                </div>
+                <button id="plugin-create" style="width:100%;padding:10px;border:none;border-radius:8px;background:#43a047;color:#fff;cursor:pointer;font-weight:600;margin-bottom:10px;">📝 从模板创建</button>
+                <div id="plugin-editor" style="display:none;">
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+                        <input type="text" id="plugin-name" placeholder="插件文件名" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.82rem;">
+                        <button id="plugin-save" style="padding:8px 16px;border:none;border-radius:8px;background:#43a047;color:#fff;cursor:pointer;">💾 保存</button>
+                        <button id="plugin-cancel" style="padding:8px 16px;border:1px solid #999;border-radius:8px;background:#fff;color:#666;cursor:pointer;">✕ 取消</button>
+                        <button id="plugin-publish" style="padding:8px 16px;border:none;border-radius:8px;background:#2196f3;color:#fff;cursor:pointer;">🌐 发布到市场</button>
+                    </div>
+                    <textarea id="plugin-code" placeholder="# 编写你的插件代码..." style="width:100%;height:300px;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.8rem;resize:vertical;box-sizing:border-box;"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

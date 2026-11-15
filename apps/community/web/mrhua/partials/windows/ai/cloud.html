@@ -1,0 +1,55 @@
+    <div class="window" id="win-cloud" data-window="cloud" style="width:720px;height:560px;top:8%;left:12%;">
+        <div class="window-header">
+            <span class="title">☁️ 加密云同步</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:16px;overflow-y:auto;">
+            <div id="cloud-status" style="padding:12px;background:#f5f5fa;border-radius:10px;margin-bottom:12px;font-size:0.85rem;"></div>
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;margin-bottom:6px;">🔐 加密设置</div>
+                <div style="display:flex;gap:8px;">
+                    <input type="password" id="cloud-password" placeholder="输入加密密码（云端只存密文）" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                    <button id="cloud-set-pwd" style="padding:8px 16px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">设置</button>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;margin-bottom:6px;">🌐 WebDAV 云端账户</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <input type="text" id="cloud-webdav-url" placeholder="https://dav.example.com/remote.php/dav/files/user/" style="flex:2;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                    <input type="text" id="cloud-webdav-user" placeholder="用户名" style="flex:1;min-width:80px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                    <input type="password" id="cloud-webdav-pass" placeholder="密码" style="flex:1;min-width:80px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;">
+                    <button id="cloud-webdav-save" style="padding:8px 14px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.82rem;">保存</button>
+                </div>
+                <div style="display:flex;gap:6px;margin-top:6px;">
+                    <button id="cloud-webdav-list" style="padding:6px 12px;border:1px solid #2196f3;border-radius:6px;background:#fff;color:#2196f3;cursor:pointer;font-size:0.78rem;">列出云端文件</button>
+                    <button id="cloud-webdav-upload" style="padding:6px 12px;border:1px solid #43a047;border-radius:6px;background:#fff;color:#43a047;cursor:pointer;font-size:0.78rem;">上传加密</button>
+                    <button id="cloud-webdav-download" style="padding:6px 12px;border:1px solid var(--theme-warning);border-radius:6px;background:#fff;color:var(--theme-warning);cursor:pointer;font-size:0.78rem;">下载解密</button>
+                </div>
+                <div id="cloud-webdav-result" style="margin-top:6px;font-size:0.78rem;"></div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;margin-bottom:6px;">📤 上传加密文件</div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" id="cloud-upload-path" placeholder="云端路径（如 memories/chat.json）" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                    <input type="file" id="cloud-upload-file" style="font-size:0.8rem;">
+                    <button id="cloud-upload-btn" style="padding:8px 16px;border:none;border-radius:8px;background:#2196f3;color:#fff;cursor:pointer;">上传</button>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;margin-bottom:6px;">📁 已同步文件</div>
+                <div id="cloud-file-list" style="max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:8px;"></div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button id="cloud-refresh" style="padding:8px 16px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">刷新状态</button>
+                <button id="cloud-snapshot" style="padding:8px 16px;border:none;border-radius:8px;background:#43a047;color:#fff;cursor:pointer;">创建快照</button>
+            </div>
+            <div style="margin-top:12px;padding:10px;background:#fff8e1;border-radius:8px;font-size:0.78rem;color:#8d6e00;">
+                💡 数据在上传前用 AES-256 加密，云端只存储密文。多设备修改时自动保留冲突副本，可选择保留本地或云端版本。
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

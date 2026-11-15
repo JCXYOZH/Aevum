@@ -1,0 +1,28 @@
+    <div class="window" id="win-toolinstaller" data-window="toolinstaller" style="width:720px;height:600px;top:8%;left:14%;">
+        <div class="window-header">
+            <span class="title">📦 安全工具安装</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;">
+                <button class="ti-tab active" data-tab="tools" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;">🔧 安全工具</button>
+                <button class="ti-tab" data-tab="wordlists" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:0.85rem;color:#888;border-bottom:2px solid transparent;">📚 字典下载</button>
+            </div>
+            <div class="ti-panel" data-panel="tools" style="flex:1;padding:16px;overflow-y:auto;">
+                <div style="display:flex;gap:8px;margin-bottom:12px;">
+                    <button id="ti-refresh" style="padding:8px 16px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">🔄 刷新检测</button>
+                    <span id="ti-summary" style="align-self:center;font-size:0.85rem;color:#666;"></span>
+                </div>
+                <div id="ti-list"></div>
+            </div>
+            <div class="ti-panel" data-panel="wordlists" style="flex:1;display:none;padding:16px;overflow-y:auto;">
+                <div style="font-size:0.82rem;color:#666;margin-bottom:10px;">字典将下载到 ~/MrHuaWorkspace/ 目录，工具箱会自动识别。</div>
+                <div id="wl-list"></div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

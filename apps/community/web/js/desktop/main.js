@@ -70,6 +70,12 @@
   function openWindow(id) {
     var app = MD.getApp(id);
     if (!app) return;
+    // 沉浸模式会隐藏 .windows 层；从启动项打开窗口时先返回桌面视图。
+    var desk = MD.qs(".desk");
+    if (desk && desk.classList.contains("scene-focus")) {
+      var focusToggle = MD.qs('[data-scene-view="focus"]');
+      if (focusToggle) focusToggle.click();
+    }
     var existing = manager.get(id);
     if (existing) {
       manager.open(id, app, existing.panel);
@@ -108,8 +114,6 @@
 
   refreshHealth();
   setInterval(refreshHealth, 5000);
-  openWindow("overview");
-  openWindow("trainer");
 
   global.MemoriaDesk = {
     open: openWindow,

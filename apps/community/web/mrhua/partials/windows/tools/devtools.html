@@ -1,0 +1,128 @@
+    <div class="window" id="win-devtools" data-window="devtools" style="width:720px;height:600px;top:8%;left:15%;">
+        <div class="window-header">
+            <span class="title">🔧 开发者工具</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;">
+            <div style="display:flex;border-bottom:1px solid #ddd;background:#f8f8fa;overflow-x:auto;">
+                <button class="dt-tab active" data-tab="json" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:var(--theme-primary);border-bottom:2px solid var(--theme-primary);font-weight:600;white-space:nowrap;">JSON</button>
+                <button class="dt-tab" data-tab="base64" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">Base64</button>
+                <button class="dt-tab" data-tab="url" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">URL</button>
+                <button class="dt-tab" data-tab="time" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">时间戳</button>
+                <button class="dt-tab" data-tab="hash" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">哈希</button>
+                <button class="dt-tab" data-tab="jwt" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">JWT</button>
+                <button class="dt-tab" data-tab="regex" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">正则</button>
+                <button class="dt-tab" data-tab="uuid" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">UUID</button>
+                <button class="dt-tab" data-tab="syscheck" style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:0.82rem;color:#888;border-bottom:2px solid transparent;white-space:nowrap;">🩺 自检</button>
+            </div>
+            <!-- JSON -->
+            <div class="dt-panel" data-panel="json" style="flex:1;display:flex;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <textarea id="dt-json-input" placeholder="粘贴JSON..." style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.82rem;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;">
+                    <button id="dt-json-format" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">格式化</button>
+                    <button id="dt-json-minify" style="flex:1;padding:8px;border:none;border-radius:8px;background:#95a5a6;color:#fff;cursor:pointer;">压缩</button>
+                    <button id="dt-json-copy" style="flex:1;padding:8px;border:none;border-radius:8px;background:#3498db;color:#fff;cursor:pointer;">复制</button>
+                    <button id="dt-json-clear" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-accent);color:#fff;cursor:pointer;">清空</button>
+                </div>
+                <div id="dt-json-status" style="font-size:0.78rem;color:#888;min-height:18px;"></div>
+            </div>
+            <!-- Base64 -->
+            <div class="dt-panel" data-panel="base64" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <textarea id="dt-b64-input" placeholder="输入文本或Base64..." style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.82rem;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;">
+                    <button id="dt-b64-encode" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">编码 →</button>
+                    <button id="dt-b64-decode" style="flex:1;padding:8px;border:none;border-radius:8px;background:#27ae60;color:#fff;cursor:pointer;">← 解码</button>
+                    <button id="dt-b64-copy" style="flex:1;padding:8px;border:none;border-radius:8px;background:#3498db;color:#fff;cursor:pointer;">复制</button>
+                    <button id="dt-b64-clear" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-accent);color:#fff;cursor:pointer;">清空</button>
+                </div>
+                <div id="dt-b64-status" style="font-size:0.78rem;color:#888;min-height:18px;"></div>
+            </div>
+            <!-- URL -->
+            <div class="dt-panel" data-panel="url" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <textarea id="dt-url-input" placeholder="输入URL或文本..." style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.82rem;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;">
+                    <button id="dt-url-encode" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">编码 →</button>
+                    <button id="dt-url-decode" style="flex:1;padding:8px;border:none;border-radius:8px;background:#27ae60;color:#fff;cursor:pointer;">← 解码</button>
+                    <button id="dt-url-copy" style="flex:1;padding:8px;border:none;border-radius:8px;background:#3498db;color:#fff;cursor:pointer;">复制</button>
+                    <button id="dt-url-clear" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-accent);color:#fff;cursor:pointer;">清空</button>
+                </div>
+                <div id="dt-url-status" style="font-size:0.78rem;color:#888;min-height:18px;"></div>
+            </div>
+            <!-- 时间戳 -->
+            <div class="dt-panel" data-panel="time" style="flex:1;display:none;flex-direction:column;padding:16px;gap:12px;overflow-y:auto;">
+                <div style="text-align:center;">
+                    <div id="dt-now-ts" style="font-size:2rem;font-weight:700;color:var(--theme-primary);font-family:'SF Mono',monospace;"></div>
+                    <div id="dt-now-date" style="font-size:0.9rem;color:#888;margin-top:4px;"></div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" id="dt-ts-input" placeholder="输入时间戳（秒或毫秒）" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.85rem;" />
+                    <button id="dt-ts-convert" style="padding:8px 16px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">→ 日期</button>
+                </div>
+                <div id="dt-ts-result" style="padding:10px;background:#f5f0fa;border-radius:8px;font-size:0.85rem;color:#555;min-height:40px;"></div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" id="dt-date-input" placeholder="YYYY-MM-DD HH:mm:ss" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.85rem;" />
+                    <button id="dt-date-convert" style="padding:8px 16px;border:none;border-radius:8px;background:#27ae60;color:#fff;cursor:pointer;">→ 时间戳</button>
+                </div>
+                <div id="dt-date-result" style="padding:10px;background:#e8f5e9;border-radius:8px;font-size:0.85rem;color:#555;min-height:40px;"></div>
+            </div>
+            <!-- 哈希 -->
+            <div class="dt-panel" data-panel="hash" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <textarea id="dt-hash-input" placeholder="输入要计算哈希的文本..." style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.82rem;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;">
+                    <button class="dt-hash-btn" data-algo="MD5" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">MD5</button>
+                    <button class="dt-hash-btn" data-algo="SHA-1" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">SHA-1</button>
+                    <button class="dt-hash-btn" data-algo="SHA-256" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">SHA-256</button>
+                    <button class="dt-hash-btn" data-algo="SHA-512" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">SHA-512</button>
+                </div>
+                <div id="dt-hash-output" style="padding:10px;background:#1e1e2e;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.8rem;color:#cdd6f4;word-break:break-all;min-height:60px;max-height:120px;overflow:auto;"></div>
+                <button id="dt-hash-copy" style="padding:6px;border:none;border-radius:6px;background:#3498db;color:#fff;cursor:pointer;font-size:0.8rem;">复制结果</button>
+            </div>
+            <!-- JWT -->
+            <div class="dt-panel" data-panel="jwt" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <textarea id="dt-jwt-input" placeholder="粘贴JWT Token..." style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.8rem;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;">
+                    <button id="dt-jwt-decode" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">解码</button>
+                    <button id="dt-jwt-copy" style="flex:1;padding:8px;border:none;border-radius:8px;background:#3498db;color:#fff;cursor:pointer;">复制</button>
+                    <button id="dt-jwt-clear" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--theme-accent);color:#fff;cursor:pointer;">清空</button>
+                </div>
+                <div id="dt-jwt-output" style="flex:1;padding:10px;background:#1e1e2e;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.78rem;color:#cdd6f4;overflow:auto;white-space:pre-wrap;word-break:break-all;min-height:80px;"></div>
+            </div>
+            <!-- 正则 -->
+            <div class="dt-panel" data-panel="regex" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
+                <input type="text" id="dt-regex-pattern" placeholder="正则表达式，如 \d{3}-\d{4}" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-family:'SF Mono',monospace;font-size:0.85rem;" />
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <label style="font-size:0.78rem;color:#888;">标志:</label>
+                    <label style="font-size:0.78rem;"><input type="checkbox" class="dt-regex-flag" value="i"> i</label>
+                    <label style="font-size:0.78rem;"><input type="checkbox" class="dt-regex-flag" value="m"> m</label>
+                    <label style="font-size:0.78rem;"><input type="checkbox" class="dt-regex-flag" value="s"> s</label>
+                </div>
+                <textarea id="dt-regex-text" placeholder="测试文本..." style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.82rem;resize:none;min-height:80px;"></textarea>
+                <div id="dt-regex-output" style="padding:10px;background:#f5f0fa;border-radius:8px;font-size:0.8rem;color:#555;max-height:120px;overflow:auto;min-height:40px;"></div>
+            </div>
+            <!-- UUID -->
+            <div class="dt-panel" data-panel="uuid" style="flex:1;display:none;flex-direction:column;padding:16px;gap:12px;overflow-y:auto;">
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <label style="font-size:0.85rem;">数量:</label>
+                    <input type="number" id="dt-uuid-count" value="5" min="1" max="100" style="width:80px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.85rem;">
+                    <label style="font-size:0.85rem;"><input type="radio" name="dt-uuid-ver" value="4" checked> v4(随机)</label>
+                    <label style="font-size:0.85rem;"><input type="radio" name="dt-uuid-ver" value="1"> v1(时间)</label>
+                    <button id="dt-uuid-gen" style="padding:8px 20px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;">生成</button>
+                    <button id="dt-uuid-copy" style="padding:8px 16px;border:none;border-radius:8px;background:#3498db;color:#fff;cursor:pointer;">复制全部</button>
+                </div>
+                <div id="dt-uuid-output" style="flex:1;padding:12px;background:#1e1e2e;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:0.82rem;color:#cdd6f4;overflow:auto;white-space:pre-wrap;min-height:100px;"></div>
+            </div>
+            <!-- 系统自检 -->
+            <div class="dt-panel" data-panel="syscheck" style="flex:1;display:none;flex-direction:column;padding:12px;gap:8px;overflow-y:auto;">
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button id="syscheck-run" style="padding:8px 16px;border:none;border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-weight:600;">🔍 开始检测</button>
+                    <span id="syscheck-summary" style="font-size:0.82rem;color:#666;"></span>
+                </div>
+                <div id="syscheck-results" style="flex:1;overflow-y:auto;font-size:0.8rem;"></div>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

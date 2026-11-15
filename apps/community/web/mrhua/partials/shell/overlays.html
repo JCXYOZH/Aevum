@@ -1,0 +1,20 @@
+    <!-- 工作台窗口 -->
+    <div id="exp-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:3000;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);justify-content:center;align-items:center;">
+        <div style="background:#fff;border-radius:20px;padding:30px;max-width:550px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h3 style="margin:0;color:#333;">📝 创建新实验</h3>
+                <button id="exp-modal-close" style="background:none;border:none;font-size:1.8rem;cursor:pointer;color:#999;">✕</button>
+            </div>
+<form id="exp-create-form">
+                <div style="margin-bottom:14px;"><label style="display:block;font-weight:600;margin-bottom:4px;">实验名称 *</label><input type="text" id="exp-name" placeholder="例如：幽默回复测试" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid #ddd;" required /></div>
+                <div style="margin-bottom:14px;"><label style="display:block;font-weight:600;margin-bottom:4px;">描述</label><input type="text" id="exp-desc" placeholder="简短描述这个实验的目的" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid #ddd;" /></div>
+                <div style="margin-bottom:14px;"><label style="display:block;font-weight:600;margin-bottom:4px;">实验组比例: <span id="exp-rollout-label">20%</span></label><input type="range" id="exp-rollout" min="5" max="50" value="20" style="width:100%;" /></div>
+                <details style="margin-bottom:14px;"><summary style="cursor:pointer;color:var(--theme-primary);">⚙️ 高级配置</summary>
+                    <div style="margin-top:10px;"><label>归池阈值 (默认 1.05)</label><input type="number" id="exp-threshold" value="1.05" step="0.01" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid #ddd;" /><label style="margin-top:10px;">回滚阈值 (默认 1.10)</label><input type="number" id="exp-rollback" value="1.10" step="0.01" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid #ddd;" /></div>
+                </details>
+                <button type="submit" style="width:100%;padding:12px;border:none;border-radius:30px;background:var(--theme-primary);color:#fff;font-weight:600;cursor:pointer;">🚀 创建实验</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="global-loading" style="display:none;" class="loading-indicator">💭 花先生思考中 <div class="loading-dots"><span></span><span></span><span></span></div></div>

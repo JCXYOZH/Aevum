@@ -1,0 +1,126 @@
+    <div class="window" id="win-wanshare" data-window="wanshare" style="width:850px;height:620px;top:6%;left:10%;">
+        <div class="window-header">
+            <span class="title">🌍 广域网通信（跨互联网）</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;padding:0;overflow:hidden;">
+            <!-- 顶部连接栏（始终可见） -->
+            <div id="wan-top-bar" style="padding:8px 12px;background:linear-gradient(135deg,#e3f2fd,#f3e5f5);border-bottom:1px solid #e0e0e0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <span style="font-size:0.82rem;font-weight:600;color:#333;">🌍 公共社区</span>
+                <input type="text" id="wan-nickname" placeholder="昵称（选填）" style="width:110px;padding:5px 10px;border:1px solid #90caf9;border-radius:6px;font-size:0.78rem;" />
+                <input type="text" id="wan-broker" value="broker.hivemq.com" list="broker-list" style="width:170px;padding:5px 10px;border:1px solid #90caf9;border-radius:6px;font-size:0.78rem;" title="MQTT中继服务器，可从列表选择或输入自定义地址" />
+                <datalist id="broker-list">
+                    <option value="broker.hivemq.com">HiveMQ 公共中继（德国）</option>
+                    <option value="broker.emqx.io">EMQX 公共中继</option>
+                    <option value="test.mosquitto.org">Mosquitto 测试中继</option>
+                </datalist>
+                <button id="wan-broker-ping" type="button" style="padding:4px 8px;background:#fff;border:1px solid #90caf9;border-radius:6px;cursor:pointer;font-size:0.7rem;color:#1565c0;" title="测试中继延迟">📶</button>
+                <label style="display:flex;align-items:center;gap:3px;font-size:0.72rem;color:#2e7d32;cursor:pointer;user-select:none;font-weight:600;" title="加密传输，推荐始终开启">
+                    <input type="checkbox" id="wan-tls" checked style="width:14px;height:14px;cursor:pointer;accent-color:#43a047;" />
+                    🔒 TLS
+                </label>
+                <button id="wan-connect-btn" style="padding:5px 16px;background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">连接</button>
+                <span id="wan-conn-status" style="display:none;font-size:0.75rem;color:#43a047;">● 已连接</span>
+                <span style="font-size:0.7rem;color:#999;" id="wan-broker-info"></span>
+                <span style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:0.68rem;color:#aaa;" id="wan-encryption-hint">🔒 消息端到端加密，中继无法读取</span>
+                    <button id="wan-disconnect-btn" style="display:none;padding:4px 12px;background:#e53935;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.75rem;">断开连接</button>
+                </span>
+            </div>
+            <!-- 三栏聊天区（始终占据剩余空间） -->
+            <div style="display:flex;flex:1;min-height:0;">
+                <!-- 左：房间列表 -->
+                <div style="width:200px;min-width:200px;display:flex;flex-direction:column;border-right:1px solid #e0e0e0;background:#f5f5f7;">
+                    <div style="padding:8px 10px;font-size:0.78rem;font-weight:600;color:#666;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;">
+                        <span>💬 房间</span>
+                        <button id="wan-add-room-btn" style="padding:2px 8px;background:var(--theme-primary);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.7rem;" title="加入额外房间（同时接收多个房间消息）">+ 加入</button>
+                    </div>
+                    <div id="wan-room-list" style="flex:1;overflow-y:auto;">
+                        <div style="padding:20px 12px;text-align:center;color:#bbb;font-size:0.78rem;">连接后显示房间列表</div>
+                    </div>
+                    <div id="wan-add-room-form" style="display:none;padding:8px;border-top:1px solid #e0e0e0;flex-direction:column;gap:4px;background:#fff;">
+                        <input type="text" id="wan-add-room-id" placeholder="房间ID（字母/数字/下划线/横线）" maxlength="64" style="padding:5px 8px;border:1px solid #ccc;border-radius:6px;font-size:0.78rem;" />
+                        <div style="position:relative;">
+                            <input type="password" id="wan-add-room-pwd" placeholder="房间密码" style="width:100%;padding:5px 32px 5px 8px;border:1px solid #ccc;border-radius:6px;font-size:0.78rem;box-sizing:border-box;" />
+                            <button id="wan-pwd-toggle" type="button" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;padding:2px 4px;">👁</button>
+                        </div>
+                        <div style="display:flex;gap:4px;">
+                            <button id="wan-add-room-confirm" style="flex:1;padding:4px;background:#43a047;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.75rem;">加入</button>
+                            <button id="wan-add-room-cancel" style="flex:1;padding:4px;background:#999;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.75rem;">取消</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- 中：聊天区 -->
+                <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+                    <div style="padding:8px 12px;border-bottom:1px solid #e0e0e0;background:#fafafa;display:flex;align-items:center;gap:8px;">
+                        <span id="wan-current-room" style="font-size:0.85rem;font-weight:600;color:#1565c0;">🌍 公共社区 my_era</span>
+                        <span id="wan-current-peers" style="font-size:0.72rem;color:#999;"></span>
+                    </div>
+                    <div style="display:flex;gap:4px;padding:4px 8px;border-bottom:1px solid #f0f0f0;flex-wrap:wrap;">
+                        <button id="wan-share-dict" style="padding:2px 6px;background:#f5f0fa;color:var(--theme-primary);border:1px solid #d4c5e8;border-radius:4px;cursor:pointer;font-size:0.68rem;">📚 字典</button>
+                        <button id="wan-share-config" style="padding:2px 6px;background:#f5f0fa;color:var(--theme-primary);border:1px solid #d4c5e8;border-radius:4px;cursor:pointer;font-size:0.68rem;">🔧 配置</button>
+                        <button id="wan-share-rule" style="padding:2px 6px;background:#f5f0fa;color:var(--theme-primary);border:1px solid #d4c5e8;border-radius:4px;cursor:pointer;font-size:0.68rem;">📋 规则</button>
+                        <button id="wan-share-workflow" style="padding:2px 6px;background:#f5f0fa;color:var(--theme-primary);border:1px solid #d4c5e8;border-radius:4px;cursor:pointer;font-size:0.68rem;">🔄 工作流</button>
+                        <input type="file" id="wan-file-input" style="display:none;" />
+                        <button id="wan-file-btn" style="padding:2px 6px;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;border-radius:4px;cursor:pointer;font-size:0.68rem;">📎 文件</button>
+                    </div>
+                    <div id="wan-messages" style="flex:1;overflow-y:auto;padding:8px;background:#fafafa;display:flex;flex-direction:column;gap:4px;">
+                        <div style="margin:auto;text-align:center;color:#bbb;font-size:0.85rem;max-width:320px;line-height:1.8;">
+                            <div style="font-size:2rem;margin-bottom:8px;">🌍</div>
+                            <div>连接后加入公共社区 <b>my_era</b></div>
+                            <div style="font-size:0.75rem;margin-top:6px;">和所有 MrHua 用户实时交流<br/>消息经密码加密传输，中继无法读取</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;padding:8px;border-top:1px solid #e0e0e0;background:#fff;align-items:center;">
+                        <input type="text" id="wan-msg-input" placeholder="连接后即可发送消息（Enter发送，Shift+Enter换行）" style="flex:1;padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-size:0.85rem;" disabled />
+                        <button id="wan-send-btn" style="padding:8px 20px;background:#1565c0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:0.85rem;" disabled>发送</button>
+                    </div>
+                </div>
+                <!-- 右：成员列表 -->
+                <div style="width:140px;min-width:140px;display:flex;flex-direction:column;border-left:1px solid #e0e0e0;background:#fafafa;">
+                    <div style="padding:8px 10px;font-size:0.75rem;font-weight:600;color:#666;border-bottom:1px solid #e0e0e0;">👥 成员</div>
+                    <div id="wan-peers" style="flex:1;overflow-y:auto;padding:6px;font-size:0.75rem;">
+                        <div style="padding:12px;text-align:center;color:#bbb;font-size:0.75rem;">未连接</div>
+                    </div>
+                </div>
+            </div>
+            <!-- 底部文件/NAT -->
+            <details style="border-top:1px solid #eee;background:#fafafa;">
+                <summary style="padding:6px 12px;font-size:0.75rem;font-weight:600;color:#999;cursor:pointer;user-select:none;">📁 文件传输记录 / 🔧 NAT穿透</summary>
+                <div style="padding:8px 12px;">
+                    <!-- 文件传输记录 -->
+                    <div id="wan-files" style="max-height:60px;overflow-y:auto;font-size:0.72rem;color:#888;margin-bottom:8px;"></div>
+                    <!-- NAT 探测 -->
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+                        <button id="nat-detect-btn" style="padding:4px 10px;background:#5c6bc0;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;">🔍 探测NAT</button>
+                        <span id="nat-status" style="font-size:0.7rem;color:#666;"></span>
+                    </div>
+                    <!-- UPnP 端口映射 -->
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed #e0e0e0;">
+                        <span style="font-size:0.7rem;color:#999;font-weight:600;">📡 UPnP映射</span>
+                        <label style="font-size:0.68rem;color:#888;">内端口<input type="number" id="nat-internal-port" value="48889" style="width:60px;margin-left:3px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:0.72rem;" /></label>
+                        <label style="font-size:0.68rem;color:#888;">外端口<input type="number" id="nat-external-port" value="48889" style="width:60px;margin-left:3px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:0.72rem;" /></label>
+                        <button id="nat-open-btn" style="padding:4px 10px;background:#43a047;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;">映射</button>
+                        <button id="nat-close-btn" style="padding:4px 10px;background:#e53935;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;">关闭</button>
+                    </div>
+                    <!-- SSH 反向隧道 -->
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed #e0e0e0;">
+                        <span style="font-size:0.7rem;color:#999;font-weight:600;">🔗 SSH隧道</span>
+                        <input type="text" id="nat-ssh-host" placeholder="跳板机地址" style="width:110px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:0.7rem;" />
+                        <label style="font-size:0.68rem;color:#888;">端口<input type="number" id="nat-ssh-port" value="22" style="width:48px;margin-left:3px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:0.7rem;" /></label>
+                        <input type="text" id="nat-ssh-user" placeholder="用户名" style="width:70px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:0.7rem;" />
+                        <label style="font-size:0.68rem;color:#888;">远程端口<input type="number" id="nat-remote-port" value="48889" style="width:60px;margin-left:3px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:0.7rem;" /></label>
+                        <input type="text" id="nat-ssh-key" placeholder="私钥路径（可选）" style="width:120px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:0.7rem;" />
+                        <button id="nat-tunnel-btn" style="padding:4px 10px;background:var(--theme-warning);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;">建立隧道</button>
+                        <button id="nat-tunnel-stop-btn" style="padding:4px 10px;background:#757575;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;">断开</button>
+                    </div>
+                    <div id="nat-result" style="font-size:0.7rem;color:#1565c0;margin-top:4px;"></div>
+                </div>
+            </details>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

@@ -1,0 +1,49 @@
+    <div class="window" id="win-whiteboard" data-window="whiteboard" style="width:900px;height:680px;top:4%;left:6%;">
+        <div class="window-header"><span class="title">📋 协作白板 / 网络拓扑</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="padding:8px 14px;border-bottom:1px solid #eee;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <button class="wb-tool active" data-tool="select" style="padding:6px 12px;border:1px solid var(--theme-primary);border-radius:8px;background:var(--theme-primary);color:#fff;cursor:pointer;font-size:0.82rem;">⬚ 选择</button>
+                <button class="wb-tool" data-tool="node" style="padding:6px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">⬭ 节点</button>
+                <button class="wb-tool" data-tool="line" style="padding:6px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">╱ 连线</button>
+                <button class="wb-tool" data-tool="text" style="padding:6px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">T 文字</button>
+                <span style="width:1px;height:24px;background:#ddd;margin:0 4px;"></span>
+                <label style="font-size:0.78rem;color:#666;">形状:</label>
+                <select id="wb-shape" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:0.78rem;">
+                    <option value="rect">▭ 矩形</option>
+                    <option value="circle">○ 圆形</option>
+                    <option value="diamond">◇ 菱形</option>
+                    <option value="cloud">☁ 云</option>
+                    <option value="database">🗄 数据库</option>
+                    <option value="server">🖥 服务器</option>
+                    <option value="firewall">🧱 防火墙</option>
+                    <option value="attacker">😈 攻击者</option>
+                </select>
+                <input type="color" id="wb-color" value="#6a4c93" style="width:30px;height:30px;border:1px solid #ddd;border-radius:6px;cursor:pointer;padding:2px;">
+                <button id="wb-clear" style="padding:6px 12px;border:1px solid #ffcdd2;border-radius:8px;background:#fff;color:#e53935;cursor:pointer;font-size:0.82rem;">🗑 清空</button>
+                <button id="wb-undo" style="padding:6px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">↶ 撤销</button>
+                <button id="wb-redo" style="padding:6px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">↷ 重做</button>
+                <button id="wb-export" style="padding:6px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">💾 导出</button>
+                <span style="width:1px;height:24px;background:#ddd;margin:0 4px;"></span>
+                <button id="wb-import-graph" style="padding:6px 12px;border:1px solid var(--theme-primary);border-radius:8px;background:#f5f0fa;color:var(--theme-primary);cursor:pointer;font-size:0.82rem;">🕸 从图谱导入</button>
+                <span style="width:1px;height:24px;background:#ddd;margin:0 4px;"></span>
+                <button id="wb-zoom-out" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">−</button>
+                <span id="wb-zoom" style="font-size:0.75rem;color:#666;min-width:42px;text-align:center;">100%</span>
+                <button id="wb-zoom-in" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">+</button>
+                <button id="wb-zoom-reset" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.72rem;">重置</button>
+                <button id="wb-sync" style="padding:6px 12px;border:1px solid #43a047;border-radius:8px;background:#fff;color:#43a047;cursor:pointer;font-size:0.82rem;">🔄 同步到房间</button>
+                <span id="wb-sync-status" style="font-size:0.72rem;color:#888;"></span>
+            </div>
+            <div style="flex:1;position:relative;overflow:hidden;background:#fafafa;background-image:radial-gradient(circle,#e0e0e0 1px,transparent 1px);background-size:20px 20px;">
+                <canvas id="wb-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;"></canvas>
+                <div id="wb-label-editor" style="display:none;position:absolute;z-index:10;">
+                    <input type="text" id="wb-label-input" placeholder="输入标签..." style="padding:4px 8px;border:2px solid var(--theme-primary);border-radius:6px;font-size:0.82rem;outline:none;">
+                </div>
+            </div>
+            <div style="padding:6px 14px;border-top:1px solid #eee;display:flex;gap:12px;font-size:0.72rem;color:#888;">
+                <span>节点: <b id="wb-node-count">0</b></span>
+                <span>连线: <b id="wb-line-count">0</b></span>
+                <span style="margin-left:auto;color:#aaa;">拖拽节点移动 | 双击节点编辑标签 | Delete删除选中</span>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

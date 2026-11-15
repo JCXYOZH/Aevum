@@ -1,0 +1,6 @@
+#custom-modal-overlay.cm-show { display:flex; }
+        .cm-btn { padding:8px 22px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit;transition:background 0.15s; }
+        .cm-btn-cancel { background:#f0f0f0;color:#555; }
+        .cm-btn-cancel:hover { background:#e4e4e4; }
+        .cm-btn-ok { background:#4a2c7a;color:#fff; }
+        .cm-btn-ok:hover { background:#5d3a96; }

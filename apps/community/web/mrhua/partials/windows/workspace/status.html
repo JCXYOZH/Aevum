@@ -1,0 +1,22 @@
+    <div class="window" id="win-status" data-window="status" style="width:550px;height:450px;top:25%;left:30%;">
+        <div class="window-header">
+            <span class="title">📊 系统状态</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <div id="status-content" class="message-area" style="min-height:200px;font-family:monospace;white-space:pre-wrap;word-break:break-all;"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                <button id="status-refresh" style="padding:8px 24px;border:none;border-radius:30px;background:var(--theme-primary);color:#fff;cursor:pointer;">刷新</button>
+                <button id="status-memory-stats" style="padding:8px 18px;border:1px solid var(--theme-primary);border-radius:30px;background:#fff;color:var(--theme-primary);cursor:pointer;">记忆统计</button>
+                <button id="status-mem-index" style="padding:8px 18px;border:1px solid var(--theme-primary);border-radius:30px;background:#fff;color:var(--theme-primary);cursor:pointer;">记忆索引状态</button>
+                <button id="status-mem-index-rebuild" style="padding:8px 18px;border:1px solid var(--theme-primary);border-radius:30px;background:#fff;color:var(--theme-primary);cursor:pointer;">重建索引</button>
+                <button id="status-diary" style="padding:8px 18px;border:1px solid var(--theme-primary);border-radius:30px;background:#fff;color:var(--theme-primary);cursor:pointer;">生日状态</button>
+                <button id="status-knowledge" style="padding:8px 18px;border:1px solid var(--theme-primary);border-radius:30px;background:#fff;color:var(--theme-primary);cursor:pointer;">知识图谱</button>
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

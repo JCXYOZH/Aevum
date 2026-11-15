@@ -1,0 +1,24 @@
+    <div class="window" id="win-search" data-window="search" style="width:600px;height:400px;top:20%;left:25%;">
+        <div class="window-header">
+            <span class="title">🔍 搜索记忆</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <div class="input-row">
+                <input type="text" id="search-input" placeholder="输入关键词…" />
+                <button id="search-execute">搜索</button>
+            </div>
+            <div style="display:flex;gap:8px;margin:8px 0;align-items:center;">
+                <label style="font-size:0.85rem;color:#888;">日期:</label>
+                <input type="date" id="search-date" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;" />
+                <button id="search-by-date" style="padding:6px 14px;border:1px solid var(--theme-primary);border-radius:20px;background:#fff;color:var(--theme-primary);cursor:pointer;font-size:0.85rem;">按日期搜索</button>
+                <button id="search-clear-date" style="padding:6px 14px;border:none;background:none;color:#999;cursor:pointer;font-size:0.85rem;">清除</button>
+            </div>
+            <div id="search-result" class="message-area" style="min-height:200px;max-height:60vh;overflow-y:auto;"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

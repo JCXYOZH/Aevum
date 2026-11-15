@@ -1,0 +1,20 @@
+    <div class="window" id="win-snapshots" data-window="snapshots" style="width:720px;height:580px;top:8%;left:15%;">
+        <div class="window-header"><span class="title">📸 快照与回滚</span><div class="window-controls"><button class="btn-minimize">─</button><button class="btn-maximize">☐</button><button class="btn-close">✕</button></div></div>
+        <div class="window-body" style="padding:16px;overflow-y:auto;">
+            <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.82rem;color:#2e7d32;">
+                修改配置、更新工具或调整权限前创建快照，出错时一键回滚。快照包含代码和配置文件。
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+                <input type="text" id="snap-label" placeholder="快照说明（如：更新工具前）" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;">
+                <button id="snap-create" style="padding:8px 16px;border:none;border-radius:8px;background:#43a047;color:#fff;cursor:pointer;font-weight:600;">📸 创建快照</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+                <button id="snap-auto-toggle" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.82rem;">⚙️ 自动快照: 关闭</button>
+                <button id="snap-check" style="flex:1;padding:8px;border:1px solid #2196f3;border-radius:8px;background:#fff;color:#2196f3;cursor:pointer;font-size:0.82rem;">🔍 检查变更</button>
+            </div>
+            <div id="snap-changes" style="margin-bottom:14px;"></div>
+            <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px;">快照历史</div>
+            <div id="snap-list"></div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>

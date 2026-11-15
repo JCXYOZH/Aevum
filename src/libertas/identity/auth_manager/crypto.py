@@ -80,7 +80,7 @@ def verify_license_key(key: str) -> Dict:
         key = key.strip()
         if not key.startswith("LIBERTAS-"):
             return {"valid": False, "error": "密钥格式错误"}
-        body = key[6:]
+        body = key[len("LIBERTAS-"):]
         if "." not in body:
             return {"valid": False, "error": "密钥格式错误"}
         payload_b64, sig_b64 = body.split(".", 1)

@@ -22,6 +22,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+# auth_api 直接引用 libertas 源码包；入口在导入它之前先把 src 放进 sys.path。
+_SRC_DIR = Path(__file__).resolve().parents[3] / "src"
+if _SRC_DIR.is_dir() and str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from .auth_api import AuthAPI
+    from .chat_api import ChatAPI
+except ImportError:  # 直接以脚本方式运行 desktop_server.py
+    from auth_api import AuthAPI
+    from chat_api import ChatAPI
+
 
 def _default_root() -> Path:
     """Resolve the data root for both a source checkout and a frozen build.
@@ -68,6 +80,30 @@ DATA_ROOT = Path(
 ERROR_PATTERN = re.compile(r"0x[0-9A-Fa-f]{6}")
 MODEL_EXE_NAME = "memoria_gen_cpu.exe" if os.name == "nt" else "memoria_gen_cpu"
 MODEL_EXE_CUDA_NAME = "memoria_gen.exe" if os.name == "nt" else "memoria_gen"
+
+
+def _torch_lib_path(env: dict) -> Path | None:
+    """Locate the torch runtime directory used by the native generator.
+
+    A source checkout often has no ``build/runtime``; packaged desktop builds do.
+    ``MEMORIA_TORCH_LIB`` always wins so an external runtime stays selectable.
+    """
+    configured = env.get("MEMORIA_TORCH_LIB", "").strip()
+    if configured:
+        candidate = Path(configured).expanduser()
+        if not candidate.is_absolute():
+            candidate = ROOT / candidate
+        if candidate.is_dir():
+            return candidate
+    candidates = [BUILD_ROOT / "runtime"]
+    candidates.extend(sorted((ROOT / "apps" / "desktop" / "dist-app").glob("*/resources/build/runtime")))
+    candidates.append(Path("D:/venv/Lib/site-packages/torch/lib"))
+    home = Path.home()
+    candidates.append(home / "AppData" / "Local" / "Programs" / "Python" / "Python312" / "Lib" / "site-packages" / "torch" / "lib")
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def port_open(host: str, port: int, timeout: float = 0.35) -> bool:
@@ -423,12 +459,14 @@ class MonitorHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # keep the console quiet
         return
 
-    def _send_json(self, payload: dict, status: int = 200) -> None:
+    def _send_json(self, payload: dict, status: int = 200, headers: dict | None = None) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -453,11 +491,24 @@ class MonitorHandler(BaseHTTPRequestHandler):
         route = parsed.path
         metrics_path = Path(self.server.metrics_path)
 
+        auth_api = getattr(self.server, "auth_api", None)
+        if auth_api is not None and (route.startswith("/api/auth/") or route == "/api/current_user"):
+            if auth_api.handle_get(self, route):
+                return
+
         if route in {"/", "/desktop"}:
             self._send_file(WEB_ROOT / "desktop.html")
             return
         if route == "/legacy":
             self._send_file(WEB_ROOT / "index.html")
+            return
+        if route == "/mrhua":
+            self.send_response(302)
+            self.send_header("Location", "/apps/community/web/mrhua/index.html")
+            self.end_headers()
+            return
+        if route == "/mrhua/":
+            self._send_file(WEB_ROOT / "mrhua" / "index.html")
             return
         if route == "/api/health":
             self._send_json(health_payload(metrics_path, getattr(self.server, "ports", None)))
@@ -515,7 +566,21 @@ class MonitorHandler(BaseHTTPRequestHandler):
         if safe.startswith("api/"):
             self._send_json({"ok": False, "message": "unknown api"}, 404)
             return
-        target = WEB_ROOT / safe
+        # 拆分后的页面从真实项目根加载 /engine 与 /apps/console/ui，而不是复制一份脚本。
+        if safe.startswith(("apps/console/ui/", "apps/community/web/", "engine/")):
+            target = (ROOT / safe).resolve()
+            if ROOT.resolve() not in target.parents and target != ROOT.resolve():
+                self._send_json({"ok": False, "message": "invalid path"}, 400)
+                return
+            if target.exists() and target.is_file():
+                self._send_file(target)
+                return
+            self._send_json({"ok": False, "message": "file not found"}, 404)
+            return
+        target = (WEB_ROOT / safe).resolve()
+        if WEB_ROOT.resolve() not in target.parents and target != WEB_ROOT.resolve():
+            self._send_json({"ok": False, "message": "invalid path"}, 400)
+            return
         if not target.exists() or not target.is_file():
             # Unknown routes fall back to the desktop shell so the page is
             # forgiving when someone types a stale app name.
@@ -525,6 +590,22 @@ class MonitorHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        auth_api = getattr(self.server, "auth_api", None)
+        # 会话历史与取消标记必须跨请求保留，所以 ChatAPI 只创建一次，挂在 server 上。
+        chat_api = getattr(self.server, "chat_api", None)
+        if chat_api is None and auth_api is not None:
+            chat_api = ChatAPI(auth_api, self._generate_for_chat)
+            self.server.chat_api = chat_api
+        if auth_api is not None and parsed.path.startswith("/api/auth/"):
+            if auth_api.handle_post(self, parsed.path):
+                return
+            self._send_json({"success": False, "message": "unknown auth api"}, 404)
+            return
+        if chat_api is not None and parsed.path.startswith("/api/chat/"):
+            if chat_api.handle_post(self, parsed.path):
+                return
+            self._send_json({"success": False, "message": "unknown chat api"}, 404)
+            return
         if parsed.path != "/api/model/generate":
             self._send_json({"ok": False, "message": "unknown api"}, 404)
             return
@@ -538,6 +619,30 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "message": f"bad json: {error}"}, 400)
             return
 
+        payload, status = self._generate_text(body)
+        self._send_json(payload, status)
+
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        auth_api = getattr(self.server, "auth_api", None)
+        if auth_api is not None and parsed.path.startswith("/api/auth/"):
+            if auth_api.handle_delete(self, parsed.path):
+                return
+            self._send_json({"success": False, "message": "unknown auth api"}, 404)
+            return
+        self._send_json({"success": False, "message": "unknown api"}, 404)
+
+    def _generate_for_chat(self, body: dict) -> tuple[dict, int]:
+        defaults = model_payload(
+            Path(getattr(self.server, "model_exe", BUILD_ROOT / MODEL_EXE_NAME)),
+            Path(getattr(self.server, "model_data", DATA_ROOT / "tinyshakespeare_3000.txt")),
+            Path(getattr(self.server, "model_exe_cuda", BUILD_ROOT / MODEL_EXE_CUDA_NAME)),
+        )["defaults"]
+        body.setdefault("checkpoint", defaults["checkpoint"])
+        body.setdefault("data", defaults["data"])
+        return self._generate_text(body)
+
+    def _generate_text(self, body: dict) -> tuple[dict, int]:
         # The CPU build deliberately omits torch_cuda.dll. It is the default
         # because the desktop monitor often runs on a machine whose page file
         # cannot accommodate a second CUDA runtime. `cuda` is an explicit opt-in.
@@ -549,8 +654,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
             if not data.is_file():
                 raise ValueError("training data file not found")
             prompt = str(body.get("prompt", ""))
-            if not prompt or len(prompt) > 2000:
-                raise ValueError("prompt must be 1..2000 characters")
+            if not prompt or len(prompt) > 6000:
+                raise ValueError("prompt must be 1..6000 characters")
             max_new = int(body.get("max_new_tokens", 48))
             max_new = max(1, min(256, max_new))
             temperature = float(body.get("temperature", 1.0))
@@ -559,22 +664,17 @@ class MonitorHandler(BaseHTTPRequestHandler):
             if device not in {"cpu", "cuda"}:
                 raise ValueError("device must be cpu or cuda")
         except (TypeError, ValueError) as error:
-            self._send_json({"ok": False, "message": str(error)}, 400)
-            return
+            return {"ok": False, "message": str(error)}, 400
 
         if device == "cuda":
             exe = Path(getattr(self.server, "model_exe_cuda", BUILD_ROOT / "memoria_gen.exe"))
         else:
             exe = Path(getattr(self.server, "model_exe", BUILD_ROOT / "memoria_gen_cpu.exe"))
         if not exe.exists():
-            self._send_json(
-                {
-                    "ok": False,
-                    "message": f"{exe.name} is missing; run scripts/build.ps1",
-                },
-                503,
-            )
-            return
+            return {
+                "ok": False,
+                "message": f"{exe.name} is missing; run scripts/build.ps1",
+            }, 503
 
         command = [
             str(exe),
@@ -598,10 +698,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
         env["MKL_NUM_THREADS"] = "1"
         env["TORCH_NUM_THREADS"] = "1"
         env["OPENBLAS_NUM_THREADS"] = "1"
-        torch_lib = Path(env["MEMORIA_TORCH_LIB"]).expanduser() if env.get("MEMORIA_TORCH_LIB") else BUILD_ROOT / "runtime"
-        if not torch_lib.is_absolute():
-            torch_lib = ROOT / torch_lib
-        if torch_lib.is_dir():
+        torch_lib = _torch_lib_path(env)
+        if torch_lib is not None:
             env["PATH"] = str(torch_lib) + os.pathsep + env.get("PATH", "")
             if os.name != "nt":
                 env["LD_LIBRARY_PATH"] = (
@@ -622,11 +720,9 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except subprocess.TimeoutExpired:
-            self._send_json({"ok": False, "message": "generation timed out"}, 504)
-            return
+            return {"ok": False, "message": "generation timed out"}, 504
         except OSError as error:
-            self._send_json({"ok": False, "message": f"cannot start exe: {error}"}, 500)
-            return
+            return {"ok": False, "message": f"cannot start exe: {error}"}, 500
 
         text = extract_generated(completed.stdout)
         try:
@@ -642,7 +738,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
             "stdout": completed.stdout[-6000:],
             "stderr": completed.stderr[-6000:],
         }
-        self._send_json(payload, 200 if payload["ok"] else 500)
+        return payload, 200 if payload["ok"] else 500
 
 
 def main() -> None:
@@ -686,6 +782,9 @@ def main() -> None:
         "bridge": args.bridge_port,
         "serial": args.serial_port,
     }
+    auth_api = AuthAPI()
+    server.auth_api = auth_api  # type: ignore[attr-defined]
+
     print(f"Memoria desktop: http://{args.host}:{args.port}/", flush=True)
     print(f"Metrics: {metrics_path}", flush=True)
     try:
