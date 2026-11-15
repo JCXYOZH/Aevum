@@ -74,6 +74,38 @@
   if (new URLSearchParams(global.location.search).get("scene") === "1") {
     api.setView("focus");
   }
+  var params = new URLSearchParams(global.location.search);
+  if (global.AEVUM.scene.attachVRM) {
+    var yaw = params.get("yaw");
+    global.AEVUM.scene.attachVRM({
+      mount: mount,
+      scene: api,
+      slotId: "host",
+      height: 1.75,
+      yaw: yaw === null ? Math.PI : Number(yaw),
+      modelUrl: "/engine/assets/models/furina/" + encodeURIComponent("f芙宁娜.vrm")
+    });
+  }
+  if (global.AEVUM.scene.attachPMX && params.get("guide") !== "live2d") {
+    var pmxYaw = params.get("pmxYaw");
+    global.AEVUM.scene.attachPMX({
+      mount: mount,
+      scene: api,
+      slotId: "guide",
+      height: 1.75,
+      yaw: pmxYaw === null ? Math.PI : Number(pmxYaw),
+      modelUrl: "/engine/assets/models/ganyu/" + encodeURIComponent("甘雨.pmx"),
+      baseUrl: "/engine/assets/models/ganyu/"
+    });
+  }
+  if (global.AEVUM.scene.attachLive2D && params.get("guide") === "live2d") {
+    global.AEVUM.scene.attachLive2D({
+      mount: mount,
+      scene: api,
+      slotId: "guide",
+      modelUrl: "/engine/assets/models/live2d/xiaoyue/" + encodeURIComponent("xiaoyue.model3.json")
+    });
+  }
   MD.bus.on("apps", function () {
     api.refresh(buildNodes(), slots);
   });

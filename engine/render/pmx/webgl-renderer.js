@@ -57,11 +57,12 @@
   }
 
   class AevumRenderer {
-    constructor(canvas) {
+    constructor(canvas, options) {
+      const contextOptions = (options && options.context) || {};
       this.canvas = canvas;
       this.gl = canvas.getContext('webgl2', {
-        alpha: false,
-        antialias: true,
+        alpha: contextOptions.alpha !== false,
+        antialias: contextOptions.antialias !== false,
         depth: true,
         stencil: false,
         premultipliedAlpha: false
@@ -107,7 +108,7 @@
       this.morphStats = null;
       this.textures = [];
       this.sharedToonTextures = [];
-      this.options = { texture: true, light: true, wireframe: false, flipY: false, toon: true, sphere: true, outline: true };
+      this.options = { texture: true, light: true, wireframe: false, flipY: false, toon: true, sphere: true, outline: true, clearColor: (options && options.clearColor) || [0.04, 0.06, 0.09, 1] };
       this.boneMatrices = new Float32Array(0);
       this.boneTexture = this.gl.createTexture();
       this.boneTexWidth = 0;
@@ -343,7 +344,8 @@
           } else {
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source.image);
           }
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -577,19 +579,27 @@
       return merged;
     }
 
-    render(time, pose) {
+    render(time, pose, override) {
       const gl = this.gl;
       if (!this.model || !this.buffers) return;
       gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      const clear = (override && override.clearColor) || this.options.clearColor;
+      gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      this._updateViewProjection();
+      if (override && override.viewProjection) {
+        const target = this.viewProj;
+        for (let i = 0; i < 16; i += 1) target[i] = override.viewProjection[i];
+      } else {
+        this._updateViewProjection();
+      }
+      const modelMatrix = (override && override.modelMatrix) || this.modelMatrix;
       const effectivePose = this._mergeMorphPose(pose);
       if (effectivePose) this.computeBoneMatrices(effectivePose);
 
       gl.useProgram(this.program);
       gl.uniformMatrix4fv(this.locations.viewProj, false, this.viewProj);
       gl.uniformMatrix4fv(this.locations.view, false, this.viewMatrix);
-      gl.uniformMatrix4fv(this.locations.model, false, this.modelMatrix);
+      gl.uniformMatrix4fv(this.locations.model, false, modelMatrix);
       gl.uniform2f(this.locations.viewport, this.canvas.width || 1, this.canvas.height || 1);
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.boneTexture);

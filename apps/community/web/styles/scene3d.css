@@ -17,10 +17,25 @@
     cursor: grab;
     touch-action: none;
   }
+  .scene3d__characters {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .scene3d__live2d {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+  }
   .scene3d__canvas:active { cursor: grabbing; }
   .scene3d__overlay {
     position: absolute;
     inset: 0;
+    z-index: 3;
     pointer-events: none;
   }
   .scene3d--fallback .scene3d__canvas { display: none; }

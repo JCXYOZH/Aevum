@@ -155,6 +155,7 @@
     var nodeElements = [];
     var slotElements = [];
     var drag = null;
+    var frameHooks = [];
 
     camera.mode = "orbit";
     camera.target = [0, 0, 0];
@@ -367,6 +368,9 @@
       lastTime = now;
       camera.update(dt);
       draw();
+      frameHooks.forEach(function (hook) {
+        try { hook(now, dt); } catch (error) { if (global.console) console.error(error); }
+      });
       updateAnchors();
     }
 
@@ -555,7 +559,35 @@
       setView: setView,
       setStatus: setStatus,
       camera: camera,
-      screenRay: screenRay
+      screenRay: screenRay,
+      project: function (world) { return project(viewProjection, world, width, height); },
+      getViewProjection: function () { return viewProjection; },
+      getSize: function () { return { width: width, height: height, dpr: dpr }; },
+      slotWorld: function (id) {
+        for (var i = 0; i < slots.length; i += 1) {
+          if (slots[i].id === id) return [slots[i].grid[0] * 2.0, 0, slots[i].grid[1] * 2.0];
+        }
+        return null;
+      },
+      setSlotMeta: function (id, meta) {
+        slots.forEach(function (slot) {
+          if (slot.id === id) slot.meta = meta;
+        });
+        slotElements.forEach(function (item) {
+          if (item.slot.id !== id) return;
+          item.slot.meta = meta;
+          var label = item.el.querySelector(".scene-slot__meta");
+          if (label) label.textContent = meta;
+        });
+      },
+      onFrame: function (hook) {
+        if (typeof hook !== "function") return function () {};
+        frameHooks.push(hook);
+        return function () {
+          var index = frameHooks.indexOf(hook);
+          if (index >= 0) frameHooks.splice(index, 1);
+        };
+      }
     };
     return api;
   }

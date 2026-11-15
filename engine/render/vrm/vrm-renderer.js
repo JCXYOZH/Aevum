@@ -197,11 +197,12 @@
   }
 
   class VRMRenderer {
-    constructor(canvas) {
+    constructor(canvas, options) {
+      const contextOptions = (options && options.context) || {};
       this.canvas = canvas;
       this.gl = canvas.getContext('webgl2', {
-        alpha: false,
-        antialias: true,
+        alpha: contextOptions.alpha !== false,
+        antialias: contextOptions.antialias !== false,
         depth: true,
         stencil: false,
         premultipliedAlpha: false
@@ -211,6 +212,7 @@
       this.program = createProgram(this.gl, VRMRenderer.VERTEX_SHADER, VRMRenderer.FRAGMENT_SHADER);
       this.locations = {
         viewProj: this.gl.getUniformLocation(this.program, 'uViewProj'),
+        model: this.gl.getUniformLocation(this.program, 'uModel'),
         mesh: this.gl.getUniformLocation(this.program, 'uMesh'),
         bones: this.gl.getUniformLocation(this.program, 'uBones[0]'),
         baseColor: this.gl.getUniformLocation(this.program, 'uBaseColor'),
@@ -219,7 +221,13 @@
         lightDir: this.gl.getUniformLocation(this.program, 'uLightDir'),
         lightOn: this.gl.getUniformLocation(this.program, 'uLightOn')
       };
-      this.options = { texture: true, light: true, wireframe: false };
+      this.options = {
+        texture: true,
+        light: true,
+        wireframe: false,
+        clearColor: (options && options.clearColor) || [0.03, 0.045, 0.07, 1]
+      };
+      this.modelMatrix = this.math.M4.identity(this.math.M4.create());
       this.textures = [];
       this.primitives = [];
       this.meshes = [];
@@ -379,49 +387,57 @@
       }
     }
 
-    render(time, pose, transforms) {
+    render(time, pose, transforms, override) {
       const gl = this.gl;
       const math = this.math;
       this.resize();
       const width = this.canvas.width;
       const height = this.canvas.height;
+      const clear = (override && override.clearColor) || this.options.clearColor;
       gl.viewport(0, 0, width, height);
-      gl.clearColor(0.03, 0.045, 0.07, 1);
+      gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.enable(gl.DEPTH_TEST);
       gl.disable(gl.CULL_FACE);
 
       const world = computeNodeWorld(this.vrm.json, math, pose || null, transforms || null);
-      const center = [
-        (this.bounds.min[0] + this.bounds.max[0]) / 2,
-        (this.bounds.min[1] + this.bounds.max[1]) / 2,
-        (this.bounds.min[2] + this.bounds.max[2]) / 2
-      ];
-      const size = Math.max(
-        this.bounds.max[0] - this.bounds.min[0],
-        this.bounds.max[1] - this.bounds.min[1],
-        this.bounds.max[2] - this.bounds.min[2]
-      );
-      const distance = size * 2.2 / (this.zoom || 1);
-      const yaw = this.viewYaw || 0;
-      const eye = [
-        center[0] + Math.sin(yaw) * distance,
-        center[1] + size * 0.03,
-        center[2] - Math.cos(yaw) * distance
-      ];
-      const view = math.M4.lookAt(math.M4.create(), eye, center, [0, 1, 0]);
-      const projection = math.M4.perspective(
-        math.M4.create(),
-        35 * Math.PI / 180,
-        width / (height || 1),
-        0.01,
-        size * 10 + 10
-      );
-      const viewProj = math.M4.mult(math.M4.create(), view, projection);
+      let viewProj;
+      if (override && override.viewProjection) {
+        viewProj = override.viewProjection;
+      } else {
+        const center = [
+          (this.bounds.min[0] + this.bounds.max[0]) / 2,
+          (this.bounds.min[1] + this.bounds.max[1]) / 2,
+          (this.bounds.min[2] + this.bounds.max[2]) / 2
+        ];
+        const size = Math.max(
+          this.bounds.max[0] - this.bounds.min[0],
+          this.bounds.max[1] - this.bounds.min[1],
+          this.bounds.max[2] - this.bounds.min[2]
+        );
+        const distance = size * 2.2 / (this.zoom || 1);
+        const yaw = this.viewYaw || 0;
+        const eye = [
+          center[0] + Math.sin(yaw) * distance,
+          center[1] + size * 0.03,
+          center[2] - Math.cos(yaw) * distance
+        ];
+        const view = math.M4.lookAt(math.M4.create(), eye, center, [0, 1, 0]);
+        const projection = math.M4.perspective(
+          math.M4.create(),
+          35 * Math.PI / 180,
+          width / (height || 1),
+          0.01,
+          size * 10 + 10
+        );
+        viewProj = math.M4.mult(math.M4.create(), view, projection);
+      }
       this.lastViewProj = viewProj;
+      const modelMatrix = (override && override.modelMatrix) || this.modelMatrix;
 
       gl.useProgram(this.program);
       gl.uniformMatrix4fv(this.locations.viewProj, false, viewProj);
+      gl.uniformMatrix4fv(this.locations.model, false, modelMatrix);
       gl.uniform3fv(this.locations.lightDir, [0.4, 0.8, 0.5]);
       gl.uniform1f(this.locations.lightOn, this.options.light ? 1 : 0);
       gl.activeTexture(gl.TEXTURE0);
@@ -468,6 +484,7 @@ in vec2 aUv;
 in vec4 aJoints;
 in vec4 aWeights;
 uniform mat4 uViewProj;
+uniform mat4 uModel;
 uniform mat4 uMesh;
 uniform mat4 uBones[600];
 out vec3 vNormal;
@@ -478,9 +495,10 @@ void main() {
             + uBones[int(aJoints.z)] * aWeights.z
             + uBones[int(aJoints.w)] * aWeights.w;
   vec4 skinned = skin * vec4(aPosition, 1.0);
-  vNormal = mat3(uMesh * skin) * aNormal;
+  mat4 world = uModel * uMesh;
+  vNormal = mat3(world * skin) * aNormal;
   vUv = aUv;
-  gl_Position = uViewProj * (uMesh * skinned);
+  gl_Position = uViewProj * (world * skinned);
 }`;
 
   VRMRenderer.FRAGMENT_SHADER = `#version 300 es
