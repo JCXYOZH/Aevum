@@ -63,6 +63,7 @@
     if (app.id === "relay") return MD.panels.relay();
     if (app.id === "errors") return MD.panels.errors();
     if (app.id === "exhibit") return MD.panels.exhibit({ title: "AEVUM 展示页" });
+    if (app.id === "camera") return MD.panels.camera();
     if (app.url) return MD.panels.exhibit({ url: app.url, title: app.title });
     return MD.panels.exhibit({ url: "index.html", title: app.title });
   }

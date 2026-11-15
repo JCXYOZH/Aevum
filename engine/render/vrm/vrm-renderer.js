@@ -210,7 +210,8 @@
         antialias: contextOptions.antialias !== false,
         depth: true,
         stencil: false,
-        premultipliedAlpha: false
+        premultipliedAlpha: false,
+        preserveDrawingBuffer: true
       });
       if (!this.gl) throw new Error('WebGL2 is not available');
       this.math = getMath();

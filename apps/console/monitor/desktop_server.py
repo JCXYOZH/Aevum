@@ -496,7 +496,10 @@ class MonitorHandler(BaseHTTPRequestHandler):
             if auth_api.handle_get(self, route):
                 return
 
-        if route in {"/", "/desktop"}:
+        if route == "/":
+            self._send_file(WEB_ROOT / "index.html")
+            return
+        if route == "/desktop":
             self._send_file(WEB_ROOT / "desktop.html")
             return
         if route == "/legacy":

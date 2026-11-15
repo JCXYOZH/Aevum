@@ -23,7 +23,7 @@ sudo env DOMAIN=www.mrhua.cn EMAIL=admin@mrhua.cn bash apps/console/deploy/insta
 - 默认使用 `apps/console/kernel/robot/disk.img`，也就是已经接好串口上报的真实内核镜像；
 - 模型生成器是可选项：没有 `build/linux/memoria_gen_cpu` 时，网站、MrHua、内核实况照常启动，只让模型对话窗口显示不可用。
 
-当前桌面默认显示三个入口：MrHua 广域网、内核实况、展示页。部署前请确认 `apps/community/web/mrhua/index.html`、`apps/community/web/desktop.html` 和 `apps/community/web/index.html` 都在仓库里。
+当前根地址 `/` 显示 `apps/community/web/index.html` 展示页；`desktop.html` 是单独的桌面入口。桌面默认显示三个常驻启动项：MrHua 广域网、内核实况、展示页；启动台里另有拍照窗口。部署前请确认 `apps/community/web/mrhua/index.html`、`apps/community/web/desktop.html` 和 `apps/community/web/index.html` 都在仓库里。
 
 ## 已经部署过，只修 nginx
 
@@ -56,6 +56,7 @@ nginx -t
 ss -lntp | grep -E ':80|:443'
 curl -I https://www.mrhua.cn/engine/validate.html
 curl -fsS https://www.mrhua.cn/engine/validate.html | grep '渲染引擎验证'
+curl -fsS https://www.mrhua.cn/ | grep -q 'class="masthead"'
 curl -fsS https://www.mrhua.cn/api/health
 curl -fsS https://www.mrhua.cn/desktop.html -o /dev/null
 curl -fsS https://www.mrhua.cn/mrhua/index.html -o /dev/null

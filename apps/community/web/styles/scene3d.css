@@ -20,10 +20,11 @@
   .scene3d__characters-layer {
     position: absolute;
     inset: 0;
-    z-index: 3;
+    z-index: 1;
     pointer-events: none;
     overflow: hidden;
   }
+  .scene3d__characters-layer.is-hidden { display: none; }
   .scene3d__characters {
     position: absolute;
     inset: 0;

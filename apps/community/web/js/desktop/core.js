@@ -27,6 +27,7 @@
   var ICONS = {
     grid: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/>',
     terminal: '<path d="M3 5h18v14H3z"/><path d="m7 9 3 3-3 3M13 15h4"/>',
+    camera: '<rect x="3" y="7" width="18" height="13" rx="1"/><path d="M8 7l2-3h4l2 3M12 11a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/>',
     pulse: '<path d="M3 12h4l2-6 4 12 2-6h6"/>',
     chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
     alert: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v5M12 17.5v.2"/>',
@@ -84,6 +85,7 @@
     { id: "relay", title: "中继交流", meta: "ROOM / LOBBY", icon: "chat", w: 590, h: 590, desc: "在线、浏览、发帖" },
     { id: "errors", title: "错误看板", meta: "0xRRFFTT", icon: "alert", w: 680, h: 600, desc: "错误码与日志" },
     { id: "exhibit", title: "展示页", meta: "LEGACY PAGE", icon: "page", w: 940, h: 660, desc: "原 AEVUM 长页" },
+    { id: "camera", title: "拍照", meta: "LOCAL / RAM", icon: "camera", w: 560, h: 560, desc: "拍下 3D 场景；图片只在本次页面内存中" },
     {
       id: "mrhua-wan",
       title: "MrHua 广域网",
@@ -96,8 +98,8 @@
     }
   ];
 
-  // 当前演示阶段显示 MrHua 广域网、内核实况和原展示页；其它窗口代码仍在，避免删掉以后要用的入口。
-  MD.visibleApps = ["mrhua-wan", "kernel", "exhibit"];
+  // 当前演示阶段显示 MrHua 广域网、内核实况、原展示页和拍照窗口；其它窗口代码仍在，避免删掉以后要用的入口。
+  MD.visibleApps = ["mrhua-wan", "kernel", "exhibit", "camera"];
 
   MD.state = {
     wins: new Map(),

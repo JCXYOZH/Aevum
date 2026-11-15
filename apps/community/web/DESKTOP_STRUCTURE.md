@@ -12,6 +12,7 @@ template. Styles and behavior live in their own files.
 | `styles/desktop/windows.css` | window frame, title bar, resize handle, overview cards/slots |
 | `styles/desktop/launchpad.css` | launchpad grid and app tiles |
 | `styles/desktop/panels.css` | trainer chart, kernel stage, relay feed, error rows |
+| `styles/desktop/camera.css` | local photo window: stage, flash, file drop |
 | `styles/desktop/dialog.css` | add-window dialog |
 | `styles/desktop/responsive.css` | narrow-screen rules |
 | `styles/scene3d.css` | shared 3D ground-grid layer, node anchors, character slots, scene tools (see `SCENE3D.md`) |
@@ -29,7 +30,7 @@ template. Styles and behavior live in their own files.
 | `js/desktop/components/dialog.js` | add-window dialog |
 | `js/desktop/components/terminal.js` | reusable 80×25 text surface |
 | `js/desktop/components/line-chart.js` | reusable loss chart |
-| `js/desktop/panels/*.js` | one panel per file: overview, kernel, trainer, relay, errors, exhibit |
+| `js/desktop/panels/*.js` | one panel per file: overview, kernel, trainer, relay, errors, exhibit, camera |
 | `js/desktop/main.js` | boot and wire components/panels; exposes `window.MemoriaDesk` |
 | `js/scene/scene-core.js` | shared WebGL ground grid, camera matrices, DOM anchor projection, ray picking, character slots, frame hooks |
 | `js/scene/scene-vrm.js` | VRM character pass: transparent canvas, real model load, idle pose, slot placement |

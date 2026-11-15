@@ -80,6 +80,82 @@
   var params = new URLSearchParams(global.location.search);
   var requestedView = params.get("view");
   if (requestedView) api.setView(requestedView);
+
+  /* Camera + character visibility tools. The models sit in their own layer:
+     by default they are visible but behind the windows, and this button lets
+     the user remove them from the desk entirely. */
+  function addSceneTool(label, handler) {
+    var tools = mount.querySelector(".scene3d__tools");
+    if (!tools) return null;
+    var button = document.createElement("button");
+    button.className = "scene3d__tool";
+    button.type = "button";
+    button.textContent = label;
+    button.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      handler(button);
+    });
+    tools.appendChild(button);
+    return button;
+  }
+
+  var characterVisible = true;
+  var characterButton = addSceneTool("隐藏角色", function (button) {
+    characterVisible = !characterVisible;
+    characterLayer.classList.toggle("is-hidden", !characterVisible);
+    button.textContent = characterVisible ? "隐藏角色" : "显示角色";
+    button.setAttribute("aria-pressed", characterVisible ? "false" : "true");
+    api.setStatus(characterVisible ? "角色已显示" : "角色已隐藏");
+  });
+
+  addSceneTool("拍照", function () {
+    MD.bus.emit("request-open", "camera");
+    api.setStatus("拍照窗口已打开");
+  });
+
+  function capturePhoto() {
+    var ground = mount.querySelector(".scene3d__canvas");
+    if (!ground) return null;
+    var rect = mount.getBoundingClientRect();
+    var width = Math.max(1, Math.round(rect.width));
+    var height = Math.max(1, Math.round(rect.height));
+    var scale = Math.min(global.devicePixelRatio || 1, 2);
+    var output = document.createElement("canvas");
+    output.width = Math.max(1, Math.round(width * scale));
+    output.height = Math.max(1, Math.round(height * scale));
+    var ctx = output.getContext("2d");
+    if (!ctx) return null;
+
+    var bodyBackground = global.getComputedStyle(document.body).backgroundColor;
+    ctx.fillStyle = bodyBackground && bodyBackground !== "rgba(0, 0, 0, 0)"
+      ? bodyBackground
+      : "#f7f1e4";
+    ctx.fillRect(0, 0, output.width, output.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(ground, 0, 0, ground.width, ground.height, 0, 0, output.width, output.height);
+
+    if (characterLayer && !characterLayer.classList.contains("is-hidden")) {
+      var canvases = characterLayer.querySelectorAll(".scene3d__characters, .scene3d__live2d");
+      var origin = rect;
+      Array.prototype.forEach.call(canvases, function (canvas) {
+        var box = canvas.getBoundingClientRect();
+        if (box.width < 1 || box.height < 1) return;
+        var x = (box.left - origin.left) * scale;
+        var y = (box.top - origin.top) * scale;
+        ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, x, y, box.width * scale, box.height * scale);
+      });
+    }
+
+    try {
+      return output.toDataURL("image/png");
+    } catch (error) {
+      if (global.console) console.error("capturePhoto:", error);
+      return null;
+    }
+  }
+  api.capturePhoto = capturePhoto;
+  if (characterButton) characterButton.setAttribute("aria-pressed", "false");
   var hostHandle = null;
   var guideHandle = null;
   var look = null;

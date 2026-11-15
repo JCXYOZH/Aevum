@@ -517,8 +517,8 @@
       mount.parentElement && mount.parentElement.classList.add("has-scene");
 
       canvas = createElement("canvas", "scene3d__canvas", mount);
-      var context = canvas.getContext("webgl", { antialias: true, alpha: true, premultipliedAlpha: false }) ||
-        canvas.getContext("experimental-webgl", { antialias: true, alpha: true, premultipliedAlpha: false });
+      var context = canvas.getContext("webgl", { antialias: true, alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true }) ||
+        canvas.getContext("experimental-webgl", { antialias: true, alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true });
       if (!context) {
         mount.classList.add("scene3d--fallback");
         layout();
