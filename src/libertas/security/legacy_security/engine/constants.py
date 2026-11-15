@@ -14,9 +14,9 @@ import logging
 from typing import Dict, List, Optional, Any
 from collections import deque
 
-from libertas.security.legacy_mrhua.waf_fingerprint import detect_waf, is_blocked_by_waf
-from libertas.security.legacy_mrhua.payload_analyzer import analyze_request, analyze_response, PAYLOAD_CATEGORIES
-from libertas.security.legacy_mrhua.waf_sandbox import get_waf_sandbox
-from libertas.security.legacy_mrhua.traffic_monitor import get_traffic_detector
+from libertas.security.legacy_security.waf_fingerprint import detect_waf, is_blocked_by_waf
+from libertas.security.legacy_security.payload_analyzer import analyze_request, analyze_response, PAYLOAD_CATEGORIES
+from libertas.security.legacy_security.waf_sandbox import get_waf_sandbox
+from libertas.security.legacy_security.traffic_monitor import get_traffic_detector
 
 logger = logging.getLogger(__name__)

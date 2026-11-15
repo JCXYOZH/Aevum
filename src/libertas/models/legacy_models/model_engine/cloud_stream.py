@@ -325,7 +325,7 @@ class ModelEngineCloudStream(object):
                 if tunnel_p:
                     # 防御：确保代理 URL 是 str
                     proxies = {k: (str(v) if v is not None else None) for k, v in tunnel_p.items()}
-                from libertas.tools.legacy_mrhua.web_search import set_proxy as _wsp
+                from libertas.tools.legacy_tools.web_search import set_proxy as _wsp
                 _wsp(proxies)
             except Exception:
                 pass

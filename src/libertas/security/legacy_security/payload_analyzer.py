@@ -329,7 +329,7 @@ def analyze_response(
             "sensitive_info": [...],
         }
     """
-    from libertas.security.legacy_mrhua.waf_fingerprint import is_blocked_by_waf, detect_waf
+    from libertas.security.legacy_security.waf_fingerprint import is_blocked_by_waf, detect_waf
 
     findings = []
     error_disclosure = []

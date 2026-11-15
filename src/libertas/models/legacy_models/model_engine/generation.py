@@ -156,9 +156,9 @@ class ModelEngineGeneration(object):
                     # 三层搜索架构（GGUF模型也支持）
                     if self._needs_web_search(user_input):
                         try:
-                            from libertas.tools.legacy_mrhua.net_recon import recon_url, format_recon
-                            from libertas.tools.legacy_mrhua.web_engine import robust_fetch, format_fetch_result, extract_url, is_url
-                            from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
+                            from libertas.tools.legacy_tools.net_recon import recon_url, format_recon
+                            from libertas.tools.legacy_tools.web_engine import robust_fetch, format_fetch_result, extract_url, is_url
+                            from libertas.tools.legacy_tools.search_orchestrator import get_search_orchestrator, format_parallel_results
                             _url = extract_url(user_input)
                             if not _url and is_url(user_input.strip()):
                                 _url = user_input.strip()
@@ -248,12 +248,12 @@ class ModelEngineGeneration(object):
                 # 三层搜索架构（本地模型路径）
                 if self._needs_web_search(user_input):
                     try:
-                        from libertas.tools.legacy_mrhua.net_recon import recon_url, format_recon
-                        from libertas.tools.legacy_mrhua.web_engine import (
+                        from libertas.tools.legacy_tools.net_recon import recon_url, format_recon
+                        from libertas.tools.legacy_tools.web_engine import (
                             robust_fetch, format_fetch_result,
                             extract_url, is_url
                         )
-                        from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
+                        from libertas.tools.legacy_tools.search_orchestrator import get_search_orchestrator, format_parallel_results
                         _url = extract_url(user_input)
                         if not _url and is_url(user_input.strip()):
                             _url = user_input.strip()

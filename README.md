@@ -79,8 +79,9 @@ scripts\desktop.ps1 -Stop
 `src/libertas/core` 只保留兼容入口，具体实现按职责分布在 `foundation`、`observability`、`security`、`identity`、`release`、`data`、`workflow`、`ai`、`tools`、`models`、`media`、`code`、`network` 等目录。
 
 - `src/libertas/foundation/`：异常、终端、事件总线、缓存、限流、重试、指标、健康检查、计时、配置。
-- `src/libertas/models/legacy_mrhua/`：从 `mrhua/models` 迁入，36 个 `.py`，33 个不超过 500 行，3 个因单个方法体过大仍超过 500 行；`ModelEngine` 的 107 个方法全部保留。
-- `src/libertas/tools/legacy_mrhua/`：旧工具层迁入；外部扫描工具从 `PATH` 或环境变量解析，不在仓库里写死本机路径。
+- `src/libertas/models/legacy_models/`：从 `mrhua/models` 迁入，36 个 `.py`，33 个不超过 500 行，3 个因单个方法体过大仍超过 500 行；`ModelEngine` 的 107 个方法全部保留。
+- `src/libertas/tools/legacy_tools/`：旧工具层迁入；外部扫描工具从 `PATH` 或环境变量解析，不在仓库里写死本机路径。
+- `src/libertas/security/legacy_security/`：旧安全模块迁入，121 个 `.py`，按资产发现、攻击链、扫描器、指纹库等职责分包。
 - `src/libertas/security/`：隐私、合规、守护、沙箱、规则、漏洞情报等能力。
 
 旧 Web UI 的 `get_MrHua`、`queue_orb_command` 目前是 `_compat_web.py` 的兼容占位，接入 Aevum Web 层前不是完整实现。
@@ -93,7 +94,7 @@ scripts\desktop.ps1 -Stop
 python -m compileall -q src\libertas
 ```
 
-当前结果：编译 0 错误；`legacy_mrhua` 6 个子包导入通过，9 个单例工厂返回正确实例，函数全局名检查无实际未定义项。
+当前结果：编译 0 错误；`legacy_models` 6 个子包导入通过，9 个单例工厂返回正确实例，函数全局名检查无实际未定义项。
 
 ## Memoria C++ 内核
 

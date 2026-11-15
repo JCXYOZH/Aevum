@@ -205,7 +205,7 @@ class ModelEngineSearchHelpers(object):
         """
         try:
             import re as _re
-            from libertas.tools.legacy_mrhua.web_search import web_search, fetch_page_content, search_and_summarize
+            from libertas.tools.legacy_tools.web_search import web_search, fetch_page_content, search_and_summarize
             # URL直接抓取
             url_m = _re.search(r'https?://[\w\-./?=&%#:@+~]+', user_input)
             if url_m:

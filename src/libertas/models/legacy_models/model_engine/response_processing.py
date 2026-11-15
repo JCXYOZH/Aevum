@@ -190,7 +190,7 @@ class ModelEngineResponseProcessing(object):
         path = m.group(1).strip()
         content = m.group(2).strip()
         try:
-            from libertas.tools.legacy_mrhua.file_ops import FileOperator
+            from libertas.tools.legacy_tools.file_ops import FileOperator
             fo = FileOperator()
             result = fo.write_file(path, content)
             if result.get('success'):
@@ -220,7 +220,7 @@ class ModelEngineResponseProcessing(object):
             return reply
 
         try:
-            from libertas.tools.legacy_mrhua.file_ops import FileOperator
+            from libertas.tools.legacy_tools.file_ops import FileOperator
             fo = FileOperator()
         except Exception:
             return reply

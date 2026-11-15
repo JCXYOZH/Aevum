@@ -14,10 +14,10 @@ import logging
 from typing import Dict, List, Optional, Any
 from collections import deque
 
-from libertas.security.legacy_mrhua.waf_fingerprint import detect_waf, is_blocked_by_waf
-from libertas.security.legacy_mrhua.payload_analyzer import analyze_request, analyze_response, PAYLOAD_CATEGORIES
-from libertas.security.legacy_mrhua.waf_sandbox import get_waf_sandbox
-from libertas.security.legacy_mrhua.traffic_monitor import get_traffic_detector
+from libertas.security.legacy_security.waf_fingerprint import detect_waf, is_blocked_by_waf
+from libertas.security.legacy_security.payload_analyzer import analyze_request, analyze_response, PAYLOAD_CATEGORIES
+from libertas.security.legacy_security.waf_sandbox import get_waf_sandbox
+from libertas.security.legacy_security.traffic_monitor import get_traffic_detector
 from .constants import *  # noqa: F401,F403
 from .core import *  # noqa: F401,F403
 from .methods_1 import *  # noqa: F401,F403
@@ -72,7 +72,7 @@ class SecurityEnginePart2(object):
         return self._sandbox.test_batch(payloads, source)
     def test_payload_with_transforms(self, payload: str, source: str = "url") -> Dict:
         """测试payload及其所有变形版本，返回完整结果。"""
-        from libertas.security.legacy_mrhua.payload_library import apply_all_transforms
+        from libertas.security.legacy_security.payload_library import apply_all_transforms
         original = self._sandbox.test(payload, source)
         transforms = apply_all_transforms(payload)
         transform_results = []

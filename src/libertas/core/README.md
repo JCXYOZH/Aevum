@@ -11,17 +11,17 @@
 | `observability` | 审计日志、运行监控、系统监控、通知、告警、报告生成 |
 | `application` | 应用生命周期、启动、设置、会话与系统装配 |
 | `identity` | 用户、认证、账号、身份、平台身份、委托 |
-| `security` | 隐私、脱敏、合规、守护、沙箱、规则、漏洞情报、漏洞图谱 |
+| `security` | 隐私、脱敏、合规、守护、沙箱、规则、漏洞情报、漏洞图谱，以及 `legacy_security` 迁移包 |
 | `release` | 发布密钥、版本管理、版本发布 |
 | `crypto` | 加密原语与密钥相关能力 |
 | `data` | 数据目录、备份、迁移、知识库版本、快记、白板、日记、系统设置 |
 | `storage` | 持久化存储适配 |
 | `workflow` | 调度器、任务队列、工作流引擎、编排、任务规划 |
 | `ai` | 智能体、记忆、认知、能力增强、模型控制、意图分类与路由、动态提示词、输出控制与校验、管线 |
-| `models` | 模型解析、渲染对比、模型验证，以及 `legacy_mrhua` 迁移包 |
+| `models` | 模型解析、渲染对比、模型验证，以及 `legacy_models` 迁移包 |
 | `media` | 视频生成等媒体能力 |
 | `vision` | 验证码预处理、OCR、感知哈希与统一视觉入口 |
-| `tools` | 工具装配、治理、库、管理、匹配、统一工具中枢、插件系统、批量与二进制执行、帮助解析 |
+| `tools` | 工具装配、治理、库、管理、匹配、统一工具中枢、插件系统、批量与二进制执行、帮助解析，以及 `legacy_tools` 迁移包 |
 | `plugins` | 插件包 |
 | `contrib` | 外部贡献代码 |
 | `utils` | 通用工具 |
@@ -71,11 +71,11 @@ from libertas.identity.auth_manager import AuthManager
 
 ## models 迁移状态
 
-`mrhua/models` 已迁入 `src/libertas/models/legacy_mrhua`，不覆盖原有 `model_parser`、`model_render_tools`、`model_validator`。
+`mrhua/models` 已迁入 `src/libertas/models/legacy_models`，不覆盖原有 `model_parser`、`model_render_tools`、`model_validator`。
 
 - 源目录真实 Python 文件 5 个，已全部迁入。
 - macOS AppleDouble 垃圾文件 `._model_engine.py` 未迁入。
-- 拆分后 `legacy_mrhua` 共 36 个 `.py`：
+- 拆分后 `legacy_models` 共 36 个 `.py`：
   - `model_engine/`：19 个模块（含公共依赖 `_shared.py`）
   - `model_engine_expansion/`：6 个模块
   - `prompt_engine/`：3 个模块
@@ -111,7 +111,7 @@ compile=0
 models 子包验证：
 
 ```text
-legacy_mrhua 6/6 导入通过
+legacy_models 6/6 导入通过
 ModelEngine 107/107 方法存在
 9/9 单例工厂返回实例
 函数全局名检查 0 处未定义

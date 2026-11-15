@@ -98,7 +98,7 @@ class ModelEngineGenerationStream(object):
                     _preemptive_tool = "web_fetch" if _is_url_input else "web_search"
                     _preemptive_target = (_search_keyword or user_input)[:40]
                     try:
-                        from libertas.tools.legacy_mrhua.dork_parser import is_dork_query as _is_dork
+                        from libertas.tools.legacy_tools.dork_parser import is_dork_query as _is_dork
                         _dork_badge = "高级搜索 " if _is_dork(_search_keyword or user_input) else ""
                     except Exception:
                         _dork_badge = ""
@@ -109,9 +109,9 @@ class ModelEngineGenerationStream(object):
 
                     def _do_preemptive_search():
                         try:
-                            from libertas.tools.legacy_mrhua.net_recon import recon_url, format_recon
-                            from libertas.tools.legacy_mrhua.web_engine import extract_url, is_url
-                            from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
+                            from libertas.tools.legacy_tools.net_recon import recon_url, format_recon
+                            from libertas.tools.legacy_tools.web_engine import extract_url, is_url
+                            from libertas.tools.legacy_tools.search_orchestrator import get_search_orchestrator, format_parallel_results
                             _target_url = extract_url(user_input)
                             if not _target_url and is_url(user_input.strip()):
                                 _target_url = user_input.strip()
@@ -848,14 +848,14 @@ class ModelEngineGenerationStream(object):
                             _query = _ntc_args.get("query", "")
                             _ntc_t0 = time.time()
                             try:
-                                from libertas.tools.legacy_mrhua.dork_parser import is_dork_query as _is_dork
+                                from libertas.tools.legacy_tools.dork_parser import is_dork_query as _is_dork
                                 _db = "高级 " if _is_dork(_query) else ""
                             except Exception:
                                 _db = ""
                             yield f"data: {json.dumps({'type': 'tool_status', 'content': f' {_db}Layer2 搜索: {_query}'}, ensure_ascii=False)}\n\n"
                             yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_search', 'target': _query[:40], 'content': f' {_db}搜索: {_query[:40]}'}, ensure_ascii=False)}\n\n"
                             try:
-                                from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
+                                from libertas.tools.legacy_tools.search_orchestrator import get_search_orchestrator, format_parallel_results
                                 _browse_urls_n = []
                                 def _ntc_cb(step, **kw):
                                     if step in ('search_results', 'search_done'):
@@ -917,7 +917,7 @@ class ModelEngineGenerationStream(object):
                                 _fetch_done = _threading_fetch.Event()
                                 def _do_fetch():
                                     try:
-                                        from libertas.tools.legacy_mrhua.web_engine import robust_fetch
+                                        from libertas.tools.legacy_tools.web_engine import robust_fetch
                                         _fetch_result["page"] = robust_fetch(_url, max_chars=6000, timeout=15)
                                     except Exception as e:
                                         _fetch_result["error"] = str(e)[:200]
@@ -933,7 +933,7 @@ class ModelEngineGenerationStream(object):
                                     _result_str = f"【抓取失败】{_fetch_result['error']}"
                                     yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 抓取失败'}, ensure_ascii=False)}\n\n"
                                 else:
-                                    from libertas.tools.legacy_mrhua.web_engine import format_fetch_result
+                                    from libertas.tools.legacy_tools.web_engine import format_fetch_result
                                     _result_str = format_fetch_result(_fetch_result["page"], _url)
                                     yield f"data: {json.dumps({'type': 'web_view', 'url': _url}, ensure_ascii=False)}\n\n"
                                     yield f"data: {json.dumps({'type': 'tool_status', 'content': ' 页面抓取完成'}, ensure_ascii=False)}\n\n"
@@ -952,8 +952,8 @@ class ModelEngineGenerationStream(object):
                             yield f"data: {json.dumps({'type': 'tool_status', 'content': f' Layer2+3 深度搜索: {_query}'}, ensure_ascii=False)}\n\n"
                             yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'web_deep_search', 'target': _query[:40], 'content': f' 深度搜索: {_query[:40]}'}, ensure_ascii=False)}\n\n"
                             try:
-                                from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
-                                from libertas.tools.legacy_mrhua.web_engine import robust_fetch, format_fetch_result
+                                from libertas.tools.legacy_tools.search_orchestrator import get_search_orchestrator, format_parallel_results
+                                from libertas.tools.legacy_tools.web_engine import robust_fetch, format_fetch_result
                                 _orch = get_search_orchestrator()
                                 sd = _orch.search(_query, max_results=8, fast_only=False)
                                 _parts = [format_parallel_results(sd)]
@@ -1064,7 +1064,7 @@ class ModelEngineGenerationStream(object):
                                 yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'install_tool', 'target': _install_name[:40], 'content': _install_msg}, ensure_ascii=False)}\n\n"
                                 _install_start = time.time()
                                 try:
-                                    from libertas.tools.legacy_mrhua.tool_installer import install_tool as _do_install
+                                    from libertas.tools.legacy_tools.tool_installer import install_tool as _do_install
                                     _install_result = _do_install(_install_name)
                                     if _install_result.get("success"):
                                         _msg = _install_result.get("message", "安装成功")
@@ -1231,7 +1231,7 @@ class ModelEngineGenerationStream(object):
                             # 结果解析 + 自动编排
                             if _ntc_name == "security_tool" and _sec_result is not None and _sec_result.get("success"):
                                 try:
-                                    from libertas.tools.legacy_mrhua.parsers import parse_tool_result
+                                    from libertas.tools.legacy_tools.parsers import parse_tool_result
                                     _parsed = parse_tool_result(_sec_tool, _result_str, {"target": _sec_target})
                                     if _parsed.get("_parsed"):
                                         # 写入知识图谱
@@ -1784,7 +1784,7 @@ class ModelEngineGenerationStream(object):
                                         yield f"data: {json.dumps({'type': 'tool_progress', 'phase': 'start', 'total': 1, 'tool': 'install_tool', 'target': _iname[:40], 'content': _imsg}, ensure_ascii=False)}\n\n"
                                         _it0 = time.time()
                                         try:
-                                            from libertas.tools.legacy_mrhua.tool_installer import install_tool as _do_install2
+                                            from libertas.tools.legacy_tools.tool_installer import install_tool as _do_install2
                                             _iresult = _do_install2(_iname)
                                             if _iresult.get("success"):
                                                 _imsg2 = _iresult.get("message", "安装成功")
@@ -1844,7 +1844,7 @@ class ModelEngineGenerationStream(object):
                                     _q = _ntc_args.get("query", "")
                                     _ntc_t0 = time.time()
                                     try:
-                                        from libertas.tools.legacy_mrhua.dork_parser import is_dork_query as _is_dork
+                                        from libertas.tools.legacy_tools.dork_parser import is_dork_query as _is_dork
                                         _db2 = "高级 " if _is_dork(_q) else ""
                                     except Exception:
                                         _db2 = ""
@@ -2564,9 +2564,9 @@ class ModelEngineGenerationStream(object):
                 prompt = f"<|im_start|>system\n{sys_prompt}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
                 if self._needs_web_search(user_input):
                     try:
-                        from libertas.tools.legacy_mrhua.net_recon import recon_url, format_recon
-                        from libertas.tools.legacy_mrhua.web_engine import robust_fetch, format_fetch_result, extract_url, is_url
-                        from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
+                        from libertas.tools.legacy_tools.net_recon import recon_url, format_recon
+                        from libertas.tools.legacy_tools.web_engine import robust_fetch, format_fetch_result, extract_url, is_url
+                        from libertas.tools.legacy_tools.search_orchestrator import get_search_orchestrator, format_parallel_results
                         _url = extract_url(user_input)
                         if not _url and is_url(user_input.strip()):
                             _url = user_input.strip()

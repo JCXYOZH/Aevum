@@ -50,9 +50,9 @@ class ModelEngineWebTools(object):
         arg = m.group(2).strip()
 
         try:
-            from libertas.tools.legacy_mrhua.search_orchestrator import get_search_orchestrator, format_parallel_results
-            from libertas.tools.legacy_mrhua.web_engine import robust_fetch, format_fetch_result
-            from libertas.tools.legacy_mrhua.web_search import fetch_page_content
+            from libertas.tools.legacy_tools.search_orchestrator import get_search_orchestrator, format_parallel_results
+            from libertas.tools.legacy_tools.web_engine import robust_fetch, format_fetch_result
+            from libertas.tools.legacy_tools.web_search import fetch_page_content
             if tool == "WEB_SEARCH":
                 _trace("search_start", keyword=arg, tool="WEB_SEARCH")
                 # 使用并行多引擎搜索
@@ -144,7 +144,7 @@ class ModelEngineWebTools(object):
                 _rag_content = page["content"]
                 if isinstance(_rag_content, bytes):
                     _rag_content = _rag_content.decode('utf-8', errors='replace')
-                from libertas.tools.legacy_mrhua.rag_engine import RAGKnowledgeBase
+                from libertas.tools.legacy_tools.rag_engine import RAGKnowledgeBase
                 from libertas.foundation.config import data_path
                 rag_dir = data_path('RAG')
                 kb = RAGKnowledgeBase(rag_dir)
@@ -159,7 +159,7 @@ class ModelEngineWebTools(object):
 
             elif tool == "MEDIA_ANALYZE":
                 _trace("media_analyze_start", url=arg)
-                from libertas.tools.legacy_mrhua.media_handler import analyze_page_media
+                from libertas.tools.legacy_tools.media_handler import analyze_page_media
                 media_result = analyze_page_media(arg, timeout=12)
                 if media_result.get("is_direct_media"):
                     mtype = media_result.get("media_type", "video")
@@ -195,7 +195,7 @@ class ModelEngineWebTools(object):
 
             elif tool == "LINK_CHECK":
                 _trace("link_check_start", url=arg)
-                from libertas.tools.legacy_mrhua.media_handler import check_link_health
+                from libertas.tools.legacy_tools.media_handler import check_link_health
                 health = check_link_health(arg, timeout=8)
                 if health.get("alive"):
                     chain = ""
@@ -218,7 +218,7 @@ class ModelEngineWebTools(object):
 
             elif tool == "LINK_REPAIR":
                 _trace("link_repair_start", url=arg)
-                from libertas.tools.legacy_mrhua.media_handler import repair_link
+                from libertas.tools.legacy_tools.media_handler import repair_link
                 repair = repair_link(arg, timeout=8)
                 if repair.get("fixed"):
                     _trace("link_repair_done", url=arg, fixed=True, method=repair["method"])

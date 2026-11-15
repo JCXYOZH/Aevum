@@ -13,7 +13,7 @@ import platform
 from typing import Dict, List, Optional, Any
 from libertas.tools.tool_manager import ToolManager
 from libertas.utils.text_decode import decode_output, describe_exception
-from libertas.tools.legacy_mrhua import native_tools
+from libertas.tools.legacy_tools import native_tools
 import threading
 # 可选依赖
 try:

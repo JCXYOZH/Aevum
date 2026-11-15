@@ -68,7 +68,7 @@ class ModelEnginePromptContext(object):
                             print(f"SSH隧道已连接: {result.get('socks_proxy','')}")
                             # 同步设置web_search代理
                             try:
-                                from libertas.tools.legacy_mrhua.web_search import set_proxy as _ws_set_proxy
+                                from libertas.tools.legacy_tools.web_search import set_proxy as _ws_set_proxy
                                 _ws_set_proxy(self.ssh_tunnel.get_requests_proxies())
                             except Exception:
                                 pass

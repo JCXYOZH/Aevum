@@ -231,7 +231,7 @@ class ModelEnginePromptBuilder(object):
         elif not isinstance(user_input, str):
             user_input = str(user_input)
         try:
-            from libertas.tools.legacy_mrhua.rag_engine import RAGKnowledgeBase
+            from libertas.tools.legacy_tools.rag_engine import RAGKnowledgeBase
             from libertas.foundation.config import config as global_config, data_path
             if not hasattr(self, '_rag_kb') or self._rag_kb is None:
                 rag_dir = global_config.resolve_path(global_config.get('rag_dir', '')) or data_path('RAG')
