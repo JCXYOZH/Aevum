@@ -28,7 +28,7 @@ python D:\Aevum\apps\console\monitor\desktop_server.py --port 8799
 | 角色 pass | `js/scene/scene-vrm.js` | 透明角色 canvas、VRM 加载、程序化待机/行走、角色位放置、移动目标、与地面共用 `viewProjection` |
 | PMX pass | `js/scene/scene-pmx.js` | PMX 解析、贴图、程序化待机/行走，默认放在角色位 02 |
 | Live2D pass | `js/scene/scene-live2d.js` | 屏幕空间 Live2D 画布，按角色位投影定位并跟随移动目标，可选替代角色位 02 |
-| 桌面布局 | `js/scene/scene-desktop.js` | 桌面页 7 个应用节点 + 2 个角色位；节点只做视觉标签，角色位点击走 `MD.bus` |
+| 桌面布局 | `js/scene/scene-desktop.js` | 桌面页 7 个应用区域 + 2 个角色位；桌面不渲染节点标签（`nodeLabels:false`），点击地面只移动最近角色 |
 | 展示页布局 | `js/scene/scene-showcase.js` | 展示页 5 个入口节点 + 2 个角色位，点击滚动或跳转 |
 | 场景样式 | `styles/scene3d.css` | 场景层、节点、角色位、工具条、沉浸模式、响应式 |
 | 角色置顶层 | `desktop.html` 的 `#scene-characters` | 角色 canvas 独立层，`z-index:3`，位于 `.windows` 之上、启动台/对话框之下 |
@@ -36,19 +36,19 @@ python D:\Aevum\apps\console\monitor\desktop_server.py --port 8799
 
 ## 桌面页节点
 
-节点不自己维护应用列表。`scene-desktop.js` 每次从 `MD.listApps()` 取应用，再按 `placements` 分配地面坐标；新增窗口时 `MD.bus` 的 `apps` 事件会触发 `api.refresh()`，新应用自动分到外圈位置。
+桌面页不再在 3D 地面里画应用小标签。`scene.create({ nodePick:false, nodeLabels:false })` 会让 `scene-core.layout()` 直接跳过 `.scene-node` 的创建；页面里查不到节点 DOM，只有 2 个角色位、角色和工具条。节点坐标仍保留在 `scene-desktop` 的 `placements` 里，后续要恢复标签只需打开 `nodeLabels`，不用改布局数据。
 
-桌面页的节点是空间标记，不是点击热区：`scene.create({ nodePick:false })`，`.scene-node` 为 `pointer-events:none`、`cursor:default`、`tabIndex=-1`。点击节点标签会穿透到地面，交给最近角色移动，不会打开窗口。展示页仍保留节点点击，靠 canvas 的 `pick()` 命中，不依赖 DOM 点击。
+桌面页的节点不是点击热区：`nodePick:false` 时 `pick()` 不打开节点，直接把地面点交给 `onGround(point, event)`。点地面、点原来的节点位置都会穿透到地面，交给最近角色移动，不会打开窗口。展示页仍保留节点点击，靠 canvas 的 `pick()` 命中，不依赖 DOM 点击。
 
-| 应用 | 节点 ID | `grid` 坐标 | 点击行为 |
+| 应用 | 节点 ID | `grid` 坐标 | 桌面行为 |
 | --- | --- | --- | --- |
-| 总览 | `overview` | `[-1.5, 0.0]` | 视觉标签，不打开窗口 |
-| 内核实况 | `kernel` | `[-3.4, -2.6]` | 视觉标签，不打开窗口 |
-| 训练监控 | `trainer` | `[-0.2, -3.4]` | 视觉标签，不打开窗口 |
-| 模型对话 | `model` | `[3.0, -2.6]` | 视觉标签，不打开窗口 |
-| 中继交流 | `relay` | `[-3.4, 1.8]` | 视觉标签，不打开窗口 |
-| 错误看板 | `errors` | `[3.0, 1.8]` | 视觉标签，不打开窗口 |
-| 展示页 | `exhibit` | `[0.0, 3.2]` | 视觉标签，不打开窗口 |
+| 总览 | `overview` | `[-1.5, 0.0]` | 不渲染标签，不打开窗口 |
+| 内核实况 | `kernel` | `[-3.4, -2.6]` | 不渲染标签，不打开窗口 |
+| 训练监控 | `trainer` | `[-0.2, -3.4]` | 不渲染标签，不打开窗口 |
+| 模型对话 | `model` | `[3.0, -2.6]` | 不渲染标签，不打开窗口 |
+| 中继交流 | `relay` | `[-3.4, 1.8]` | 不渲染标签，不打开窗口 |
+| 错误看板 | `errors` | `[3.0, 1.8]` | 不渲染标签，不打开窗口 |
+| 展示页 | `exhibit` | `[0.0, 3.2]` | 不渲染标签，不打开窗口 |
 | 角色位 01 | `host` | `[-1.2, 2.2]` | 已接入 VRM；点击打开模型对话 |
 | 角色位 02 | `guide` | `[1.2, 2.2]` | 默认 PMX，可用 `?guide=live2d` 切换；点击打开模型对话 |
 
@@ -78,16 +78,17 @@ python D:\Aevum\apps\console\monitor\desktop_server.py --port 8799
 - 拖拽：旋转相机；相机俯仰有地面下界，不能穿到地面以下。
 - 滚轮：拉近拉远，`preventDefault` 只在场景挂载点上生效，不影响页面别处滚动。
 - 展示页点击节点：走 `onOpen(id)`，滚动 section 或跳转桌面。
-- 桌面页点击节点标签：标签不接点击，事件穿透到 canvas，按地面点击处理；不会打开节点对应的窗口。
+- 桌面页点击地面：桌面页没有节点标签，任何地面点击都按 `onGround` 处理，离点击点最近的角色移到该位置；不会打开节点对应的窗口。
 - 点击空白地面：桌面页把离点击点最近的角色移到该位置；展示页只清除当前状态。
 - 工具条：`沉浸 / 返回桌面`、`斜视`、`俯视`、`仰视`、`重置`。
 - `?scene=1` 直接进沉浸模式；`Esc` 退出。
 
 ## 角色移动与仰视
 
-- `scene-core` 的 `onGround(point)` 把地面点击坐标交给桌面布局；`scene-desktop` 用两个角色的当前位置比较距离，最近的那个走向目标。
-- VRM / PMX 的 `moveTo(point)` 每帧线性推进世界坐标，按移动方向计算 `yaw`，停下后平滑转回面向相机的基础朝向。
-- 行走姿态使用 `engine/render/procedural/procedural-animation.js` 的 `state="walk"`；待机继续用同一套 `idle` 动作，不再手写两套步态。
+- `scene-core` 的 `onGround(point, event)` 把地面点击坐标和原始指针事件交给桌面布局；`scene-desktop` 用两个角色的当前位置比较距离，最近的那个走向目标。
+- VRM / PMX 的 `moveTo(point, options)` 每帧线性推进世界坐标，按移动方向计算 `yaw`，停下后平滑转回面向相机的基础朝向。目标距离超过 `runDistance`（默认 5）或按住 Shift 时切到跑步，普通近距离点击仍是走路。
+- VRM 走路/跑步优先使用 `engine/assets/all_animations.glb` 的 `walk` / `run` 片段，经 `GLTFAnimation` 播放和 `AnimationRetarget` 重定向到 VRM Humanoid；动作库不可用时回退到程序化步态。待机继续用程序化 `idle`，不加载 `standing_greeting`。
+- PMX 仍使用 `engine/render/procedural/procedural-animation.js` 的 `walk` / `run` 程序化姿态；Live2D 不参与地面移动。
 - 指针位置经过 `engine/render/look/look-controller.js`，以 `look` 参数叠加到头部、颈部和胸部；指针离开场景后权重回零。
 - 地面 shader 从单面向下求交改成 `abs(rd.y)` 双面求交；同时 `clampCamera()` 把轨道相机限制在 `y≥0.18`，向下拖到地平线以下时只会贴地仰视，不会出现整片网格消失。
 - `仰视` 视图使用 `rotationX=0.075`、`distance=12`，可以看到网格向地平线延伸；`俯视` 仍是 `rotationX=1.16`。
@@ -100,7 +101,8 @@ var api = AEVUM.scene.create({
   mount: mountElement,
   nodes: [{ id, title, meta, grid: [x, z], tone }],
   slots: [{ id, title, meta, grid: [x, z] }],
-  nodePick: true, // false: 节点只做视觉标签，点击走 onGround
+  nodePick: true, // false: 点击不打开节点，直接走 onGround
+  nodeLabels: true, // false: layout() 不创建 .scene-node，桌面页用 false
   onOpen: function (id) {},
   onSlot: function (slot) {},
   onPick: function (node) {}
@@ -193,9 +195,9 @@ Live2D 是 2D 渲染器，不能直接塞进 3D 网格，所以用一个屏幕�
 ## 已知边界
 
 - 3D 只是导航层；窗口仍是普通 DOM，不是 3D 物体。
-- 普通桌面下两个默认窗口仍会遮住地面节点；角色画布在独立置顶层，会显示在普通窗口之上，但启动台和对话框仍在角色之上。
+- 普通桌面下两个默认窗口仍会遮住地面场景；角色画布在独立置顶层，会显示在普通窗口之上，但启动台和对话框仍在角色之上。
 - 展示页的 `#world` 在首屏之下；如果希望首屏就能看到场景，需要再决定是否把舞台提前或做成 hero 背景。
-- VRM 角色 pass 已有方向主光、环境补光、高光和 fresnel 轮廓光，但还没有真实阴影、描边、PBR/MToon、SpringBone；待机动作是程序化骨骼摆动。
+- VRM 角色 pass 已有方向主光、环境补光、高光和 fresnel 轮廓光，也接了动作库的 `walk` / `run`；但还没有真实阴影、描边、PBR/MToon、SpringBone，待机仍是程序化骨骼摆动，`standing_greeting` 不启用。
 - PMX 已能加载真实模型和贴图，但没有物理、完整材质排序和 VMD 动作播放；显示尺寸按包围盒缩放。
 - Live2D 是屏幕空间画布，不是 3D 网格上的平面；它只随角色位投影移动，不能绕到模型背面。
 - 展示页 `#world` 没有加载角色，只保留圆环接口。

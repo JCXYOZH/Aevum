@@ -134,6 +134,7 @@
     var onPick = options.onPick || function () {};
     var onGround = options.onGround || function () {};
     var nodePickEnabled = options.nodePick !== false;
+    var nodeLabelsEnabled = options.nodeLabels !== false;
     var mounted = false;
     var canvas = null;
     var gl = null;
@@ -271,6 +272,7 @@
       slotElements = [];
 
       nodes.forEach(function (node) {
+        if (!nodeLabelsEnabled) return;
         var el = createElement("button", "scene-node scene-node--" + (node.tone || "amber"), overlay);
         el.type = "button";
         el.dataset.sceneNode = node.id;
@@ -427,7 +429,7 @@
       showCursor.timer = global.setTimeout(function () { cursor.hidden = true; }, 700);
     }
 
-    function pick(clientX, clientY) {
+    function pick(clientX, clientY, sourceEvent) {
       var point = screenRay(clientX, clientY);
       if (!point) {
         readout.textContent = "已到网格边缘";
@@ -452,7 +454,7 @@
       }
       readout.textContent = "网格 " + point[0].toFixed(1) + " / " + point[2].toFixed(1);
       onPick(null);
-      onGround(point);
+      onGround(point, sourceEvent);
     }
 
     function bindPointer() {
@@ -480,7 +482,7 @@
         if (!drag) return;
         var current = drag;
         drag = null;
-        if (!current.moved) pick(event.clientX, event.clientY);
+        if (!current.moved) pick(event.clientX, event.clientY, event);
       });
       canvas.addEventListener("pointercancel", function () { drag = null; });
       canvas.addEventListener("wheel", function (event) {

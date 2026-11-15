@@ -43,6 +43,9 @@
     var baseYaw = Number(options.yaw) || 0;
     var yaw = baseYaw;
     var speed = options.speed == null ? 1.8 : Math.max(0.2, Number(options.speed));
+    var runMode = false;
+    var runSpeed = options.runSpeed == null ? 3.2 : Math.max(0.2, Number(options.runSpeed));
+    var runDistance = options.runDistance == null ? 5 : Math.max(0.5, Number(options.runDistance));
     var moving = false;
     var metrics = null;
     var look = options.look || null;
@@ -55,7 +58,8 @@
       label: "角色位 02",
       title: "",
       position: position.slice(),
-      moving: false
+      moving: false,
+      running: false
     };
 
     function setStatus(text) {
@@ -120,12 +124,13 @@
     function step(dt) {
       var stepDt = dt || 0;
       var wasMoving = moving;
+      var wasRunning = moving && runMode;
       if (target) {
         var dx = target[0] - position[0];
         var dz = target[2] - position[2];
         var distance = Math.sqrt(dx * dx + dz * dz);
         if (distance > 0.01) {
-          var distanceStep = Math.min(distance, speed * Math.max(stepDt, 0.001));
+          var distanceStep = Math.min(distance, (runMode ? runSpeed : speed) * Math.max(stepDt, 0.001));
           position[0] += dx / distance * distanceStep;
           position[2] += dz / distance * distanceStep;
           var desiredYaw = baseYaw + Math.atan2(dx, dz);
@@ -135,19 +140,23 @@
           position[0] = target[0];
           position[2] = target[2];
           target = null;
+          runMode = false;
           moving = false;
         }
       } else {
         yaw = lerpAngle(yaw, baseYaw, 1 - Math.exp(-Math.max(stepDt, 0.001) * 3));
+        runMode = false;
         moving = false;
       }
       state.position[0] = position[0];
       state.position[1] = position[1];
       state.position[2] = position[2];
       state.moving = moving;
+      state.running = moving && runMode;
       state.yaw = yaw;
-      if (wasMoving !== moving) {
-        if (moving) setStatus(state.label + " · 移动中");
+      if (wasMoving !== moving || wasRunning !== state.running) {
+        if (state.running) setStatus(state.label + " · 跑步中");
+        else if (moving) setStatus(state.label + " · 移动中");
         else if (state.title) setStatus(state.label + " · PMX / " + state.title);
         else setStatus(state.label + " · 待机");
       }
@@ -176,7 +185,7 @@
       var animation = Render.ProceduralAnimation;
       if (animation && animation.makePMXPose) {
         pose = animation.makePMXPose(model, t, {
-          state: moving ? "walk" : "idle",
+          state: moving ? (state.running ? "run" : "walk") : "idle",
           armDown: -1.05,
           armAxis: "z",
           look: look ? look.getLook() : null,
@@ -192,13 +201,16 @@
       });
     }
 
-    function moveTo(point) {
+    function moveTo(point, moveOptions) {
       if (!point) return;
-      target = [
+      var nextTarget = [
         Math.max(-18, Math.min(18, Number(point[0]) || 0)),
         0,
         Math.max(-18, Math.min(18, Number(point[2]) || 0))
       ];
+      var distance = Math.hypot(nextTarget[0] - position[0], nextTarget[2] - position[2]);
+      target = nextTarget;
+      runMode = Boolean(moveOptions && moveOptions.run) || distance > runDistance;
     }
 
     function boot() {

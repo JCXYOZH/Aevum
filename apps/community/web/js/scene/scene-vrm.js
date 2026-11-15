@@ -44,6 +44,15 @@
     var look = options.look || null;
     var bindings = null;
     var startedAt = 0;
+    var actionGLB = null;
+    var actionPlayer = null;
+    var actionReady = false;
+    var actionUrl = options.actionUrl || "/engine/assets/all_animations.glb";
+    var walkLegFilter = Object.create(null);
+    var walkArmLimit = Object.create(null);
+    var runMode = false;
+    var runSpeed = options.runSpeed == null ? 3.2 : Math.max(0.2, Number(options.runSpeed));
+    var runDistance = options.runDistance == null ? 5 : Math.max(0.5, Number(options.runDistance));
     var lighting = options.lighting || {
       direction: [0.35, 0.85, 0.42],
       color: [0.78, 0.74, 0.66],
@@ -59,7 +68,8 @@
       label: "角色位 01",
       title: "",
       position: position.slice(),
-      moving: false
+      moving: false,
+      running: false
     };
 
     function setStatus(text) {
@@ -111,12 +121,13 @@
     function step(dt) {
       var stepDt = dt || 0;
       var wasMoving = moving;
+      var wasRunning = moving && runMode;
       if (target) {
         var dx = target[0] - position[0];
         var dz = target[2] - position[2];
         var distance = Math.sqrt(dx * dx + dz * dz);
         if (distance > 0.01) {
-          var distanceStep = Math.min(distance, speed * Math.max(stepDt, 0.001));
+          var distanceStep = Math.min(distance, (runMode ? runSpeed : speed) * Math.max(stepDt, 0.001));
           position[0] += dx / distance * distanceStep;
           position[2] += dz / distance * distanceStep;
           var desiredYaw = baseYaw + Math.atan2(dx, dz);
@@ -126,22 +137,80 @@
           position[0] = target[0];
           position[2] = target[2];
           target = null;
+          runMode = false;
           moving = false;
         }
       } else {
         yaw = lerpAngle(yaw, baseYaw, 1 - Math.exp(-Math.max(stepDt, 0.001) * 3));
+        runMode = false;
         moving = false;
       }
       state.position[0] = position[0];
       state.position[1] = position[1];
       state.position[2] = position[2];
       state.moving = moving;
+      state.running = moving && runMode;
       state.yaw = yaw;
-      if (wasMoving !== moving) {
-        if (moving) setStatus(state.label + " · 移动中");
+      if (wasMoving !== moving || wasRunning !== state.running) {
+        if (state.running) setStatus(state.label + " · 跑步中");
+        else if (moving) setStatus(state.label + " · 移动中");
         else if (state.title) setStatus(state.label + " · VRM / " + state.title);
         else setStatus(state.label + " · 待机");
       }
+    }
+
+    function hasActionClip(name) {
+      return Boolean(actionPlayer && actionPlayer.clips.some(function (clip) { return clip.name === name; }));
+    }
+
+    function useAction(actionName, dt) {
+      if (!actionReady || !actionPlayer || !actionGLB || !Render.AnimationRetarget) return null;
+      if (!hasActionClip(actionName)) return null;
+      if (actionPlayer.clip !== actionName) {
+        actionPlayer.setClip(actionName).setLoop(true).play();
+        var offset = actionName === "run" ? 0.12 : 0.08;
+        if (offset) actionPlayer.update(offset);
+        walkLegFilter = Object.create(null);
+        walkArmLimit = Object.create(null);
+      }
+      actionPlayer.update(dt);
+      try {
+        return Render.AnimationRetarget.retargetPose(vrm, actionGLB.json, actionPlayer.getPose(), {
+          footClearance: actionName === "walk",
+          runPose: actionName === "run",
+          dt: Math.max(0.001, Number(dt) || 0.016),
+          legSmoothState: actionName === "walk" ? walkLegFilter : null,
+          armLimitState: walkArmLimit
+        });
+      } catch (error) {
+        if (global.console) console.warn("scene-vrm: action retarget failed, falling back to procedural", error);
+        actionPlayer = null;
+        actionReady = false;
+        return null;
+      }
+    }
+
+    function loadActions() {
+      if (actionReady) return Promise.resolve();
+      if (!formats.parseGLB || !formats.GLTFAnimation || !Render.AnimationRetarget) return Promise.resolve();
+      return fetch(actionUrl)
+        .then(function (response) {
+          if (!response.ok) throw new Error("动作库加载失败 " + response.status + " · " + actionUrl);
+          return response.arrayBuffer();
+        })
+        .then(function (buffer) {
+          actionGLB = formats.parseGLB(buffer);
+          actionPlayer = formats.GLTFAnimation.createPlayer(actionGLB);
+          var walkClip = actionPlayer.clips.find(function (clip) { return clip.name === "walk"; });
+          if (walkClip) walkClip.duration += 1 / 30;
+          actionReady = actionPlayer.clips.some(function (clip) { return clip.name === "walk" || clip.name === "run"; });
+        })
+        .catch(function (error) {
+          actionGLB = null;
+          actionPlayer = null;
+          actionReady = false;
+          if (global.console) console.warn("scene-vrm: action library unavailable", error);
+        });
     }
 
     function frame(now, dt) {
@@ -150,18 +219,26 @@
       step(dt);
       modelMatrix = placeMatrix(position, metrics, yaw);
       var t = (now - startedAt) / 1000;
+      var actionName = moving ? (state.running ? "run" : "walk") : null;
+      var actionPose = actionName ? useAction(actionName, dt) : null;
       var pose;
-      var animation = Render.ProceduralAnimation;
-      if (animation && animation.makeVRMPose) {
-        pose = animation.makeVRMPose(vrm, t, {
-          state: moving ? "walk" : "idle",
-          look: look ? look.getLook() : null,
-          bindings: bindings
-        });
+      var transforms = null;
+      if (actionPose) {
+        pose = actionPose.rotation;
+        transforms = { translation: actionPose.translation };
       } else {
-        pose = Render.makeVRMIdlePose(vrm, t);
+        var animation = Render.ProceduralAnimation;
+        if (animation && animation.makeVRMPose) {
+          pose = animation.makeVRMPose(vrm, t, {
+            state: actionName || "idle",
+            look: look ? look.getLook() : null,
+            bindings: bindings
+          });
+        } else {
+          pose = Render.makeVRMIdlePose(vrm, t);
+        }
       }
-      renderer.render(t, pose, null, {
+      renderer.render(t, pose, transforms, {
         viewProjection: scene.getViewProjection(),
         modelMatrix: modelMatrix,
         cameraPosition: scene.camera ? scene.camera.position : null,
@@ -170,13 +247,16 @@
       });
     }
 
-    function moveTo(point) {
+    function moveTo(point, moveOptions) {
       if (!point) return;
-      target = [
+      var nextTarget = [
         Math.max(-18, Math.min(18, Number(point[0]) || 0)),
         0,
         Math.max(-18, Math.min(18, Number(point[2]) || 0))
       ];
+      var distance = Math.hypot(nextTarget[0] - position[0], nextTarget[2] - position[2]);
+      target = nextTarget;
+      runMode = Boolean(moveOptions && moveOptions.run) || distance > runDistance;
     }
 
     function boot() {
@@ -197,6 +277,9 @@
           vrm = formats.parseVRM(buffer);
           state.vrm = vrm;
           return renderer.loadVRM(vrm);
+        })
+        .then(function () {
+          return loadActions();
         })
         .then(function () {
           metrics = metricsFor(renderer);

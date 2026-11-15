@@ -55,6 +55,7 @@
     nodes: buildNodes(),
     slots: slots,
     nodePick: false,
+    nodeLabels: false,
     onOpen: function (id) {
       if (!MD.getApp(id)) return;
       var desk = mount.parentElement;
@@ -100,7 +101,7 @@
     mount.addEventListener("pointerleave", function () { look.clearPointer(); });
   }
 
-  function moveNearest(point) {
+  function moveNearest(point, event) {
     var candidates = [];
     if (hostHandle && hostHandle.moveTo) candidates.push({ title: "角色位 01", handle: hostHandle });
     if (guideHandle && guideHandle.moveTo) candidates.push({ title: "角色位 02", handle: guideHandle });
@@ -116,7 +117,7 @@
       }
     });
     if (nearest) {
-      nearest.handle.moveTo(point);
+      nearest.handle.moveTo(point, { run: Boolean(event && event.shiftKey) });
       api.setStatus(nearest.title + " · 移动中");
     }
   }
