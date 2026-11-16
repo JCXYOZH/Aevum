@@ -223,6 +223,7 @@
         bones: this.gl.getUniformLocation(this.program, 'uBones[0]'),
         baseColor: this.gl.getUniformLocation(this.program, 'uBaseColor'),
         hasTexture: this.gl.getUniformLocation(this.program, 'uHasTexture'),
+        unlit: this.gl.getUniformLocation(this.program, 'uUnlit'),
         texture: this.gl.getUniformLocation(this.program, 'uTexture'),
         lightDir: this.gl.getUniformLocation(this.program, 'uLightDir'),
         lightOn: this.gl.getUniformLocation(this.program, 'uLightOn'),
@@ -347,6 +348,7 @@
         : [1, 1, 1, 1];
       const alphaMode = material ? material.alphaMode || 'OPAQUE' : 'OPAQUE';
       const doubleSided = material ? material.doubleSided !== false : true;
+      const unlit = Boolean(material && material.extensions && material.extensions.KHR_materials_unlit);
 
       gl.bindVertexArray(null);
       return {
@@ -355,7 +357,8 @@
         texture: textureIndex >= 0 ? this.textures[textureIndex] : null,
         baseColor,
         alphaMode,
-        doubleSided
+        doubleSided,
+        unlit
       };
     }
 
@@ -484,6 +487,7 @@
           gl.bindVertexArray(primitive.vao);
           gl.uniform4fv(this.locations.baseColor, primitive.baseColor);
           gl.uniform1i(this.locations.hasTexture, this.options.texture && primitive.texture ? 1 : 0);
+          gl.uniform1i(this.locations.unlit, primitive.unlit ? 1 : 0);
           if (primitive.texture) gl.bindTexture(gl.TEXTURE_2D, primitive.texture);
 
           if (primitive.alphaMode === 'BLEND') {
@@ -542,6 +546,7 @@ in vec3 vWorldPos;
 in vec2 vUv;
 uniform vec4 uBaseColor;
 uniform int uHasTexture;
+uniform int uUnlit;
 uniform sampler2D uTexture;
 uniform vec3 uLightDir;
 uniform float uLightOn;
@@ -555,17 +560,20 @@ out vec4 outColor;
 void main() {
   vec4 base = uBaseColor;
   if (uHasTexture == 1) base *= texture(uTexture, vUv);
-  vec3 N = normalize(vNormal);
-  vec3 L = normalize(uLightDir);
-  vec3 V = normalize(uCameraPos - vWorldPos);
-  float ndl = dot(N, L);
-  float toon = smoothstep(-0.15, 0.55, ndl);
-  float diffuse = mix(max(ndl, 0.0), toon, 0.65);
-  vec3 lit = base.rgb * (uAmbientColor + uLightColor * diffuse * uLightOn);
-  vec3 H = normalize(L + V);
-  float spec = pow(max(dot(N, H), 0.0), 32.0) * uSpecular * uLightOn;
-  float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
-  vec3 color = lit + uLightColor * spec + uRimColor * fresnel * uRimStrength;
+  vec3 color = base.rgb;
+  if (uUnlit == 0) {
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(uLightDir);
+    vec3 V = normalize(uCameraPos - vWorldPos);
+    float ndl = dot(N, L);
+    float toon = smoothstep(-0.15, 0.55, ndl);
+    float diffuse = mix(max(ndl, 0.0), toon, 0.65);
+    vec3 lit = base.rgb * (uAmbientColor + uLightColor * diffuse * uLightOn);
+    vec3 H = normalize(L + V);
+    float spec = pow(max(dot(N, H), 0.0), 32.0) * uSpecular * uLightOn;
+    float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
+    color = lit + uLightColor * spec + uRimColor * fresnel * uRimStrength;
+  }
   outColor = vec4(clamp(color, 0.0, 1.0), base.a);
 }`;
 
