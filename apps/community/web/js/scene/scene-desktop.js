@@ -222,7 +222,10 @@
 
   function startCharacters() {
     api.setStatus("窗口已就绪，正在载入角色…");
-    if (global.AEVUM.scene.attachVRM) {
+    var hostStarted = false;
+    function attachHost() {
+      if (hostStarted || !global.AEVUM.scene.attachVRM) return;
+      hostStarted = true;
       var yaw = params.get("yaw");
       hostHandle = global.AEVUM.scene.attachVRM({
         mount: mount,
@@ -238,17 +241,29 @@
     }
     if (global.AEVUM.scene.attachPMX && params.get("guide") !== "live2d") {
       var pmxYaw = params.get("pmxYaw");
-      guideHandle = global.AEVUM.scene.attachPMX({
-        mount: mount,
-        characterMount: characterLayer,
-        scene: api,
-        slotId: "guide",
-        height: 1.75,
-        yaw: pmxYaw === null ? Math.PI : Number(pmxYaw),
-        look: look,
-        modelUrl: params.get("pmxUrl") || modelUrl("pmx"),
-        baseUrl: params.get("pmxBaseUrl") || modelDirectory("pmx")
-      });
+      try {
+        guideHandle = global.AEVUM.scene.attachPMX({
+          mount: mount,
+          characterMount: characterLayer,
+          scene: api,
+          slotId: "guide",
+          height: 1.75,
+          yaw: pmxYaw === null ? Math.PI : Number(pmxYaw),
+          look: look,
+          modelUrl: params.get("pmxUrl") || modelUrl("pmx"),
+          baseUrl: params.get("pmxBaseUrl") || modelDirectory("pmx")
+        });
+        /* PMX 只有约 4MB，先给它一个很短的起跑窗口，让第一个角色更早出现；
+           不等它完全就绪，300ms 后 VRM 仍然并行加载，不牺牲总时长。 */
+        if (guideHandle && guideHandle.ready && guideHandle.ready.then) {
+          guideHandle.ready.then(attachHost, attachHost);
+        }
+      } catch (error) {
+        if (global.console) console.warn("scene-desktop: PMX guide unavailable", error);
+      }
+      global.setTimeout(attachHost, 300);
+    } else {
+      attachHost();
     }
     if (global.AEVUM.scene.attachLive2D && params.get("guide") === "live2d") {
       guideHandle = global.AEVUM.scene.attachLive2D({
