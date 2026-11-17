@@ -47,10 +47,16 @@ class AuthAPI:
         self.auth = AuthManager()
         # 导出一次性票据：先验密码，再发一个 60 秒内只能用一次的 token。
         self._export_tickets: Dict[str, float] = {}
+        # 每个登录账号各自记住激活的身份档案，不能共用一个全局 active。
+        self._active_sub_by_user: Dict[str, str] = {}
+        # 本地验证码登录：只在本机生成、一次性使用；按 user_id 绑定，不信任前端身份。
+        self._local_codes: Dict[str, Dict[str, Any]] = {}
         # 订阅是公开接口，先按固定窗口压住枚举和误点重放。
         limiter = get_rate_limiter()
         limiter.configure_fixed_window("loop_subscribe_public", 3600, 60)
         limiter.configure_fixed_window("loop_visit_public", 3600, 600)
+        # 本机验证码：同一台机器每分钟最多生成 5 次，避免被页面反复点。
+        limiter.configure_fixed_window("auth_local_code", 60, 5)
         # 账号库与回路库分开备份；都走 SQLite 在线快照 + Fernet 加密，
         # 密钥在 LibertasData/config，不进备份目录。
         self.backup = get_backup_manager()
@@ -113,12 +119,31 @@ class AuthAPI:
     def account_info(self, user) -> Dict[str, Any]:
         info = dict(self.auth.get_info() or {})
         if user is not None:
-            # 许可证里的用户名才是认证身份；会话用户名只用于校验。
-            if not info.get("username"):
-                info["username"] = user.username
-            if not info.get("identity_id"):
-                info["identity_id"] = user.username
+            # 认证身份必须跟会话用户一致；不能把另一个账号的许可证信息读给当前用户。
+            if str(info.get("username", "")) != str(user.username):
+                info = {}
+            info["username"] = user.username
+            info["identity_id"] = info.get("identity_id") or user.username
+            info["email"] = user.email or info.get("email", "")
+            info["phone"] = getattr(user, "phone", "") or info.get("phone", "")
+            info.setdefault("tier", "registered")
+            info.setdefault("activated", False)
+            info["data_scope"] = "user:" + user.user_id
         return info
+
+    def _owned_sub_user(self, user, sid: str) -> Optional[Dict[str, Any]]:
+        sub = self.auth.get_sub_user(sid)
+        if not sub:
+            return None
+        if str(sub.get("owner_user_id", "")) != str(user.user_id):
+            return None
+        return sub
+
+    def _active_sub_user(self, user) -> Optional[Dict[str, Any]]:
+        sid = self._active_sub_by_user.get(user.user_id, "")
+        if not sid:
+            return None
+        return self._owned_sub_user(user, sid)
 
     # ---------------------------------------------------------------- GET 路由
     def handle_get(self, handler, route: str) -> bool:
@@ -228,17 +253,22 @@ class AuthAPI:
             user = self.require_user(handler)
             if not user:
                 return True
+            subs = self.auth.list_sub_users(owner_user_id=user.user_id)
+            active_sid = self._active_sub_by_user.get(user.user_id, "")
+            for sub in subs:
+                sub["active"] = bool(active_sid and sub.get("id") == active_sid)
             handler._send_json({
                 "success": True,
-                "sub_users": self.auth.list_sub_users(),
-                "active": self.auth.get_active_sub_user(),
+                "sub_users": subs,
+                "active": self._active_sub_user(user),
+                "data_scope": "user:" + user.user_id,
             })
             return True
         if route == "/api/auth/active_profile":
             user = self.require_user(handler)
             if not user:
                 return True
-            sub = self.auth.get_active_sub_user()
+            sub = self._active_sub_user(user)
             if not sub:
                 handler._send_json({"success": True, "active": None})
             else:
@@ -297,6 +327,12 @@ class AuthAPI:
         if route == "/api/auth/reset":
             self.reset(handler)
             return True
+        if route == "/api/auth/local_code":
+            self.local_code(handler)
+            return True
+        if route == "/api/auth/local_login":
+            self.local_login(handler)
+            return True
         if route == "/api/auth/subusers":
             self.add_subuser(handler)
             return True
@@ -304,6 +340,7 @@ class AuthAPI:
             user = self.require_user(handler)
             if not user:
                 return True
+            self._active_sub_by_user.pop(user.user_id, None)
             self.auth.set_active_sub_user("")
             handler._send_json({"success": True})
             return True
@@ -316,6 +353,10 @@ class AuthAPI:
             user = self.require_user(handler)
             if not user:
                 return True
+            if not self._owned_sub_user(user, match.group(1)):
+                handler._send_json({"success": False, "error": "档案不存在或不属于当前账号"}, 403)
+                return True
+            self._active_sub_by_user[user.user_id] = match.group(1)
             self.auth.set_active_sub_user(match.group(1))
             handler._send_json({"success": True})
             return True
@@ -328,6 +369,10 @@ class AuthAPI:
         user = self.require_user(handler)
         if not user:
             return True
+        if not self._owned_sub_user(user, match.group(1)):
+            handler._send_json({"success": False, "error": "档案不存在或不属于当前账号"}, 403)
+            return True
+        self._active_sub_by_user.pop(user.user_id, None)
         handler._send_json({"success": self.auth.delete_sub_user(match.group(1))})
         return True
 
@@ -455,9 +500,8 @@ class AuthAPI:
     # ---------------------------------------------------------------- 具体动作
     def status(self, handler) -> None:
         user = self.current_user(handler)
-        info = self.account_info(user)
-        if user is None:
-            info = {k: v for k, v in info.items() if k not in ("license_key", "activation_code")}
+        # 未登录时不要读全局许可证：那可能是另一个账号的邮箱/手机/许可证。
+        info = self.account_info(user) if user is not None else {}
         token = self.session_token(handler)
         handler._send_json({
             "success": True,
@@ -482,6 +526,7 @@ class AuthAPI:
             "identity_id": info.get("identity_id") or user.username,
             "activated": bool(info.get("activated", False)),
             "tier": info.get("tier", "registered"),
+            "data_scope": info.get("data_scope", "user:" + user.user_id),
         })
 
     def send_code(self, handler) -> None:
@@ -583,6 +628,7 @@ class AuthAPI:
             "identity_id": info.get("identity_id") or user.username,
             "tier": info.get("tier", "registered"),
             "activated": bool(info.get("activated", False)),
+            "data_scope": info.get("data_scope", "user:" + user.user_id),
         }, headers=self.cookie_header(session.token))
 
     def logout(self, handler) -> None:
@@ -677,7 +723,26 @@ class AuthAPI:
             str(body.get("name", "")).strip(),
             str(body.get("role", "sub")),
             body.get("identity") or {},
+            owner_user_id=user.user_id,
         )
+        if result.get("success"):
+            # 身份档案同时落成一个独立登录账号：这样每个档案有自己的 user_id、
+            # 会话和数据作用域，不会和主账号共用一个身份。
+            login_name = str(body.get("login_name", "")).strip() or ("sub_" + result["sub_id"])
+            password = str(body.get("password", "")) or secrets.token_urlsafe(12)
+            sub_user, message = self.users.register(
+                login_name, password, email="", phone="", role="sub",
+            )
+            if sub_user is not None:
+                self.auth.update_sub_user_extra(
+                    result["sub_id"],
+                    login_name=sub_user.username,
+                    account_user_id=sub_user.user_id,
+                )
+                result["login_name"] = sub_user.username
+                result["data_scope"] = "user:" + sub_user.user_id
+            else:
+                result["warning"] = message
         handler._send_json(result)
 
     def update_subuser_identity(self, handler, sid: str) -> None:
@@ -685,7 +750,104 @@ class AuthAPI:
         if not user:
             return
         body = self.read_json(handler) or {}
+        if not self._owned_sub_user(user, sid):
+            handler._send_json({"success": False, "error": "档案不存在或不属于当前账号"}, 403)
+            return
         handler._send_json({"success": self.auth.update_sub_user_identity(sid, body.get("identity") or {})})
+
+
+    # ---------------------------------------------------------------- 本地验证码登录
+    def _is_local_request(self, handler) -> bool:
+        """只允许本机生成验证码；远端页面拿不到码，也拿不到登录入口。"""
+        try:
+            host = str(handler.client_address[0])
+        except Exception:
+            return False
+        return host in {"127.0.0.1", "::1", "localhost"}
+
+    def local_code(self, handler) -> None:
+        """本机中继生成一次性登录码。
+
+        码只在本机生成、只在本机显示，页面用户拿到码后可以登录；
+        不经过邮件/短信，也不把码写进 URL。
+        """
+        if not self._is_local_request(handler):
+            handler._send_json({"success": False, "error": "本机验证码只能在本地生成"}, 403)
+            return
+        if not get_rate_limiter().check("auth_local_code"):
+            handler._send_json({"success": False, "error": "请求过于频繁，请稍后再试"}, 429)
+            return
+        body = self.read_json(handler) or {}
+        username = str(body.get("username", "")).strip()
+        user = self.users.get_user(username)
+        if user is None:
+            handler._send_json({"success": False, "error": "用户不存在"}, 404)
+            return
+        code = str(secrets.randbelow(900000) + 100000)
+        self._local_codes[user.user_id] = {
+            "code": code,
+            "username": user.username,
+            "created_at": time.time(),
+            "expires_at": time.time() + 300,
+            "attempts": 0,
+        }
+        handler._send_json({
+            "success": True,
+            "message": "本机验证码已生成，请在 5 分钟内输入",
+            "code": code,
+            "username": user.username,
+            "expires_in": 300,
+        })
+
+    def local_login(self, handler) -> None:
+        """用本机生成的一次性码登录，签发普通会话。"""
+        body = self.read_json(handler) or {}
+        username = str(body.get("username", "")).strip()
+        code = str(body.get("code", "")).strip()
+        user = self.users.get_user(username)
+        if user is None:
+            handler._send_json({"success": False, "error": "用户不存在"}, 401)
+            return
+        record = self._local_codes.get(user.user_id)
+        if not record:
+            handler._send_json({"success": False, "error": "请先在本机生成验证码"}, 400)
+            return
+        if time.time() > record["expires_at"]:
+            self._local_codes.pop(user.user_id, None)
+            handler._send_json({"success": False, "error": "验证码已过期"}, 400)
+            return
+        record["attempts"] += 1
+        if record["attempts"] > 5:
+            self._local_codes.pop(user.user_id, None)
+            handler._send_json({"success": False, "error": "尝试次数过多，请重新生成"}, 429)
+            return
+        if not secrets.compare_digest(str(record["code"]), code):
+            handler._send_json({"success": False, "error": "验证码错误"}, 401)
+            return
+        self._local_codes.pop(user.user_id, None)
+        session = self.users.issue_session(user, self._client_ip(handler), self._user_agent(handler))
+        info = self.account_info(user)
+        handler._send_json({
+            "success": True,
+            "message": "登录成功",
+            "username": user.username,
+            "identity_id": info.get("identity_id") or user.username,
+            "tier": info.get("tier", "registered"),
+            "activated": bool(info.get("activated", False)),
+            "data_scope": info.get("data_scope", "user:" + user.user_id),
+        }, headers=self.cookie_header(session.token))
+
+    def _client_ip(self, handler) -> str:
+        try:
+            return str(handler.client_address[0])
+        except Exception:
+            return ""
+
+    def _user_agent(self, handler) -> str:
+        try:
+            return str(handler.headers.get("User-Agent", ""))[:200]
+        except Exception:
+            return ""
 
 
 def create_fastapi_app():

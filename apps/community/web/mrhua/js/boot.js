@@ -87,6 +87,11 @@
 
         var params = new URLSearchParams(window.location.search);
         var embedMode = params.get('embed') || '';
+        if (params.get('public') === '1') {
+            // 最小免认证页面：只放行页面可见性，后端接口仍按各自规则鉴权。
+            window.MR_PUBLIC_PAGE = true;
+            document.body.classList.add('mrhua-public-page');
+        }
         if (embedMode === 'wanshare') {
             window.MR_EMBED_WANSHARE = true;
             window.__identityAutoOpened = true;
@@ -119,12 +124,16 @@
                     }, Promise.resolve()).then(function () {
                         // QtWebEngine 偶发：app-shell 的 script 已 200 但没执行，
                         // 窗口管理整体缺席。这里只在确实没初始化时补装一次，避免重复。
-                        if (typeof window.openWindow === 'function') return;
+                        if (typeof window.openWindow === 'function') {
+                            if (typeof window.mrRenderLauncher === 'function') window.mrRenderLauncher();
+                            return;
+                        }
                         return fetchText('/apps/console/ui/shell/app-shell.js?fallback=' + Date.now())
                             .then(function (code) {
                                 // 不用 <script> 再插一次：QtWebEngine 对这份大脚本的
                                 // script 元素偶发不执行，fetch + eval 可以稳定跑起来。
                                 (0, eval)(code);
+                                if (typeof window.mrRenderLauncher === 'function') window.mrRenderLauncher();
                             })
                             .catch(function (error) {
                                 console.error('[MrHua] app-shell 补装失败', error);

@@ -59,18 +59,102 @@
   .subscribe-native {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
     height: 100%;
     box-sizing: border-box;
     overflow-y: auto;
+    padding: 22px 24px 20px;
+    background:
+      linear-gradient(180deg, rgba(255, 250, 240, .6), transparent 120px);
   }
+  .subscribe-native .subscribe-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 100%;
+  }
+  .subscribe-native .subscribe-note {
+    padding: 16px 18px;
+    border: 1px solid var(--line-2);
+    border-top: 2px solid var(--amber);
+    background: rgba(255, 253, 248, .78);
+  }
+  .subscribe-native .subscribe-note__eyebrow {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--amber);
+    font: 10px/1 var(--mono);
+    letter-spacing: .18em;
+  }
+  .subscribe-native .subscribe-note p {
+    margin: 0;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.75;
+  }
+  .subscribe-native .subscribe-note p + p { margin-top: 4px; color: var(--muted); }
+  .subscribe-native .subscribe-note b { font-weight: 600; letter-spacing: .01em; }
   .subscribe-native .field { margin-top: 0; }
   .subscribe-native .field label {
-    color: var(--muted);
+    color: var(--dim);
     font: 10px/1.4 var(--mono);
     letter-spacing: .08em;
+    margin-bottom: 5px;
   }
-  .subscribe-native .tbtn { width: 100%; }
+  .subscribe-native .field input {
+    height: 36px;
+    background: #fffdf8;
+    border: 1px solid var(--line-2);
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .subscribe-native .field input:focus {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 1px rgba(169, 114, 45, .12);
+  }
+  .subscribe-native .subscribe-consent {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 9px;
+    align-items: start;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    background: rgba(255, 253, 248, .5);
+    cursor: pointer;
+  }
+  .subscribe-native .subscribe-consent input {
+    width: 15px;
+    height: 15px;
+    margin: 2px 0 0;
+    accent-color: var(--amber);
+  }
+  .subscribe-native .subscribe-consent span {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .subscribe-native .subscribe-submit {
+    width: 100%;
+    height: 38px;
+    margin-top: 2px;
+    letter-spacing: .06em;
+  }
+  .subscribe-native .subscribe-result {
+    min-height: 18px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .subscribe-native .subscribe-result[data-state="error"] { color: #a13b32; }
+  .subscribe-native .subscribe-result[data-state="ok"] { color: #39784a; }
+  .subscribe-native .subscribe-foot {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    color: var(--dim);
+    font: 10px/1.7 var(--mono);
+    letter-spacing: .02em;
+  }
   .subscribe-native__loading,
   .subscribe-native__error {
     margin: 0;

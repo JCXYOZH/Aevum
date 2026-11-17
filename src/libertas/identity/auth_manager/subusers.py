@@ -33,13 +33,15 @@ from .models import PermissionAction, Role, ACLItem
 class AuthSubUserMixin:
     """子用户增删改查与当前子用户切换。"""
 
-    def add_sub_user(self, name: str, role: str = "sub", identity: Optional[Dict] = None) -> Dict:
-        """添加子用户（身份档案）"""
+    def add_sub_user(self, name: str, role: str = "sub", identity: Optional[Dict] = None,
+                     owner_user_id: str = "") -> Dict:
+        """添加子用户（身份档案）；owner_user_id 是它所属的登录账号。"""
         sid = uuid.uuid4().hex[:10]
         with self._lock:
             self._sub_users[sid] = {
                 "id": sid, "name": name, "role": role,
                 "identity": identity or {},
+                "owner_user_id": str(owner_user_id or ""),
                 "active": False,
                 "created_at": time.time(),
                 "last_active": 0,
@@ -57,6 +59,18 @@ class AuthSubUserMixin:
                 self._save()
                 return True
         return False
+
+    def update_sub_user_extra(self, sid: str, **fields: Any) -> bool:
+        """更新子用户的附加字段（登录名、所属账号等）。"""
+        with self._lock:
+            if sid not in self._sub_users:
+                return False
+            for key, value in fields.items():
+                if key in {"identity", "id", "created_at"}:
+                    continue
+                self._sub_users[sid][key] = value
+            self._save()
+            return True
 
     def set_active_sub_user(self, sid: str) -> bool:
         """设置活跃子用户（身份档案），sid为空则取消"""
@@ -79,12 +93,20 @@ class AuthSubUserMixin:
                 return dict(self._sub_users[self._active_sub_user])
         return None
 
-    def list_sub_users(self) -> List[Dict]:
-        """列出所有子用户"""
+    def list_sub_users(self, owner_user_id: Optional[str] = None) -> List[Dict]:
+        """列出子用户；给 owner_user_id 时只返回该账号名下的档案。"""
         with self._lock:
             users = [dict(s) for s in self._sub_users.values()]
+            if owner_user_id is not None:
+                users = [s for s in users if str(s.get("owner_user_id", "")) == str(owner_user_id)]
             users.sort(key=lambda x: x.get("created_at", 0), reverse=True)
             return users
+
+    def get_sub_user(self, sid: str) -> Optional[Dict]:
+        """按 id 取子用户副本。"""
+        with self._lock:
+            sub = self._sub_users.get(sid)
+            return dict(sub) if sub else None
 
     def delete_sub_user(self, sid: str) -> bool:
         """删除子用户"""

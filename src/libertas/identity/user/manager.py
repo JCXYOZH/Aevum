@@ -118,18 +118,28 @@ class UserManager(UserStorageMixin):
     
         # 登录成功
         user.failed_login_count = 0
+        session = self.issue_session(user, ip, user_agent)
+        terminal.info(f"用户登录成功: {username}", "user")
+        return session, "登录成功"
+
+    def issue_session(self, user: User, ip: str = "",
+                      user_agent: str = "") -> UserSession:
+        """给已核验身份的用户签发会话。
+
+        密码登录、验证码登录等不同入口都走这里，避免每个入口各写一份
+        session 记录逻辑；调用方必须先完成身份核验。
+        """
+        user.failed_login_count = 0
         user.login_count += 1
         user.last_login = time.time()
         user.last_login_ip = ip
         user.status = UserStatus.ACTIVE
-    
         session = UserSession(user.user_id, ip, user_agent)
         self._sessions[session.session_id] = session
-        self._sessions[session.token] = session  # token索引
+        self._sessions[session.token] = session
         self._save()
-        self._log_activity(user.user_id, "login", f"用户登录: {username} (IP: {ip})")
-        terminal.info(f"用户登录成功: {username}", "user")
-        return session, "登录成功"
+        self._log_activity(user.user_id, "login", f"用户登录: {user.username} (IP: {ip})")
+        return session
 
     def logout(self, session_id: str = "") -> bool:
         """用户登出（连坐：同一用户的其它会话一并注销）

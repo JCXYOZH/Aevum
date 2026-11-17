@@ -1154,7 +1154,9 @@
                         // _st 是 {}，checked 为 undefined，!== false 成立会被判成
                         // 未登录 —— 与 fail-open 的初衷相反，界面会永久锁死在认证页。
                         // 广域网嵌入页只展示通信窗口，不做身份认证拦截。
-                        _preloginOK = !!window.MR_EMBED_WANSHARE || !!_st.isLoggedIn || _st.checked !== true;
+                        // 公开页面（?public=1）只负责展示，不做登录门禁；
+                        // 真正的数据接口仍然各自校验身份，前端不替后端鉴权。
+                        _preloginOK = !!window.MR_PUBLIC_PAGE || !!window.MR_EMBED_WANSHARE || !!_st.isLoggedIn || _st.checked !== true;
                     } catch (e) { _preloginOK = true; }
                     if (!_preloginOK && MR_PRELOGIN_WINDOWS.indexOf(id) === -1) {
                         id = 'identity';
@@ -1621,30 +1623,9 @@ const win = document.getElementById('win-' + id);
                     return;
                 }
                 if (el) { el.classList.add('alert'); el.dataset.authAlert = '1'; }
-                // 未登录：首先把用户带到认证页。
-                // 每次页面加载只自动带一次 —— 用户自己关掉之后不再反复弹，
-                // 否则就变成「一直跳转认证页面」。
-                if (!window.__identityAutoOpened) {
-                    window.__identityAutoOpened = true;
-                    const _goAuth = function () {
-                        try {
-                            const _win = document.getElementById('win-identity');
-                            if (!_win) return;
-                            // 认证窗口已经开着就只聚焦，别再"弹"一次（否则看起来像重复弹窗）
-                            if (_win.classList.contains('active') && !_win.classList.contains('minimized')) {
-                                try { window.WindowManager && window.WindowManager.focusWindow('identity'); }
-                                catch (e) { /* 聚焦失败无所谓 */ }
-                                return;
-                            }
-                            if (typeof window.openWindow === 'function') window.openWindow('identity');
-                        } catch (e) { /* 打开失败不影响未认证提示 */ }
-                    };
-                    if (document.readyState === 'loading') {
-                        document.addEventListener('DOMContentLoaded', _goAuth, { once: true });
-                    } else {
-                        setTimeout(_goAuth, 200);
-                    }
-                }
+                // 不自动弹身份认证：只保留灵体上的未认证提示。
+                // 用户点灵体时，灵体 click 处理器会读取 authAlert 并打开 identity；
+                // 打开 MrHua 本身保持安静，避免每次进页面都被认证窗挡住。
             }
 
             function updateUserInfo(username) {
@@ -10008,13 +9989,13 @@ const results = asArray(data.results);
                     {id:'notifications',name:'通知中心',icon:'🔔',cat:'系统'},{id:'cloud',name:'云同步',icon:'☁️',cat:'系统'},
                     {id:'identity',name:'身份认证',icon:'🪪',cat:'系统'},{id:'auth',name:'人格设置',icon:'🎭',cat:'系统'},
                     {id:'manual',name:'操作手册',icon:'📖',cat:'系统'},{id:'feedback',name:'反馈',icon:'🌺',cat:'系统'},
-                    {id:'subscribe',name:'订阅',icon:'📮',cat:'系统'},
                     {id:'experiments',name:'实验功能',icon:'🧪',cat:'系统'},
                     {id:'status',name:'状态',icon:'📈',cat:'系统'},
                 ];
                 // 只渲染已经有真实后端的功能；其余窗口保留源码，等 API 接好再放回。
                 // 首屏先用静态兜底，随后用 /api/capabilities 校正，避免后端扩容后前端还要改清单。
-                const BACKEND_READY_FALLBACK = ['identity', 'chat', 'wanshare', 'subscribe'];
+                // MrHua 内部不设订阅入口：订阅只保留 3D 桌面的原生窗口，避免入口重复。
+                const BACKEND_READY_FALLBACK = ['identity', 'chat', 'wanshare'];
                 const ORB_TOOLS = ORB_TOOLS_ALL.filter(t => BACKEND_READY_FALLBACK.includes(t.id));
                 // 工具窗口的唯一来源：任务栏 / Exposé / 启动器都从这里取，避免多处登记漂移
                 window.MR_ORB_TOOLS = ORB_TOOLS;
@@ -13518,6 +13499,79 @@ const transfers = asArray(data.transfers);
                     btn.disabled = false; btn.textContent = '登录';
                 });
 
+                // 本机验证码登录：码只在本机生成，页面只负责输入。
+                const localToggle = document.getElementById('id-local-toggle');
+                const localPanel = document.getElementById('id-local-panel');
+                if (localToggle && localPanel) {
+                    localToggle.addEventListener('click', () => {
+                        const open = localPanel.style.display === 'block';
+                        localPanel.style.display = open ? 'none' : 'block';
+                    });
+                }
+                const localSend = document.getElementById('id-local-send');
+                if (localSend) {
+                    localSend.addEventListener('click', async () => {
+                        const result = document.getElementById('id-local-result');
+                        const display = document.getElementById('id-local-code-display');
+                        const username = (document.getElementById('id-local-username').value || '').trim();
+                        if (!username) {
+                            if (result) result.innerHTML = '<span style="color:#e53935;">请先填写用户名</span>';
+                            return;
+                        }
+                        localSend.disabled = true;
+                        try {
+                            const r = await fetch('/api/auth/local_code', {
+                                method: 'POST', headers: {'Content-Type':'application/json'},
+                                body: JSON.stringify({ username })
+                            });
+                            const d = await r.json();
+                            if (d.success) {
+                                if (display) {
+                                    display.style.display = 'block';
+                                    display.textContent = '本机验证码：' + d.code + '（5 分钟内有效）';
+                                }
+                                const codeInput = document.getElementById('id-local-code');
+                                if (codeInput) codeInput.value = d.code || '';
+                                if (result) result.innerHTML = '<span style="color:#43a047;">验证码已生成</span>';
+                            } else if (result) {
+                                result.innerHTML = '<span style="color:#e53935;">' + escapeHtml(d.error || '生成失败') + '</span>';
+                            }
+                        } catch (e) {
+                            if (result) result.innerHTML = '<span style="color:#e53935;">网络错误</span>';
+                        }
+                        localSend.disabled = false;
+                    });
+                }
+                const localLoginBtn = document.getElementById('id-local-login-btn');
+                if (localLoginBtn) {
+                    localLoginBtn.addEventListener('click', async () => {
+                        const result = document.getElementById('id-local-result');
+                        const username = (document.getElementById('id-local-username').value || '').trim();
+                        const code = (document.getElementById('id-local-code').value || '').trim();
+                        localLoginBtn.disabled = true;
+                        localLoginBtn.textContent = '登录中...';
+                        try {
+                            const r = await fetch('/api/auth/local_login', {
+                                method: 'POST', headers: {'Content-Type':'application/json'},
+                                body: JSON.stringify({ username, code })
+                            });
+                            const d = await r.json();
+                            if (d.success) {
+                                if (result) result.innerHTML = '<span style="color:#43a047;">验证码登录成功</span>';
+                                window.__authStatus = null;
+                                if (typeof updateUserInfo === 'function') updateUserInfo(d.username);
+                                setTimeout(loadIdentity, 800);
+                            } else if (result) {
+                                result.innerHTML = '<span style="color:#e53935;">' + escapeHtml(d.error || '登录失败') + '</span>';
+                            }
+                        } catch (e) {
+                            if (result) result.innerHTML = '<span style="color:#e53935;">网络错误</span>';
+                        }
+                        localLoginBtn.disabled = false;
+                        localLoginBtn.textContent = '验证码登录';
+                    });
+                }
+
                 // 账号找回
                 const recoverPanel = document.getElementById('auth-recover-panel');
                 const recoverLink = document.getElementById('auth-recover-link');
@@ -13670,8 +13724,9 @@ const transfers = asArray(data.transfers);
                             list.innerHTML = d.sub_users.map(s => {
                                 const isActive = s.active ? 'background:#e8f5e9;border-color:#66bb6a;' : 'background:#fafafa;';
                                 const aiName = (s.identity && s.identity['名字']) ? ' → ' + escapeHtml(s.identity['名字']) : '';
+                                const loginName = s.login_name ? '<div style="font-size:0.68rem;color:#999;font-weight:400;">登录名 ' + escapeHtml(s.login_name) + '</div>' : '';
                                 return '<div style="display:flex;align-items:center;padding:8px;border-radius:6px;margin-bottom:4px;font-size:0.8rem;border:1px solid #eee;' + isActive + '">' +
-                                    '<span style="flex:1;font-weight:600;">' + escapeHtml(s.name) + aiName + '</span>' +
+                                    '<span style="flex:1;font-weight:600;">' + escapeHtml(s.name) + aiName + loginName + '</span>' +
                                     (s.active ? '<span style="color:#2e7d32;margin-right:6px;font-size:0.72rem;">已激活</span>' : '') +
                                     '<button class="profile-edit" data-id="' + s.id + '" data-name="' + escapeHtml(s.name) + '" style="border:none;background:none;color:#1565c0;cursor:pointer;margin-right:4px;font-size:0.75rem;">编辑</button>' +
                                     (s.active ?

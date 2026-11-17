@@ -15,6 +15,7 @@
         var el = $('loop-subscribe-result');
         if (!el) return;
         el.textContent = message || '';
+        el.setAttribute('data-state', kind === 'error' ? 'error' : (kind === 'success' ? 'ok' : ''));
         el.style.color = kind === 'error'
             ? 'var(--theme-error)'
             : (kind === 'success' ? 'var(--theme-success)' : '#555');
@@ -55,7 +56,11 @@
     }
 
     function open() {
-        if (typeof window.openWindow === 'function') window.openWindow('subscribe');
+        // 只有 MrHua 的旧窗口需要 openWindow；3D 桌面的原生订阅面板
+        // 自己就是窗口，不能再调用 openWindow('subscribe')，否则会重复开窗。
+        if (document.getElementById('win-subscribe') && typeof window.openWindow === 'function') {
+            window.openWindow('subscribe');
+        }
         recordVisit();
         focus();
     }
