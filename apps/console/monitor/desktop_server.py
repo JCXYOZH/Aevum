@@ -9,6 +9,7 @@ same Python used for the relay and the serial bridge.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import mimetypes
 import os
@@ -19,6 +20,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from email.utils import formatdate
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -549,6 +551,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
 
     def _send_file(self, path: Path, status: int = 200) -> None:
         try:
+            stat = path.stat()
             data = path.read_bytes()
         except OSError:
             self._send_json({"ok": False, "message": "file not found"}, 404)
@@ -556,12 +559,42 @@ class MonitorHandler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         if path.suffix.lower() in {".html", ".js", ".css", ".json", ".txt", ".md"}:
             ctype += "; charset=utf-8"
+        etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+        last_modified = formatdate(stat.st_mtime, usegmt=True)
+        if status == HTTPStatus.OK and self._etag_matches(etag):
+            self.send_response(HTTPStatus.NOT_MODIFIED)
+            self.send_header("ETag", etag)
+            self.send_header("Last-Modified", last_modified)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
+        body = data
+        content_encoding = None
+        if path.suffix.lower() in {".html", ".js", ".css", ".json", ".txt", ".md"}:
+            if "gzip" in self.headers.get("Accept-Encoding", "").lower():
+                body = gzip.compress(data, compresslevel=6)
+                content_encoding = "gzip"
         self.send_response(status)
         self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("ETag", etag)
+        self.send_header("Last-Modified", last_modified)
+        if content_encoding:
+            self.send_header("Content-Encoding", content_encoding)
+            self.send_header("Vary", "Accept-Encoding")
         self.end_headers()
-        self.wfile.write(data)
+        self.wfile.write(body)
+
+    def _etag_matches(self, etag: str) -> bool:
+        header = self.headers.get("If-None-Match", "")
+        if not header:
+            return False
+        for token in header.split(","):
+            token = token.strip()
+            if token == "*" or token.removeprefix("W/") == etag:
+                return True
+        return False
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)

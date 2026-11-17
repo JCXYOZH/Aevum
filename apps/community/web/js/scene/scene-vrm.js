@@ -47,6 +47,7 @@
     var actionGLB = null;
     var actionPlayer = null;
     var actionReady = false;
+    var actionPromise = null;
     var actionUrl = options.actionUrl ||
       (global.AEVUM_MODEL_CONFIG && global.AEVUM_MODEL_CONFIG.actions) ||
       "";
@@ -196,7 +197,8 @@
       if (actionReady) return Promise.resolve();
       if (!actionUrl) return Promise.resolve();
       if (!formats.parseGLB || !formats.GLTFAnimation || !Render.AnimationRetarget) return Promise.resolve();
-      return fetch(actionUrl)
+      if (actionPromise) return actionPromise;
+      actionPromise = fetch(actionUrl)
         .then(function (response) {
           if (!response.ok) throw new Error("动作库加载失败 " + response.status + " · " + actionUrl);
           return response.arrayBuffer();
@@ -213,7 +215,11 @@
           actionPlayer = null;
           actionReady = false;
           if (global.console) console.warn("scene-vrm: action library unavailable", error);
+        })
+        .then(function () {
+          actionPromise = null;
         });
+      return actionPromise;
     }
 
     function frame(now, dt) {
@@ -260,6 +266,8 @@
       var distance = Math.hypot(nextTarget[0] - position[0], nextTarget[2] - position[2]);
       target = nextTarget;
       runMode = Boolean(moveOptions && moveOptions.run) || distance > runDistance;
+      /* 只有真正移动时才需要动作库；先走程序化动作，动作库到达后自动切换。 */
+      if (!actionReady && !actionPromise) loadActions();
     }
 
     function boot() {
@@ -280,9 +288,6 @@
           vrm = formats.parseVRM(buffer);
           state.vrm = vrm;
           return renderer.loadVRM(vrm);
-        })
-        .then(function () {
-          return loadActions();
         })
         .then(function () {
           metrics = metricsFor(renderer);
