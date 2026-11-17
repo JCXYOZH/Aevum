@@ -637,7 +637,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
             if governance_get(self, route, auth_api, wan_api):
                 return
 
-        if route == "/":
+        if route in ("/", "/apps/community/web", "/apps/community/web/"):
+            # 根入口与静态目录入口统一是展示页；3D 桌面只走 /desktop 或 desktop.html。
             self._send_file(WEB_ROOT / "index.html")
             return
         if route == "/desktop":
@@ -730,9 +731,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "message": "invalid path"}, 400)
             return
         if not target.exists() or not target.is_file():
-            # Unknown routes fall back to the desktop shell so the page is
-            # forgiving when someone types a stale app name.
-            target = WEB_ROOT / "desktop.html"
+            # Unknown routes fall back to the showcase page; desktop stays explicit.
+            target = WEB_ROOT / "index.html"
         self._send_file(target)
 
 
