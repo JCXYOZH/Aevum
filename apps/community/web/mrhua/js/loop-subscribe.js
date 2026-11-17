@@ -143,7 +143,8 @@
 
     function init() {
         var form = $('loop-subscribe-form');
-        if (!form) return;
+        if (!form || form.dataset.loopBound === '1') return;
+        form.dataset.loopBound = '1';
         form.addEventListener('submit', submit);
 
         var params = new URLSearchParams(location.search);
@@ -163,7 +164,7 @@
         }
     }
 
-    window.MrHuaSubscribe = { open: open, focus: focus };
+    window.MrHuaSubscribe = { open: open, focus: focus, init: init };
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

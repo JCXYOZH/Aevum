@@ -91,10 +91,6 @@
             window.MR_EMBED_WANSHARE = true;
             window.__identityAutoOpened = true;
             document.body.classList.add('mrhua-embed-window', 'mrhua-embed-wanshare');
-        } else if (embedMode === 'subscribe') {
-            window.MR_EMBED_SUBSCRIBE = true;
-            window.__identityAutoOpened = true;
-            document.body.classList.add('mrhua-embed-window', 'mrhua-embed-subscribe');
         }
 
         Promise.all([fetchJSON(MANIFEST_URL), fetchJSON(SCRIPTS_URL)])
@@ -124,20 +120,19 @@
                 });
             })
             .then(function () {
-                // 嵌入模式只需要窗口本身，不启动 3D 灵体引擎；否则会额外装载整套 legacy orb 模块。
-                if (!window.MR_EMBED_WANSHARE && !window.MR_EMBED_SUBSCRIBE && window.startMrHuaEngine) {
+                // 嵌入广域网只需要窗口本身，不启动 3D 灵体引擎；否则会额外装载整套 legacy orb 模块。
+                if (!window.MR_EMBED_WANSHARE && window.startMrHuaEngine) {
                     window.startMrHuaEngine();
                 }
-                if (!window.MR_EMBED_WANSHARE && !window.MR_EMBED_SUBSCRIBE) return;
+                if (!window.MR_EMBED_WANSHARE) return;
 
-                /* 嵌入模式：跳过开门动画，直接打开目标窗口。
+                /* 嵌入广域网：跳过开门动画，直接打开广域网窗口。
                    app-shell 只保留窗口自身逻辑，不显示身份认证和其它壳层。 */
                 var skipBtn = document.getElementById('gate-skip');
                 if (skipBtn) skipBtn.click();
-                var targetWindow = window.MR_EMBED_SUBSCRIBE ? 'subscribe' : 'wanshare';
                 window.setTimeout(function () {
                     if (typeof window.openWindow === 'function') {
-                        window.openWindow(targetWindow);
+                        window.openWindow('wanshare');
                     }
                 }, 400);
             })

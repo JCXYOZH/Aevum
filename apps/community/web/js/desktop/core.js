@@ -95,6 +95,7 @@
       w: 1200,
       h: 800,
       desc: "完整 MrHua 工作台：3D 灵体、窗口体系与广域网",
+      external: true,
       url: "/mrhua/"
     },
     {
@@ -104,8 +105,7 @@
       icon: "mail",
       w: 620,
       h: 520,
-      desc: "只订 Aevum 更新；一人一封，可退订",
-      url: "/mrhua/?embed=subscribe"
+      desc: "只订 Aevum 更新；一人一封，可退订"
     },
     {
       id: "mrhua-wan",
@@ -115,6 +115,7 @@
       w: 1000,
       h: 740,
       desc: "MrHua 广域网通信页",
+      external: true,
       url: "/mrhua/?embed=wanshare"
     }
   ];

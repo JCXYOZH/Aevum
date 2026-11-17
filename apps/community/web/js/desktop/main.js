@@ -64,6 +64,7 @@
     if (app.id === "errors") return MD.panels.errors();
     if (app.id === "exhibit") return MD.panels.exhibit({ title: "AEVUM 展示页" });
     if (app.id === "camera") return MD.panels.camera();
+    if (app.id === "subscribe") return MD.panels.subscribe();
     if (app.url) return MD.panels.exhibit({ url: app.url, title: app.title });
     return MD.panels.exhibit({ url: "index.html", title: app.title });
   }
@@ -71,6 +72,11 @@
   function openWindow(id) {
     var app = MD.getApp(id);
     if (!app) return;
+    // 程序窗口交给浏览器/桌面外壳自己开，不用 iframe 包在 3D 桌面里。
+    if (app.external && app.url) {
+      window.open(app.url, "_blank", "popup=yes,width=1200,height=800,noopener");
+      return;
+    }
     // 沉浸模式会隐藏 .windows 层；从启动项打开窗口时先返回桌面视图。
     var desk = MD.qs(".desk");
     if (desk && desk.classList.contains("scene-focus")) {
