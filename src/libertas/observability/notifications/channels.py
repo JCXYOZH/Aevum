@@ -175,9 +175,7 @@ class EmailChannel(NotificationChannel):
                         server.login(self.username, self.password)
                     server.sendmail(self.from_addr, self.to_addrs, msg.as_string())
             return True
-        except Exception as error:
-            # 发信失败不能静默：认证、端口或收件人被拒都会走到这里。
-            terminal.warn(f"邮件通知发送失败: {error}", "notify")
+        except Exception:
             return False
 
 class FeishuChannel(NotificationChannel):
