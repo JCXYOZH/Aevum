@@ -21,8 +21,8 @@
   };
 
   var slots = [
-    { id: "host", title: "角色位 01", meta: "HOST / 待接入", grid: [-1.2, 2.2] },
-    { id: "guide", title: "角色位 02", meta: "GUIDE / 待接入", grid: [1.2, 2.2] }
+    { id: "host", title: "角色位 01", meta: "VRM / 角色模型", grid: [-1.2, 2.2] },
+    { id: "guide", title: "角色位 02", meta: "PMX / 角色模型", grid: [1.2, 2.2] }
   ];
 
   function placementFor(app, index) {

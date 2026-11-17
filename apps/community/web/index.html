@@ -101,7 +101,7 @@
         <div class="section__head">
           <p class="kicker">WORLD / 3D 地面网格</p>
           <h2 id="world-title">页面不是列表，是一块可以走进去的场地</h2>
-          <p class="section__lede">用引擎自己的地面网格把架构、阶段、控制台和参与入口摆进同一块场地。拖拽旋转、滚轮缩放，点一个节点就回到对应内容；两个角色位先留空，等模型接入。</p>
+          <p class="section__lede">用引擎自己的地面网格把架构、阶段、控制台和参与入口摆进同一块场地。拖拽旋转、滚轮缩放，点一个节点就回到对应内容；两个角色位在 3D 桌面里已接入 VRM 与 PMX，这个展示场景保留入口圆环。</p>
         </div>
         <div class="world-stage" id="showcase-scene"></div>
         <div class="world__foot">
@@ -114,7 +114,7 @@
         <div class="section__head">
           <p class="kicker">ARCHITECTURE / 社区 AI 架构</p>
           <h2 id="modules-title">三个目录：fortuna、libertas、memoria</h2>
-          <p class="section__lede">这是 Aevum 社区自己的开源 AI 架构，核心算法在 Memoria：门控阀、链式单元、三路平衡、分层记忆与多轮回写。这里按这套架构自己的模块和连接方式描述，不套用现成架构的名字，也不强行把它归入某一类现有体系。仓库根下是三个方向目录：<code>src/fortuna</code> 做内核与引导，<code>src/libertas</code> 做安全与工具，这两处目前是空骨架；<code>memoria</code> 目录里是模型与训练，没有桌面，桌面看板和展示页在 <code>apps</code> 外层。下面的图只画 Memoria 的前向主链：输入、门控、三个链式单元、分层记忆的写入与检索，再到融合、归一化与输出；训练、生成、检查点在外围，不在主链上。</p>
+          <p class="section__lede">这是 Aevum 社区自己的开源 AI 架构，核心算法在 Memoria：门控阀、链式单元、三路平衡、分层记忆与多轮回写。这里按这套架构自己的模块和连接方式描述，不套用现成架构的名字，也不强行把它归入某一类现有体系。仓库根下是三个方向目录：<code>src/fortuna</code> 做内核与引导，<code>src/libertas</code> 做身份、安全与工具，<code>src/memoria</code> 做模型与训练；桌面看板和展示页在 <code>apps</code> 外层。下面的图只画 Memoria 的前向主链：输入、门控、三个链式单元、分层记忆的写入与检索，再到融合、归一化与输出；训练、生成、检查点在外围，不在主链上。</p>
           <p class="arch-claim"><span>COMMUNITY ARCH / 社区架构</span>Memoria 的核心算法由门控阀、链式单元、三路平衡、分层记忆与多轮回写组成；这里按它自己的模块命名和连接关系写。</p>
         </div>
         <figure class="arch-figure">
@@ -263,8 +263,8 @@
         <div class="section__head">
           <p class="kicker">STATE / 按仓库事实写</p>
           <h2 id="state-title">现在做到哪一步</h2>
-          <p class="section__lede">2026-09-16 三个模块定名；2026-11-05 首次公开提交；2026-11-08 首版展示页。现在已有 Windows 安装包与本地模型生成；未完成的事项列在后面。</p>
-          <p class="note">首版仓库（2026-11-08，排除 .git）：818 个文件，12 个非空。</p>
+          <p class="section__lede">2026-09-16 三个模块定名；2026-11-05 首次公开提交；2026-11-08 首版展示页；2026-11-17 3D 桌面与账号链路接入。现在已有 Windows 安装包、本地模型生成、3D 桌面和 FastAPI 服务；未完成的事项列在后面。</p>
+          <p class="note">当前仓库（2026-11-17，排除 .git、构建产物与模型）：2,188 个受版本控制文件，1,405 个非空；0 字节占位不计入完成。</p>
         </div>
         <div class="state__scroll-shell">
         <div class="state__scroll" tabindex="0" aria-label="项目进度时间轴，可滚动">
@@ -312,26 +312,26 @@
           <li class="timeline__row">
             <div class="timeline__when"><span>P2</span><small>服务端 API</small></div>
             <div class="timeline__body">
-              <h3>先定三个决定，再写代码</h3>
+              <h3>服务端形态已定，接口开始接通</h3>
               <ul>
-                <li>服务端形态：单体 Python / 自写 C 服务 / 纯静态加最小接口</li>
-                <li>数据存储：SQLite 起步，ECS 2C2G 先不上中间件</li>
-                <li>身份与准入：邀请制优先，还是邮件验证</li>
+                <li>形态：FastAPI + Uvicorn；监控服务保留标准库 HTTP 入口，负责桌面静态页和旧接口</li>
+                <li>存储：先落本机 SQLite / 数据目录，ECS 2C2G 不先上中间件</li>
+                <li>身份：账号、子用户档案、会话分别管理；本机验证码登录已接入</li>
               </ul>
             </div>
-            <span class="badge badge--work">待决策</span>
+            <span class="badge badge--done">已定</span>
           </li>
           <li class="timeline__row">
             <div class="timeline__when"><span>P3</span><small>平台化</small></div>
             <div class="timeline__body">
               <h3>工具调度、桌面端、记忆接入</h3>
               <ul>
-                <li>工具调度：libertas 的工具打成镜像，按需运行回传结果</li>
-                <li>桌面端：打包同一份 Web，多窗口</li>
-                <li>memoria：讨论与工具产出沉淀成可检索的记忆</li>
+                <li>桌面端：3D 桌面、MrHua 程序、原生订阅窗口已接入</li>
+                <li>工具调度：libertas 的工具运行与治理已有代码，镜像化仍待整理</li>
+                <li>memoria：讨论与工具产出沉淀成可检索记忆的工作还在继续</li>
               </ul>
             </div>
-            <span class="badge badge--work">计划中</span>
+            <span class="badge badge--work">部分落地</span>
           </li>
           <li class="timeline__row">
             <div class="timeline__when"><span>P4</span><small>长期</small></div>
@@ -359,11 +359,11 @@
           <li class="timeline__row">
             <div class="timeline__when"><span>P6</span><small>桌面</small></div>
             <div class="timeline__body">
-              <h3>多窗口桌面</h3>
+              <h3>3D 桌面与多窗口</h3>
               <ul>
-                <li>内核、训练、中继、错误看板各有窗口</li>
-                <li>本地可选检查点、输入提示词、查看输出</li>
-                <li>云端入口已留位置，尚未接通</li>
+                <li>窗口、启动项和监控状态先渲染；VRM / PMX 角色随后载入</li>
+                <li>MrHua 作为 3D 桌面启动项，订阅使用原生窗口，不再另开页面</li>
+                <li>云端入口仍只保留位置，尚未做完整验收</li>
               </ul>
             </div>
             <span class="badge badge--done">已接入</span>
@@ -373,9 +373,10 @@
             <div class="timeline__body">
               <h3>Windows 安装包</h3>
               <ul>
-                <li>约 96 MB 的 Windows 安装包已产出</li>
+                <li>约 95 MB 的 Windows 安装包已产出</li>
                 <li>模型在开源目录之外重新训练：1,352,744 参数、3,000 词表</li>
                 <li>旧权重未复制，仓库不放大型模型文件</li>
+                <li>安装与卸载仍只在本机验证，未在干净用户目录实跑</li>
               </ul>
             </div>
             <span class="badge badge--done">已产出</span>
@@ -383,18 +384,31 @@
           <li class="timeline__row">
             <div class="timeline__when"><span>P8</span><small>云端</small></div>
             <div class="timeline__body">
-              <h3>Linux 构建与启动</h3>
+              <h3>Linux 构建与部署脚本</h3>
               <ul>
-                <li>Linux 构建脚本已补</li>
-                <li>中继、监控的启动、环境变量、健康检查、远程连接已写入文档</li>
-                <li>云端实机未验收</li>
+                <li>完整部署走 <code>apps/console/deploy/install.sh</code>：nginx、四个 systemd 服务、静态页、API、WebSocket 一起配置</li>
+                <li>部署依赖补齐 FastAPI / Uvicorn / cryptography；角色模型与动作库按 7 天缓存</li>
+                <li>ECS 实机仍未验收，relay-only 安装器不用于完整桌面</li>
               </ul>
             </div>
             <span class="badge badge--work">待实机</span>
           </li>
+          <li class="timeline__row">
+            <div class="timeline__when"><span>11-17</span><small>账号与桌面</small></div>
+            <div class="timeline__body">
+              <h3>主用户、子用户与 3D 桌面</h3>
+              <ul>
+                <li>FastAPI + Uvicorn 身份接口；主账号与子用户拥有独立登录账号、会话和身份档案</li>
+                <li>本机验证码仅 <code>127.0.0.1 / ::1</code> 可生成，6 位、5 分钟、一次性</li>
+                <li>3D 桌面先渲染窗口与程序，再载入 VRM / PMX 角色</li>
+                <li>聊天、上传、记忆等历史目录仍共享，尚未按用户彻底分区</li>
+              </ul>
+            </div>
+            <span class="badge badge--work">进行中</span>
+          </li>
         </ol>
         </div>
-        <p class="state__scroll-hint">上下滚动查看全部 11 个节点</p>
+        <p class="state__scroll-hint">上下滚动查看全部 12 个节点</p>
         </div>
       </section>
 
