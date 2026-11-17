@@ -30,6 +30,7 @@ from collections import defaultdict
 from .constants import REFUSAL_PATTERNS_ZH, REFUSAL_PATTERNS_EN, EVASION_PATTERNS
 from .models import GuardianRule, Violation
 from .policy import CompliancePolicyMixin
+from libertas.foundation.config import get_data_dir
 
 
 class ComplianceSystem(CompliancePolicyMixin):
@@ -60,13 +61,8 @@ class ComplianceSystem(CompliancePolicyMixin):
 
     @staticmethod
     def _default_db_path() -> str:
-        """获取默认数据库路径（优先非系统盘）"""
-        if os.name == "nt":
-            for drive in ["D:", "E:", "F:"]:
-                if os.path.exists(drive + "\\"):
-                    return os.path.join(drive + "\\", "LibertasData", "compliance.db")
-        home = os.path.expanduser("~")
-        return os.path.join(home, "LibertasData", "compliance.db")
+        """默认数据库路径跟随 LIBERTAS_DATA_DIR，避免数据根搬家后分裂。"""
+        return os.path.join(get_data_dir(), "compliance.db")
 
     def _get_conn(self) -> sqlite3.Connection:
         """获取数据库连接"""

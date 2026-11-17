@@ -19,6 +19,7 @@ from .constants import DEFAULT_QUOTAS
 from .crypto import hash_password
 from .crypto import verify_license_key
 from .crypto import verify_password
+from libertas.foundation.config import get_data_dir
 
 class AccountManager:
     """账户管理器（SQLite多表结构）"""
@@ -34,15 +35,8 @@ class AccountManager:
 
     @staticmethod
     def _default_db_path() -> str:
-        """获取默认数据库路径（优先非系统盘）"""
-        # Windows: 优先 D:\LibertasData，其次 E:\LibertasData，最后 ~/LibertasData
-        if os.name == "nt":
-            for drive in ["D:", "E:", "F:"]:
-                if os.path.exists(drive + "\\"):
-                    return os.path.join(drive + "\\", "LibertasData", "auth.db")
-        # macOS/Linux 或 Windows 只有C盘
-        home = os.path.expanduser("~")
-        return os.path.join(home, "LibertasData", "auth.db")
+        """默认数据库路径跟随 LIBERTAS_DATA_DIR，避免数据根搬家后分裂。"""
+        return os.path.join(get_data_dir(), "auth.db")
 
     def _get_conn(self) -> sqlite3.Connection:
         """获取数据库连接"""

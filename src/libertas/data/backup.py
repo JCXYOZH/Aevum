@@ -5,6 +5,8 @@ import os
 import time
 import json
 import shutil
+import sqlite3
+import tempfile
 import threading
 import zipfile
 import hashlib
@@ -21,12 +23,16 @@ class BackupItem:
     """备份项配置"""
 
     def __init__(self, name: str, source_path: str, backup_type: str = "full",
-                 compress: bool = True, retention: int = 7):
+                 compress: bool = True, retention: int = 7,
+                 sqlite_safe: bool = False, encrypt: bool = False):
         self.name = name
         self.source_path = source_path
         self.backup_type = backup_type  # full / incremental
         self.compress = compress
         self.retention = retention  # 保留份数
+        # SQLite 正在写时不能直接复制 .db；用 backup API 先生成一致性快照。
+        self.sqlite_safe = sqlite_safe
+        self.encrypt = encrypt
 
 
 # ================================================================
@@ -119,17 +125,26 @@ class BackupManager:
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_name = f"{item.name}_{timestamp}"
-
+        work_path = item.source_path
+        temp_dir = ""
         try:
+            if item.sqlite_safe and os.path.isfile(item.source_path):
+                temp_dir = tempfile.mkdtemp(prefix="aevum_backup_")
+                work_path = os.path.join(temp_dir, os.path.basename(item.source_path))
+                self._sqlite_snapshot(item.source_path, work_path)
+
             if item.compress:
                 backup_path = os.path.join(self.backup_dir, f"{backup_name}.zip")
-                self._create_zip(item.source_path, backup_path)
+                self._create_zip(work_path, backup_path)
             else:
                 backup_path = os.path.join(self.backup_dir, backup_name)
-                if os.path.isdir(item.source_path):
-                    shutil.copytree(item.source_path, backup_path)
+                if os.path.isdir(work_path):
+                    shutil.copytree(work_path, backup_path)
                 else:
-                    shutil.copy2(item.source_path, backup_path)
+                    shutil.copy2(work_path, backup_path)
+
+            if item.encrypt:
+                backup_path = self._encrypt_file(backup_path)
 
             size = self._get_size(backup_path)
             checksum = self._calculate_checksum(backup_path)
@@ -147,6 +162,69 @@ class BackupManager:
                 name=item.name, backup_type=item.backup_type,
                 file_path="", status="failed",
             )
+        finally:
+            if temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _backup_fernet(self):
+        """备份加密密钥单独存放，不写进备份目录。"""
+        try:
+            from cryptography.fernet import Fernet
+        except Exception as error:
+            raise RuntimeError(
+                "备份加密不可用：当前 Python 缺少 cryptography。"
+            ) from error
+        env_key = os.environ.get("AEVUM_BACKUP_KEY", "").strip()
+        if env_key:
+            return Fernet(env_key.encode("utf-8"))
+        key_path = os.path.join(get_data_dir(), "config", "backup.key")
+        os.makedirs(os.path.dirname(key_path), exist_ok=True)
+        if os.path.exists(key_path):
+            with open(key_path, "r", encoding="utf-8") as handle:
+                key = handle.read().strip()
+        else:
+            key = Fernet.generate_key().decode("ascii")
+            with open(key_path, "w", encoding="utf-8") as handle:
+                handle.write(key)
+            try:
+                os.chmod(key_path, 0o600)
+            except OSError:
+                pass
+        return Fernet(key.encode("utf-8"))
+
+    @staticmethod
+    def _sqlite_snapshot(source_path: str, target_path: str) -> None:
+        """使用 SQLite 在线备份 API 生成一致性快照，避免复制正在写的 .db。"""
+        source = sqlite3.connect(source_path, timeout=10)
+        target = sqlite3.connect(target_path, timeout=10)
+        try:
+            source.backup(target)
+            target.execute("PRAGMA integrity_check")
+        finally:
+            target.close()
+            source.close()
+
+    def _encrypt_file(self, path: str) -> str:
+        fernet = self._backup_fernet()
+        encrypted_path = path + ".fernet"
+        with open(path, "rb") as source:
+            data = source.read()
+        with open(encrypted_path, "wb") as target:
+            target.write(fernet.encrypt(data))
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return encrypted_path
+
+    def _decrypt_file(self, path: str) -> str:
+        fernet = self._backup_fernet()
+        plain_path = path[:-7] if path.endswith(".fernet") else path + ".plain"
+        with open(path, "rb") as source:
+            data = source.read()
+        with open(plain_path, "wb") as target:
+            target.write(fernet.decrypt(data))
+        return plain_path
 
     def _create_zip(self, source: str, dest: str):
         """创建 ZIP 压缩包"""
@@ -206,16 +284,25 @@ class BackupManager:
             return False
 
         try:
-            if record.file_path.endswith(".zip"):
-                extract_to = target_path or os.path.dirname(record.file_path)
-                with zipfile.ZipFile(record.file_path, "r") as zf:
+            backup_path = record.file_path
+            encrypted = backup_path.endswith(".fernet")
+            if encrypted:
+                backup_path = self._decrypt_file(backup_path)
+            if backup_path.endswith(".zip"):
+                extract_to = target_path or os.path.dirname(backup_path)
+                with zipfile.ZipFile(backup_path, "r") as zf:
                     zf.extractall(extract_to)
             else:
-                dest = target_path or record.file_path + "_restored"
-                if os.path.isdir(record.file_path):
-                    shutil.copytree(record.file_path, dest)
+                dest = target_path or backup_path + "_restored"
+                if os.path.isdir(backup_path):
+                    shutil.copytree(backup_path, dest)
                 else:
-                    shutil.copy2(record.file_path, dest)
+                    shutil.copy2(backup_path, dest)
+            if encrypted:
+                try:
+                    os.remove(backup_path)
+                except OSError:
+                    pass
             terminal.success(f"恢复完成: {record_name}", "backup")
             return True
         except Exception as e:

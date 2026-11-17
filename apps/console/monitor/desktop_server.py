@@ -494,7 +494,11 @@ class MonitorHandler(BaseHTTPRequestHandler):
         metrics_path = Path(self.server.metrics_path)
 
         auth_api = getattr(self.server, "auth_api", None)
-        if auth_api is not None and (route.startswith("/api/auth/") or route == "/api/current_user"):
+        if auth_api is not None and (
+            route.startswith("/api/auth/")
+            or route == "/api/current_user"
+            or route.startswith("/api/loop/")
+        ):
             if auth_api.handle_get(self, route):
                 return
 
@@ -608,7 +612,10 @@ class MonitorHandler(BaseHTTPRequestHandler):
         if chat_api is None and auth_api is not None:
             chat_api = ChatAPI(auth_api, self._generate_for_chat)
             self.server.chat_api = chat_api
-        if auth_api is not None and parsed.path.startswith("/api/auth/"):
+        if auth_api is not None and (
+            parsed.path.startswith("/api/auth/")
+            or parsed.path.startswith("/api/loop/")
+        ):
             if auth_api.handle_post(self, parsed.path):
                 return
             self._send_json({"success": False, "message": "unknown auth api"}, 404)

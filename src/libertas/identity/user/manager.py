@@ -30,6 +30,10 @@ class UserManager(UserStorageMixin):
         self.data_dir = data_dir or os.path.join(get_data_dir(), "users")
         os.makedirs(self.data_dir, exist_ok=True)
         self.db_path = os.path.join(self.data_dir, "users.db")
+        # 回路独立库：账号和报名分开，整机搬走时不会连账号一起带走。
+        self.loop_data_dir = os.path.join(get_data_dir(), "loop")
+        os.makedirs(self.loop_data_dir, exist_ok=True)
+        self.loop_db_path = os.path.join(self.loop_data_dir, "loop.db")
         self._users: Dict[str, User] = {}
         self._sessions: Dict[str, UserSession] = {}
         self._lock = threading.RLock()
@@ -37,6 +41,7 @@ class UserManager(UserStorageMixin):
         self._lockout_duration = 900  # 15分钟
         self._activity_log: List[Dict[str, Any]] = []
         self._init_db()
+        self._init_loop_db()
         self._load()
 
     def register(self, username: str, password: str, email: str = "",

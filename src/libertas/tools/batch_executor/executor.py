@@ -8,6 +8,7 @@ import json, os, secrets, sqlite3, threading, time
 
 from .models import BatchTaskStatus, ToolResult, ToolTask
 from .parser import extract_tasks_from_reply
+from libertas.foundation.config import get_data_dir
 
 class BatchExecutor:
     """批量工具执行器：作业管理 + 线程池并行执行 + SQLite持久化"""
@@ -30,13 +31,8 @@ class BatchExecutor:
 
     @staticmethod
     def _default_db_path() -> str:
-        """获取默认数据库路径（优先非系统盘）"""
-        if os.name == "nt":
-            for drive in ["D:", "E:", "F:"]:
-                if os.path.exists(drive + "\\"):
-                    return os.path.join(drive + "\\", "LibertasData", "batch.db")
-        home = os.path.expanduser("~")
-        return os.path.join(home, "LibertasData", "batch.db")
+        """默认数据库路径跟随 LIBERTAS_DATA_DIR，避免数据根搬家后分裂。"""
+        return os.path.join(get_data_dir(), "batch.db")
 
     def _get_conn(self) -> sqlite3.Connection:
         """获取数据库连接"""
