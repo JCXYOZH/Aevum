@@ -38,13 +38,6 @@ READY_TOOLS: List[Dict[str, str]] = [
         "backend": "wan_api",
         "route": "/api/wan/*",
     },
-    {
-        "id": "subscribe",
-        "name": "订阅",
-        "cat": "系统",
-        "backend": "loop_api",
-        "route": "/api/loop/*",
-    },
 ]
 
 
@@ -53,7 +46,7 @@ def capabilities_payload() -> Dict[str, Any]:
         "success": True,
         "tools": READY_TOOLS,
         "count": len(READY_TOOLS),
-        "note": "未列出的启动项没有后端功能，暂不渲染。",
+        "note": "MrHua 启动器只列自身窗口；订阅由 3D 桌面原生窗口承载，不在 MrHua 内重复。",
     }
 
 
