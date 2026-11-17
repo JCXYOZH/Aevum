@@ -137,7 +137,7 @@ class EmailChannel(NotificationChannel):
 
     def __init__(self, smtp_server: str = "", smtp_port: int = 587,
                  username: str = "", password: str = "", from_addr: str = "",
-                 to_addrs: Optional[List[str]] = None):
+                 to_addrs: Optional[List[str]] = None, use_ssl: bool = False):
         super().__init__("email", enabled=bool(smtp_server and to_addrs), min_level="error")
         self.smtp_server = smtp_server
         self.smtp_port = smtp_port
@@ -145,6 +145,8 @@ class EmailChannel(NotificationChannel):
         self.password = password
         self.from_addr = from_addr or username
         self.to_addrs = to_addrs or []
+        # 465 通常是隐式 SSL；587 走 STARTTLS。兼容企业邮箱两种常见配置。
+        self.use_ssl = bool(use_ssl or int(smtp_port or 0) == 465)
 
     def _send(self, notification: "Notification") -> bool:
         if not self.smtp_server or not self.to_addrs:
@@ -161,11 +163,17 @@ class EmailChannel(NotificationChannel):
             body = f"{notification.message}\n\n时间: {notification.time}\n来源: {notification.source}"
             msg.attach(MIMEText(body, "plain", "utf-8"))
 
-            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=15) as server:
-                server.starttls()
-                if self.username:
-                    server.login(self.username, self.password)
-                server.sendmail(self.from_addr, self.to_addrs, msg.as_string())
+            if self.use_ssl:
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, timeout=15) as server:
+                    if self.username:
+                        server.login(self.username, self.password)
+                    server.sendmail(self.from_addr, self.to_addrs, msg.as_string())
+            else:
+                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=15) as server:
+                    server.starttls()
+                    if self.username:
+                        server.login(self.username, self.password)
+                    server.sendmail(self.from_addr, self.to_addrs, msg.as_string())
             return True
         except Exception:
             return False

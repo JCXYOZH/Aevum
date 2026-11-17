@@ -499,6 +499,95 @@ class UserStorageMixin:
         except Exception as error:
             terminal.warn(f"回路审计写入失败: {error}", "loop")
 
+    def _loop_mail_config(self) -> Dict[str, Any]:
+        """内部提醒的 SMTP 配置。口令只放本地 config/mail.json 或环境变量。"""
+        config: Dict[str, Any] = {
+            "smtp_host": "smtp.qiye.aliyun.com",
+            "smtp_port": 465,
+            "use_ssl": True,
+            "username": "open@mrhua.cn",
+            "password": "",
+            "from_addr": "open@mrhua.cn",
+            "to_addr": "open@mrhua.cn",
+        }
+        path = self._loop_config_path("mail.json")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as handle:
+                    saved = json.load(handle)
+                if isinstance(saved, dict):
+                    for key in config:
+                        if key in saved and saved[key] not in (None, ""):
+                            config[key] = saved[key]
+            except Exception as error:
+                terminal.warn(f"读取 mail.json 失败: {error}", "loop")
+        env_map = {
+            "smtp_host": "AEVUM_LOOP_MAIL_HOST",
+            "smtp_port": "AEVUM_LOOP_MAIL_PORT",
+            "username": "AEVUM_LOOP_MAIL_USER",
+            "password": "AEVUM_LOOP_MAIL_PASSWORD",
+            "from_addr": "AEVUM_LOOP_MAIL_FROM",
+            "to_addr": "AEVUM_LOOP_MAIL_TO",
+        }
+        for key, env_name in env_map.items():
+            value = os.environ.get(env_name, "").strip()
+            if value:
+                config[key] = value
+        use_ssl = os.environ.get("AEVUM_LOOP_MAIL_SSL", "").strip().lower()
+        if use_ssl:
+            config["use_ssl"] = use_ssl in {"1", "true", "yes", "on"}
+        try:
+            config["smtp_port"] = int(config["smtp_port"])
+        except (TypeError, ValueError):
+            config["smtp_port"] = 465
+        config["use_ssl"] = bool(config["use_ssl"] or config["smtp_port"] == 465)
+        config["enabled"] = bool(
+            config["smtp_host"] and config["username"] and config["password"] and config["to_addr"]
+        )
+        return config
+
+    def _loop_notify_owner(self, email: str, scope: str, page: str, subscription_id: str) -> None:
+        """只给站长企业邮箱发内部提醒；订阅者不会收到这封信。"""
+        config = self._loop_mail_config()
+        if not config.get("enabled"):
+            terminal.warn("回路内部提醒未启用：缺少 config/mail.json 的 SMTP 口令", "loop")
+            return
+        try:
+            from libertas.observability.notifications import get_notification_center
+            center = get_notification_center()
+            center.configure_channel(
+                "email",
+                smtp_server=config["smtp_host"],
+                smtp_port=config["smtp_port"],
+                username=config["username"],
+                password=config["password"],
+                from_addr=config["from_addr"],
+                to_addrs=[config["to_addr"]],
+                use_ssl=config["use_ssl"],
+                min_level="info",
+                enabled=True,
+            )
+            center.start_worker()
+            center.notify(
+                title="Aevum 新订阅待确认 · " + self._loop_mask_email(email),
+                message=(
+                    "收到一条新的订阅登记，尚未确认。\n\n"
+                    f"邮箱：{email}\n"
+                    f"订阅范围：{scope}\n"
+                    f"同意页面：{page or '/subscribe'}\n"
+                    f"登记时间：{time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"订阅编号：{subscription_id}\n\n"
+                    "这封信只发给站长；订阅者不会收到它。\n"
+                    "确认链接没有附在邮件里，请在管理端查看完整邮箱和确认链接，再手动发信。"
+                ),
+                level="info",
+                source="loop",
+                category="subscription:" + subscription_id,
+                channels=["email"],
+            )
+        except Exception as error:
+            terminal.warn(f"回路内部提醒发送失败: {error}", "loop")
+
     @staticmethod
     def _loop_valid_email(email: str) -> bool:
         return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
@@ -535,6 +624,8 @@ class UserStorageMixin:
                     "subscription_id": row["subscription_id"],
                     "message": "这个邮箱已经在名单里，不需要重复报名。",
                 }
+            # 同一邮箱重复提交待确认记录时不再提醒，避免站长邮箱被重复打扰。
+            should_notify = row is None or row["status"] != "pending"
 
             confirm_hash, confirm_enc, _confirm_token = self._loop_new_token(fernet)
             unsub_hash, unsub_enc, _unsub_token = self._loop_new_token(fernet)
@@ -577,6 +668,8 @@ class UserStorageMixin:
                     values + (subscription_id,),
                 )
         self._loop_audit("subscribe_pending", subscription_id, scope)
+        if should_notify:
+            self._loop_notify_owner(email, scope, consent_page, subscription_id)
         return {
             "ok": True,
             "status": "pending",
