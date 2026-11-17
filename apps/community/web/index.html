@@ -180,17 +180,17 @@
     </ol>
   </section>
 
-  <section class="live" id="live">
+  <section class="about" id="kernel">
     <header class="section-head">
-      <h2>内核实况</h2>
-      <p>内核跑起来时，引导程序把 80×25 文本屏逐格经串口发出，桥接转成 WebSocket，落在这块画布上。没连上时走同一套帧格式的演示回放。</p>
+      <h2>内核实况 · 实时</h2>
+      <p>当前内核是 32 位裸机的三自由度平面机械臂，把 80×25 VGA 的文本单元按差量帧经 COM1 送出，串口桥接再转成 WebSocket。这里画的是真实帧；没有帧时画布保持空白，不填演示数据。</p>
     </header>
 
     <section class="terminal" aria-label="VGA 文本屏幕">
       <header class="terminal__bar">
         <span class="terminal__link">
           <i class="dot" id="dot" data-state="offline"></i>
-          <span id="link-text">未连接</span>
+          <span id="link-text">连接中</span>
         </span>
         <span class="terminal__stats">
           <span>帧 <b id="stat-frames">0</b></span>
@@ -204,10 +204,34 @@
       </div>
 
       <footer class="terminal__meta">
-        <span id="source-hint">串口帧 · ws://127.0.0.1:8765</span>
-        <span>12×16 格 · 16 色</span>
+        <span id="source-hint">实时帧 · ws://127.0.0.1:8765</span>
+        <span>80×25 格 · 12×16 像素 · 16 色</span>
       </footer>
     </section>
+
+    <ul class="mods">
+      <li>
+        <span class="mods__name">proc1 <i class="mods__tag">控制</i></span>
+        <div>
+          <p class="mods__path">apps/console/kernel/robot/kernel.c</p>
+          <p class="mods__desc">算三自由度平面臂的关节量：雅可比伪逆、阻尼、零空间投影和目标速度前馈。目标轨迹故意有一段超出可达半径，用来看最小范数解怎么避开奇异构型。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">proc2 <i class="mods__tag">渲染</i></span>
+        <div>
+          <p class="mods__path">apps/console/kernel/robot/kernel.c</p>
+          <p class="mods__desc">每帧在影子显存里画 ASCII 机械臂、目标点、轨迹和右侧数值面板，再整块搬到 VGA 文本显存；两个进程按 1:1 协作切换。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">COM1 <i class="mods__tag">帧</i></span>
+        <div>
+          <p class="mods__path">A5 5A 01 COUNT [row col ch attr] CRC</p>
+          <p class="mods__desc">只发变化过的 80×25 文本单元，不重发整屏。桌面窗口和展示页都通过同一个串口桥接读帧；没有桥接时不伪造画面。</p>
+        </div>
+      </li>
+    </ul>
   </section>
 
   <section class="relay" id="relay" data-base="http://127.0.0.1:8790">
@@ -242,16 +266,10 @@
   <section class="progress" id="progress">
     <header class="section-head">
       <h2>开源进度</h2>
-      <p>数字只写能对上的：模型规模、词表、安装包和方向数。阶段按实际进度标注；没做的直接写没做，不用“本地完成，待部署”代替可复现的结果。</p>
+      <p>不凑数字，只按阶段写实际到了哪一步。没做的直接写没做，不用“本地完成，待部署”代替可复现的结果。</p>
     </header>
 
-    <dl class="numbers">
-      <div><dt>方向</dt><dd>3</dd></div>
-      <div><dt>模型参数</dt><dd>1,352,744</dd></div>
-      <div><dt>词表</dt><dd>3,000</dd></div>
-      <div><dt>安装包</dt><dd>95 MB</dd></div>
-    </dl>
-    <p class="numbers__note">模型在仓库外训练；权重、角色资产和大文件都不进仓库。</p>
+    <p class="motto">能不能跑，代码里见；写了多少文件不算进度。</p>
 
     <ol class="phases">
 
@@ -410,7 +428,6 @@
 <script src="js/core/bus.js"></script>
 <script src="js/core/ws-connection.js"></script>
 <script src="js/core/wander.js"></script>
-<script src="js/core/demo-feed.js"></script>
 <script src="js/components/essence.js"></script>
 <script src="js/components/screen.js"></script>
 <script src="js/components/hud.js"></script>

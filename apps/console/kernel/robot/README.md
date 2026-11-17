@@ -1,7 +1,7 @@
-# 加油 —— 32 位裸机多进程内核（教学版）
+# 32 位裸机多进程内核（教学版）
 
-> 本目录是 AEVUM 桌面「内核实况」窗口实际运行的内核。`kernel.c` 来自
-> `D:\past-projects\机器人内核学习\例6_完整内核\kernel.c` 的完整副本，并追加了
+> 本目录是 AEVUM 桌面「内核实况」窗口实际运行的内核。`kernel.c` 保留旧教学内核的
+> 完整结构，并追加了
 > COM1 串口初始化和 VGA 差量帧上报：每轮 `render(); flush();` 后把变化的
 > 80×25 单元按 `A5 5A 01 COUNT [row col ch attr] CRC` 发到 QEMU 串口，
 > 由 `apps/console/bridge/serial_bridge.py` 转成 WebSocket。没有这段串口旁路，

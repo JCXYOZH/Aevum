@@ -1,6 +1,6 @@
 # Libertas P2P
 
-从 `D:\past-projects\MrHua\mrhua\p2p` 迁入的去中心化网络模块，按原模块边界拆分为一个文件一个职责，保留相对导入，统一从 `libertas.p2p` 暴露公共入口。
+从早期 MrHua P2P 模块迁入的去中心化网络模块，按原模块边界拆分为一个文件一个职责，保留相对导入，统一从 `libertas.p2p` 暴露公共入口。
 
 ## 模块
 

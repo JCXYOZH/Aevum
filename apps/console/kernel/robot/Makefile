@@ -1,4 +1,4 @@
-# Makefile —— 32 位裸机内核（加油）
+# Makefile —— 32 位裸机内核
 # 依赖：nasm / gcc(支持 -m32 编译) / ld(binutils) / make / qemu-system-i386
 
 CC      = gcc

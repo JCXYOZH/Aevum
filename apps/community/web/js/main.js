@@ -7,8 +7,11 @@
 (function (A) {
   "use strict";
 
-  A.ws.connect();
+  /* 展示页装配灵体、实时内核帧和中继；内核帧仍走同一个串口桥接。 */
+  if (A.ws && typeof A.ws.connect === "function") {
+    A.ws.connect();
+  }
 
-  /* 控制台排查入口：AEVUM.bus / AEVUM.ws / AEVUM.screen / AEVUM.demoFeed */
+  /* 控制台排查入口：AEVUM.bus */
   window.AEVUM = A;
 })(window.AEVUM);
