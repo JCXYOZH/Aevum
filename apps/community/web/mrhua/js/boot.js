@@ -79,7 +79,6 @@
     }
 
     function boot() {
-        window.__MR_BOOT_STARTED__ = true;
         var root = document.getElementById(ROOT_ID);
         if (!root) {
             showFatal(new Error('缺少 #' + ROOT_ID));
@@ -91,9 +90,6 @@
         if (params.get('public') === '1') {
             // 最小免认证页面：只放行页面可见性，后端接口仍按各自规则鉴权。
             window.MR_PUBLIC_PAGE = true;
-            // 公开页跳过开门动画，直接显示窗口；否则 10 秒后会冒出
-            // “页面加载较慢”的提示，而跳过按钮本身是隐藏的。
-            window._gateFinished = true;
             document.body.classList.add('mrhua-public-page');
         }
         if (embedMode === 'wanshare') {
@@ -119,31 +115,30 @@
                     hideInitialLoading();
                     watchGateTimeout();
 
-                    var otherScripts = scripts.filter(function (src) {
-                        return src.indexOf('app-shell.js') === -1;
-                    });
-                    return fetchText('/apps/console/ui/shell/app-shell.js?boot=' + Date.now())
-                        .then(function (code) {
-                            // 直接 fetch + eval，绕开 QtWebEngine 偶发的 script
-                            // 元素 200 但不执行。窗口管理先于其它窗口脚本到位。
-                            window.__MR_APP_SHELL_STARTED__ = false;
-                            (0, eval)(code);
-                            if (typeof window.mrRenderLauncher === 'function') window.mrRenderLauncher();
-                        })
-                        .catch(function (error) {
-                            console.error('[MrHua] app-shell 装载失败', error);
-                        })
-                        .then(function () {
-                            return otherScripts.reduce(function (chain, src) {
-                                return chain.then(function () {
-                                    return loadScript(src).catch(function (error) {
-                                        console.error('[MrHua] 脚本装载失败，页面结构仍保留', error);
-                                    });
-                                });
-                            }, Promise.resolve());
-                        }).then(function () {
-                            if (typeof window.mrRenderLauncher === 'function') window.mrRenderLauncher();
+                    return scripts.reduce(function (chain, src) {
+                        return chain.then(function () {
+                            return loadScript(src).catch(function (error) {
+                                console.error('[MrHua] 脚本装载失败，页面结构仍保留', error);
+                            });
                         });
+                    }, Promise.resolve()).then(function () {
+                        // QtWebEngine 偶发：app-shell 的 script 已 200 但没执行，
+                        // 窗口管理整体缺席。这里只在确实没初始化时补装一次，避免重复。
+                        if (typeof window.openWindow === 'function') {
+                            if (typeof window.mrRenderLauncher === 'function') window.mrRenderLauncher();
+                            return;
+                        }
+                        return fetchText('/apps/console/ui/shell/app-shell.js?fallback=' + Date.now())
+                            .then(function (code) {
+                                // 不用 <script> 再插一次：QtWebEngine 对这份大脚本的
+                                // script 元素偶发不执行，fetch + eval 可以稳定跑起来。
+                                (0, eval)(code);
+                                if (typeof window.mrRenderLauncher === 'function') window.mrRenderLauncher();
+                            })
+                            .catch(function (error) {
+                                console.error('[MrHua] app-shell 补装失败', error);
+                            });
+                    });
                 });
             })
             .then(function () {

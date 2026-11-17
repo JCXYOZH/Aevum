@@ -394,9 +394,9 @@
         if (!topWin) return null;
         const r = topWin.getBoundingClientRect();
         if (r.width < 50 || r.height < 50) return null;
-        // 停靠在窗口右上角外侧（完全在窗口外面，不被遮挡），夹在视口内
-        const cx = Math.max(30, Math.min(window.innerWidth - 30, r.right - 4));
-        const cy = Math.max(30, Math.min(window.innerHeight - 60, r.top - 20));
+        // 停靠在窗口右侧、标题栏下方，避开关闭按钮；仍夹在视口内
+        const cx = Math.max(30, Math.min(window.innerWidth - 30, r.right + 26));
+        const cy = Math.max(30, Math.min(window.innerHeight - 60, r.top + 92));
         return { x: cx, y: cy, win: topWin };
     }
 

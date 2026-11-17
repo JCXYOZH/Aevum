@@ -52,11 +52,6 @@
   });
 
   function createPanel(app) {
-    if (app.id === "overview") return MD.panels.overview({
-      openWindow: openWindow,
-      openAdd: function () { dialog.open(); },
-      removeCustom: removeCustom
-    });
     if (app.id === "kernel") return MD.panels.kernel();
     if (app.id === "trainer") return MD.panels.trainer();
     if (app.id === "model") return MD.panels.model();

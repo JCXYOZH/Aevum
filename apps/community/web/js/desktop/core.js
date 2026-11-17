@@ -79,7 +79,6 @@
   })();
 
   MD.baseApps = [
-    { id: "overview", title: "总览", meta: "OVERVIEW", icon: "grid", w: 540, h: 660, desc: "项目本体与四个入口" },
     { id: "kernel", title: "内核实况", meta: "80×25 VGA", icon: "terminal", w: 1000, h: 600, desc: "QEMU 串口帧 / VGA" },
     { id: "trainer", title: "训练监控", meta: "LOSS / EPOCH", icon: "pulse", w: 690, h: 610, desc: "JSONL 指标 / 错误" },
     { id: "model", title: "模型对话", meta: "CHECKPOINT", icon: "layers", w: 720, h: 620, desc: "加载检查点并生成文本" },
@@ -119,7 +118,7 @@
   ];
 
   // 当前演示阶段显示 MrHua 工作台、订阅、内核实况、原展示页和拍照窗口；其它窗口代码仍在，避免删掉以后要用的入口。
-  MD.visibleApps = ["overview", "mrhua", "subscribe", "kernel", "exhibit", "camera"];
+  MD.visibleApps = ["mrhua", "subscribe", "kernel", "exhibit", "camera"];
 
   MD.state = {
     wins: new Map(),

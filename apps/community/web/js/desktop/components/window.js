@@ -14,7 +14,6 @@
     var wins = new Map();
 
     var PRESETS = {
-      overview: { left: 18, top: 18 },
       trainer: { left: 574, top: 18 },
       kernel: { left: 24, top: 28 },
       relay: { left: 34, top: 34 },

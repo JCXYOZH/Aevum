@@ -30,7 +30,7 @@ template. Styles and behavior live in their own files.
 | `js/desktop/components/dialog.js` | add-window dialog |
 | `js/desktop/components/terminal.js` | reusable 80×25 text surface |
 | `js/desktop/components/line-chart.js` | reusable loss chart |
-| `js/desktop/panels/*.js` | one panel per file: overview, kernel, trainer, relay, errors, exhibit, camera |
+| `js/desktop/panels/*.js` | one panel per file: kernel, trainer, relay, errors, exhibit, camera |
 | `js/desktop/main.js` | boot and wire components/panels; exposes `window.MemoriaDesk` |
 | `js/scene/scene-core.js` | shared WebGL ground grid, camera matrices, DOM anchor projection, ray picking, character slots, frame hooks, 3D photo backdrop |
 | `js/scene/models.config.js` | single source for VRM/PMX/Live2D/action model paths |
