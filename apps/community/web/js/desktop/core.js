@@ -32,6 +32,7 @@
     chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
     alert: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v5M12 17.5v.2"/>',
     page: '<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 11h6M9 14h6M9 17h4"/>',
+    mail: '<path d="M3 5h18v14H3z"/><path d="m3 6 9 7 9-7"/>',
     plus: '<path d="M12 4v16M4 12h16"/>',
     sliders: '<path d="M5 4v16M12 4v16M19 4v16"/><path d="M2 9h6M9 15h6M16 7h6"/>',
     layers: '<path d="M12 3 2 8l10 5 10-5z"/><path d="M2 12l10 5 10-5M2 16l10 5 10-5"/>',
@@ -87,6 +88,26 @@
     { id: "exhibit", title: "展示页", meta: "LEGACY PAGE", icon: "page", w: 940, h: 660, desc: "原 AEVUM 长页" },
     { id: "camera", title: "拍照", meta: "LOCAL / RAM", icon: "camera", w: 560, h: 560, desc: "拍下 3D 场景；图片只在本次页面内存中" },
     {
+      id: "mrhua",
+      title: "MrHua",
+      meta: "WORKBENCH / SHELL",
+      icon: "grid",
+      w: 1200,
+      h: 800,
+      desc: "完整 MrHua 工作台：3D 灵体、窗口体系与广域网",
+      url: "/mrhua/"
+    },
+    {
+      id: "subscribe",
+      title: "订阅",
+      meta: "AEVUM / MAIL",
+      icon: "mail",
+      w: 620,
+      h: 520,
+      desc: "只订 Aevum 更新；一人一封，可退订",
+      url: "/mrhua/?embed=subscribe"
+    },
+    {
       id: "mrhua-wan",
       title: "MrHua 广域网",
       meta: "WAN / MQTT",
@@ -98,8 +119,8 @@
     }
   ];
 
-  // 当前演示阶段显示 MrHua 广域网、内核实况、原展示页和拍照窗口；其它窗口代码仍在，避免删掉以后要用的入口。
-  MD.visibleApps = ["mrhua-wan", "kernel", "exhibit", "camera"];
+  // 当前演示阶段显示 MrHua 工作台、订阅、内核实况、原展示页和拍照窗口；其它窗口代码仍在，避免删掉以后要用的入口。
+  MD.visibleApps = ["mrhua", "subscribe", "kernel", "exhibit", "camera"];
 
   MD.state = {
     wins: new Map(),

@@ -1,42 +1,43 @@
 /*
- * 广域网嵌入模式。
+ * 嵌入窗口模式。
  *
- * 只在 /mrhua/?embed=wanshare 下生效：保留 #win-wanshare 的原始 DOM、
- * 文案和控件，把 MrHua 壳层、开门动画、灵体、任务栏和其它窗口全部隐藏。
+ * 在 /mrhua/?embed=wanshare 或 /mrhua/?embed=subscribe 下生效：只保留目标窗口的
+ * 原始 DOM、文案和控件，把 MrHua 壳层、开门动画、灵体、任务栏和其它窗口全部隐藏。
  * 不重写窗口内部样式，避免和 theme.css 里的原始外观冲突。
  */
-body.mrhua-embed-wanshare {
+body.mrhua-embed-window {
     overflow: hidden;
     background: #f5f5f7;
 }
 
-body.mrhua-embed-wanshare #gateway-stage,
-body.mrhua-embed-wanshare #taskbar,
-body.mrhua-embed-wanshare #orb-stage,
-body.mrhua-embed-wanshare #drop-hint,
-body.mrhua-embed-wanshare #ring-switcher,
-body.mrhua-embed-wanshare #radial-menu,
-body.mrhua-embed-wanshare #expose-overlay,
-body.mrhua-embed-wanshare #cmd-palette,
-body.mrhua-embed-wanshare #global-loading,
-body.mrhua-embed-wanshare #initial-loading,
-body.mrhua-embed-wanshare #win-launcher,
-body.mrhua-embed-wanshare .window:not(#win-wanshare),
-body.mrhua-embed-wanshare .main-content,
-body.mrhua-embed-wanshare #statusBar,
-body.mrhua-embed-wanshare #error-monitor-toggle,
-body.mrhua-embed-wanshare #error-monitor-overlay {
+body.mrhua-embed-window #gateway-stage,
+body.mrhua-embed-window #taskbar,
+body.mrhua-embed-window #orb-stage,
+body.mrhua-embed-window #drop-hint,
+body.mrhua-embed-window #ring-switcher,
+body.mrhua-embed-window #radial-menu,
+body.mrhua-embed-window #expose-overlay,
+body.mrhua-embed-window #cmd-palette,
+body.mrhua-embed-window #global-loading,
+body.mrhua-embed-window #initial-loading,
+body.mrhua-embed-window #win-launcher,
+body.mrhua-embed-window .window:not(#win-wanshare):not(#win-subscribe),
+body.mrhua-embed-window .main-content,
+body.mrhua-embed-window #statusBar,
+body.mrhua-embed-window #error-monitor-toggle,
+body.mrhua-embed-window #error-monitor-overlay {
     display: none !important;
 }
 
-body.mrhua-embed-wanshare #main-stage {
+body.mrhua-embed-window #main-stage {
     opacity: 1 !important;
     display: block !important;
     position: static !important;
     background: #f5f5f7;
 }
 
-body.mrhua-embed-wanshare #win-wanshare {
+body.mrhua-embed-window #win-wanshare,
+body.mrhua-embed-window #win-subscribe {
     position: fixed !important;
     inset: 0 !important;
     top: 0 !important;
@@ -54,13 +55,24 @@ body.mrhua-embed-wanshare #win-wanshare {
     transform: none !important;
 }
 
-body.mrhua-embed-wanshare #win-wanshare .window-header,
-body.mrhua-embed-wanshare #win-wanshare .window-controls {
+body.mrhua-embed-window #win-wanshare .window-header,
+body.mrhua-embed-window #win-wanshare .window-controls,
+body.mrhua-embed-window #win-subscribe .window-header,
+body.mrhua-embed-window #win-subscribe .window-controls {
     display: none !important;
 }
 
-body.mrhua-embed-wanshare #win-wanshare .window-body {
+body.mrhua-embed-window #win-wanshare .window-body,
+body.mrhua-embed-window #win-subscribe .window-body {
     flex: 1 !important;
     height: 100% !important;
     min-height: 0 !important;
 }
+
+/* 嵌入模式只显示目标窗口；两个窗口都在 DOM 里，必须把另一个明确藏掉。
+   放在布局 display:flex 之后，避免同权重被后写的规则覆盖。 */
+body.mrhua-embed-wanshare #win-subscribe,
+body.mrhua-embed-subscribe #win-wanshare {
+    display: none !important;
+}
+

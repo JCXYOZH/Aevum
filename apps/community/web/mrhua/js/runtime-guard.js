@@ -10,8 +10,8 @@
         // 错误计数：连续错误超过阈值则显示用户可见的错误面板
         var _errorCount = 0;
         var _errorPanel = null;
-        // 广域网嵌入页只展示 #win-wanshare，不叠加错误监控悬浮按钮和错误横幅。
-        var _EMBED_WANSHARE = /(?:^|[?&])embed=wanshare(?:&|$)/.test(location.search);
+        // 嵌入窗口只展示目标窗口，不叠加错误监控悬浮按钮和错误横幅。
+        var _EMBED_WANSHARE = /(?:^|[?&])embed=(?:wanshare|subscribe)(?:&|$)/.test(location.search);
 
         /* ===== 全面错误监控中心 ErrorMonitor ===== */
         var ErrorMonitor = (function(){

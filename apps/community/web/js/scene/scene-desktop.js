@@ -9,6 +9,8 @@
   if (!scene || !MD) return;
 
   var placements = {
+    mrhua: { grid: [-1.6, 0.4], tone: "amber" },
+    subscribe: { grid: [1.6, 0.4], tone: "teal" },
     overview: { grid: [-1.5, 0.0], tone: "amber" },
     kernel: { grid: [-3.4, -2.6], tone: "teal" },
     trainer: { grid: [-0.2, -3.4], tone: "amber" },
