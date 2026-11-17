@@ -149,27 +149,66 @@
 <script src="js/desktop/panels/subscribe.js"></script>
 <script src="/mrhua/js/loop-subscribe.js"></script>
 <script src="js/desktop/main.js"></script>
-<script src="/engine/math/math.js"></script>
-<script src="/engine/formats/gltf/glb.js"></script>
-<script src="/engine/formats/gltf/gltf-accessor.js"></script>
-<script src="/engine/formats/gltf/gltf-animation.js"></script>
-<script src="/engine/formats/vrm/vrm.js"></script>
-<script src="/engine/formats/pmx/pmx.js"></script>
-<script src="/engine/formats/texture/tga.js"></script>
-<script src="/engine/render/procedural/procedural-animation.js"></script>
-<script src="/engine/render/look/look-controller.js"></script>
-<script src="/engine/render/retarget/animation-retarget.js"></script>
-<script src="/engine/render/vrm/vrm-renderer.js"></script>
-<script src="/engine/render/pmx/webgl-renderer.js"></script>
-<script src="/engine/vendor/live2dcubismcore.min.js"></script>
-<script src="/engine/render/live2d/live2d-renderer.js"></script>
-<script src="/engine/world/pipeline/world-pipeline.js"></script>
-<script src="js/scene/scene-core.js"></script>
-<script src="js/scene/models.config.js"></script>
-<script src="js/scene/scene-vrm.js"></script>
-<script src="js/scene/scene-pmx.js"></script>
-<script src="js/scene/scene-live2d.js"></script>
-<script src="js/scene/scene-desktop.js"></script>
+<script>
+  /* 先让窗口、启动项和监控状态出来，再装载 3D 引擎与角色模型。
+     这些脚本单独按顺序注入，不阻塞首屏；页面本身已经完全可见后再开始建场景。 */
+  (function () {
+    var sceneScripts = [
+      "/engine/math/math.js",
+      "/engine/formats/gltf/glb.js",
+      "/engine/formats/gltf/gltf-accessor.js",
+      "/engine/formats/gltf/gltf-animation.js",
+      "/engine/formats/vrm/vrm.js",
+      "/engine/formats/pmx/pmx.js",
+      "/engine/formats/texture/tga.js",
+      "/engine/render/procedural/procedural-animation.js",
+      "/engine/render/look/look-controller.js",
+      "/engine/render/retarget/animation-retarget.js",
+      "/engine/render/vrm/vrm-renderer.js",
+      "/engine/render/pmx/webgl-renderer.js",
+      "/engine/vendor/live2dcubismcore.min.js",
+      "/engine/render/live2d/live2d-renderer.js",
+      "/engine/world/pipeline/world-pipeline.js",
+      "js/scene/scene-core.js",
+      "js/scene/models.config.js",
+      "js/scene/scene-vrm.js",
+      "js/scene/scene-pmx.js",
+      "js/scene/scene-live2d.js",
+      "js/scene/scene-desktop.js"
+    ];
 
+    function loadSceneScripts() {
+      var index = 0;
+      function next() {
+        if (index >= sceneScripts.length) {
+          document.documentElement.setAttribute("data-scene-ready", "1");
+          return;
+        }
+        var script = document.createElement("script");
+        script.src = sceneScripts[index++];
+        script.async = false;
+        script.onload = next;
+        script.onerror = function () {
+          console.error("[scene] 装载失败：" + script.src);
+          next();
+        };
+        document.head.appendChild(script);
+      }
+      next();
+    }
+
+    function scheduleScene() {
+      var run = function () { window.setTimeout(loadSceneScripts, 60); };
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(run, { timeout: 1200 });
+      } else {
+        run();
+      }
+    }
+
+    if (document.readyState === "complete") scheduleScene();
+    else window.addEventListener("load", scheduleScene, { once: true });
+  })();
+</script>
 </body>
 </html>

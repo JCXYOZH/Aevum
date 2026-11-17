@@ -17,13 +17,13 @@ sudo env DOMAIN=www.mrhua.cn EMAIL=admin@mrhua.cn bash apps/console/deploy/insta
 安装脚本会做这些事：
 
 - 安装 nginx、QEMU、Python 3.10+ 和 `curl`；
-- 如果服务器上还没有可用 venv，就在仓库根目录创建 `.venv`，安装 `websockets`，并尝试安装可选的 `pyyaml`；
-- 写入四个 systemd 服务：`aevum-kernel`（QEMU 串口内核）、`aevum-bridge`（串口转 WebSocket）、`aevum-relay`（内存中继）、`aevum-monitor`（桌面、身份认证和对话 API）；
-- 写入 nginx 配置：静态首页、`desktop.html`、`/mrhua/`、`/engine/`、`/api/`、`/ws`、`/v1/`；
+- 如果服务器上还没有可用 venv，就在仓库根目录创建 `.venv`，安装 `websockets`、`pyyaml`，并按 `requirements.txt` 安装 `fastapi`、`uvicorn`、`cryptography`；
+- 写入四个 systemd 服务：`aevum-kernel`（QEMU 串口内核）、`aevum-bridge`（串口转 WebSocket）、`aevum-relay`（内存中继）、`aevum-monitor`（桌面、身份认证、对话与回路 API）；
+- 写入 nginx 配置：静态首页、`desktop.html`、`/mrhua/`、`/engine/`、`/api/`、`/ws`、`/v1/`；角色模型与动作库按 7 天缓存，页面脚本仍为 `no-cache`；
 - 默认使用 `apps/console/kernel/robot/disk.img`，也就是已经接好串口上报的真实内核镜像；
 - 模型生成器是可选项：没有 `build/linux/memoria_gen_cpu` 时，网站、MrHua、内核实况照常启动，只让模型对话窗口显示不可用。
 
-当前根地址 `/` 显示 `apps/community/web/index.html` 展示页；`desktop.html` 是单独的桌面入口。桌面默认显示四个常驻启动项：MrHua 广域网、内核实况、展示页、拍照；启动台同样包含拍照。部署前请确认 `apps/community/web/mrhua/index.html`、`apps/community/web/desktop.html` 和 `apps/community/web/index.html` 都在仓库里。
+当前根地址 `/` 显示 `apps/community/web/index.html` 展示页；`desktop.html` 是单独的桌面入口。桌面默认显示五个常驻启动项：MrHua、订阅、内核实况、展示页、拍照；启动台同样包含拍照。部署前请确认 `apps/community/web/mrhua/index.html`、`apps/community/web/desktop.html` 和 `apps/community/web/index.html` 都在仓库里。
 
 ## 角色模型路径
 

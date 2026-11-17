@@ -221,43 +221,58 @@
 
   api.onGround(moveNearest);
 
-  if (global.AEVUM.scene.attachVRM) {
-    var yaw = params.get("yaw");
-    hostHandle = global.AEVUM.scene.attachVRM({
-      mount: mount,
-      characterMount: characterLayer,
-      scene: api,
-      slotId: "host",
-      height: 1.75,
-      yaw: yaw === null ? Math.PI : Number(yaw),
-      look: look,
-      actionUrl: modelConfig.actions,
-      modelUrl: params.get("vrmUrl") || modelUrl("vrm")
-    });
+  function startCharacters() {
+    api.setStatus("窗口已就绪，正在载入角色…");
+    if (global.AEVUM.scene.attachVRM) {
+      var yaw = params.get("yaw");
+      hostHandle = global.AEVUM.scene.attachVRM({
+        mount: mount,
+        characterMount: characterLayer,
+        scene: api,
+        slotId: "host",
+        height: 1.75,
+        yaw: yaw === null ? Math.PI : Number(yaw),
+        look: look,
+        actionUrl: modelConfig.actions,
+        modelUrl: params.get("vrmUrl") || modelUrl("vrm")
+      });
+    }
+    if (global.AEVUM.scene.attachPMX && params.get("guide") !== "live2d") {
+      var pmxYaw = params.get("pmxYaw");
+      guideHandle = global.AEVUM.scene.attachPMX({
+        mount: mount,
+        characterMount: characterLayer,
+        scene: api,
+        slotId: "guide",
+        height: 1.75,
+        yaw: pmxYaw === null ? Math.PI : Number(pmxYaw),
+        look: look,
+        modelUrl: params.get("pmxUrl") || modelUrl("pmx"),
+        baseUrl: params.get("pmxBaseUrl") || modelDirectory("pmx")
+      });
+    }
+    if (global.AEVUM.scene.attachLive2D && params.get("guide") === "live2d") {
+      guideHandle = global.AEVUM.scene.attachLive2D({
+        mount: mount,
+        characterMount: characterLayer,
+        scene: api,
+        slotId: "guide",
+        modelUrl: params.get("live2dUrl") || modelUrl("live2d")
+      });
+    }
   }
-  if (global.AEVUM.scene.attachPMX && params.get("guide") !== "live2d") {
-    var pmxYaw = params.get("pmxYaw");
-    guideHandle = global.AEVUM.scene.attachPMX({
-      mount: mount,
-      characterMount: characterLayer,
-      scene: api,
-      slotId: "guide",
-      height: 1.75,
-      yaw: pmxYaw === null ? Math.PI : Number(pmxYaw),
-      look: look,
-      modelUrl: params.get("pmxUrl") || modelUrl("pmx"),
-      baseUrl: params.get("pmxBaseUrl") || modelDirectory("pmx")
-    });
+
+  function scheduleCharacters() {
+    var run = function () { global.setTimeout(startCharacters, 120); };
+    if ("requestIdleCallback" in global) {
+      global.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      run();
+    }
   }
-  if (global.AEVUM.scene.attachLive2D && params.get("guide") === "live2d") {
-    guideHandle = global.AEVUM.scene.attachLive2D({
-      mount: mount,
-      characterMount: characterLayer,
-      scene: api,
-      slotId: "guide",
-      modelUrl: params.get("live2dUrl") || modelUrl("live2d")
-    });
-  }
+
+  scheduleCharacters();
+
   MD.bus.on("apps", function () {
     api.refresh(buildNodes(), slots);
   });

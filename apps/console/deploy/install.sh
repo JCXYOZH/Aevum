@@ -165,6 +165,13 @@ if ! "$PYTHON" -c 'import yaml' >/dev/null 2>&1; then
     "$PYTHON" -m pip install --quiet pyyaml \
         || log "警告：pyyaml 未安装，config.yaml 会退化为默认值；不影响桌面和内核实况启动"
 fi
+# auth_api / loop_api 依赖 FastAPI 与 cryptography；不装它们，aevum-monitor 会
+# 在 import 阶段直接退出，表现为“服务起不来、/api 全 502”。
+if ! "$PYTHON" -c 'import fastapi, uvicorn, cryptography' >/dev/null 2>&1; then
+    log "安装 API 运行依赖（requirements.txt）"
+    "$PYTHON" -m pip install --quiet -r "$APP_ROOT/requirements.txt" \
+        || die "装不上 requirements.txt：检查网络，或先在服务器上创建可用的 venv"
+fi
 log "Python：$PYTHON"
 
 # ---------------------------------------------------------------- 2.1 torch 运行库
@@ -362,6 +369,7 @@ check "8765 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8765'"
 check "8781 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8781'"
 check "8790 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8790'"
 check "看板健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8781/api/health"
+check "能力清单为三项"    "curl -fsS --max-time 5 http://127.0.0.1:8781/api/capabilities | grep -q '\"count\": 3'"
 check "中继健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8790/v1/health"
 check "页面能取到 200"    "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN'"
 check "根页是展示页"      "curl -fsS --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN' | grep -q 'class=\"masthead\"'"
