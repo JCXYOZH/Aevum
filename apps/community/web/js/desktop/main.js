@@ -72,11 +72,6 @@
   function openWindow(id) {
     var app = MD.getApp(id);
     if (!app) return;
-    // 程序窗口交给浏览器/桌面外壳自己开，不用 iframe 包在 3D 桌面里。
-    if (app.external && app.url) {
-      window.open(app.url, "_blank", "popup=yes,width=1200,height=800,noopener");
-      return;
-    }
     // 沉浸模式会隐藏 .windows 层；从启动项打开窗口时先返回桌面视图。
     var desk = MD.qs(".desk");
     if (desk && desk.classList.contains("scene-focus")) {

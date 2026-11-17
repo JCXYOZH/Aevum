@@ -95,7 +95,6 @@
       w: 1200,
       h: 800,
       desc: "完整 MrHua 工作台：3D 灵体、窗口体系与广域网",
-      external: true,
       url: "/mrhua/"
     },
     {
@@ -115,7 +114,6 @@
       w: 1000,
       h: 740,
       desc: "MrHua 广域网通信页",
-      external: true,
       url: "/mrhua/?embed=wanshare"
     }
   ];
