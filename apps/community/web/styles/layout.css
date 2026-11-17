@@ -68,6 +68,17 @@
   outline-offset: 3px;
 }
 
+.hero__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+  margin: 0;
+}
+
+.hero__links .hero__jump {
+  margin-top: var(--sp-5);
+}
+
 .hero__note {
   margin: var(--sp-6) 0 0;
   font-family: var(--font-mono);

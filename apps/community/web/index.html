@@ -1,467 +1,421 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <meta name="description" content="Aevum 是一个社区共建的社区平台：工具、文档、成员协作收在同一块地方。代码以 MPL-2.0 开源。">
-  <title>Aevum · 社区共建的社区平台</title>
-  <link rel="icon" href="assets/favicon.ico" sizes="any">
-  <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
-  <link rel="stylesheet" href="styles/showcase/tokens.css">
-  <link rel="stylesheet" href="styles/showcase/page.css">
-  <link rel="stylesheet" href="styles/presence.css">
-  <link rel="stylesheet" href="styles/showcase/rail.css">
-  <link rel="stylesheet" href="styles/showcase/sections.css">
-  <link rel="stylesheet" href="styles/scene3d.css">
-  <link rel="stylesheet" href="styles/showcase/world.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Aevum 是一个社区共建的社区平台：内核、模型、3D 桌面和内存中继收在同一块地方，代码以 MPL-2.0 开源。">
+<title>Aevum · 社区共建的社区平台</title>
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/essence.css">
+<link rel="stylesheet" href="styles/terminal.css">
+<link rel="stylesheet" href="styles/relay.css">
+<link rel="stylesheet" href="styles/progress.css">
+<link rel="stylesheet" href="styles/modules.css">
+<link rel="stylesheet" href="styles/join.css">
+<link rel="stylesheet" href="styles/layout.css">
 </head>
 <body>
-  <div class="page" id="top">
-    <header class="masthead">
-      <a class="brand" href="#top" aria-label="回到页首">
-        <span class="brand__mark">A</span>
-        <span class="brand__name">AEVUM</span>
-        <span class="brand__sub">/ MEMORIA</span>
-      </a>
-      <nav class="nav" aria-label="页面导航">
-        <a href="#modules">架构</a>
-        <a href="#world">场景</a>
-        <a href="#state">阶段</a>
-        <a href="#console">控制台</a>
-        <a href="#join">参与</a>
-        <a class="btn btn--small" href="desktop.html" target="_top">打开看板</a>
-      </nav>
+
+<main class="page">
+
+  <section class="hero" id="hero">
+    <div class="hero__inner">
+      <h1 class="hero__word">AEVUM</h1>
+      <p class="hero__lead">一个社区共建的社区平台：内核、模型、3D 桌面和内存中继收在同一块地方。先把目录立住、把文档写实、让每一块真的跑起来，再谈功能。</p>
+      <p class="hero__links">
+        <a class="hero__jump" href="#about">先看这是什么</a>
+        <a class="hero__jump" href="desktop.html" target="_top">打开 3D 桌面</a>
+      </p>
+      <p class="hero__note">MPL-2.0 · 进度口径 2026-11-17</p>
+    </div>
+
+    <!-- 彩色灵体：挂在正文块下方那条锚线上左右游走；滚动时跟着版面走，不显示/隐藏 -->
+    <div class="essence" id="essence" data-state="offline" aria-hidden="true">
+      <span class="essence__halo"></span>
+      <span class="essence__halo essence__halo--alt"></span>
+      <span class="essence__core"></span>
+    </div>
+  </section>
+
+  <section class="about" id="about">
+    <header class="section-head">
+      <h2>这是什么</h2>
+      <p>社区共建的项目，代码以 MPL-2.0 开源。三个方向共用一个仓库，各自推进、互不阻塞；这个页面是它的显示层——内核只产生状态与错误码，桌面只做可操作的事，说明留在这里。</p>
     </header>
 
-    <main class="board">
-      <aside class="rail" aria-label="工作台导航">
-        <p class="rail__kicker">WORKBENCH / 01</p>
-        <div class="rail__presence">
-          <div class="presence presence--rail" aria-hidden="true">
-            <span class="presence__halo"></span>
-            <span class="presence__halo presence__halo--alt"></span>
-            <span class="presence__core"></span>
-          </div>
+    <ul class="mods">
+      <li>
+        <span class="mods__name">fortuna <i class="mods__tag">内核</i></span>
+        <div>
+          <p class="mods__path">src/fortuna</p>
+          <p class="mods__desc">从实模式起步的 x86 引导、内核入口、内存、调度与文件系统，用 C 写；引导程序、链接脚本和串口帧都自己动手。内核在 QEMU 里跑通后，把 80×25 文本屏推到这块页面。</p>
         </div>
-        <p class="rail__caption">灵体 / 系统在场</p>
-        <p class="rail__meta">内核 · 模型 · 中继</p>
-        <nav class="rail__nav" aria-label="页面索引">
-          <a href="#modules"><span>01</span>架构</a>
-          <a href="#state"><span>02</span>构建记录</a>
-          <a href="#console"><span>03</span>控制台</a>
-          <a href="#join"><span>04</span>参与</a>
-        </nav>
-        <div class="rail__status">
-          <p><i></i>内核已接入</p>
-          <p><i></i>模型可加载</p>
-          <p><i></i>中继在本机</p>
+      </li>
+      <li>
+        <span class="mods__name">libertas <i class="mods__tag">安全</i></span>
+        <div>
+          <p class="mods__path">src/libertas</p>
+          <p class="mods__desc">扫描、蜜罐、取证、响应；工具打成镜像按需运行。身份、子用户、会话与数据作用域也归在这里，先做本机隔离，再谈平台化调度。</p>
         </div>
-        <a class="rail__open" href="desktop.html" target="_top">打开控制台 →</a>
-      </aside>
-
-      <div class="board__main">
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero__copy">
-          <p class="kicker">OPEN SOURCE / 2026 · MPL-2.0</p>
-          <h1 id="hero-title">Aevum</h1>
-          <p class="hero__tagline">社区共建的社区平台</p>
-          <p class="hero__creed">这里，创造高于消费，心法高于功能，自由高于归属。</p>
-          <p class="lede">
-            手上的工具、写下的文档、成员之间的协作，都收在同一块地方；代码以 MPL-2.0 开源，谁都可以取用、修改、再发布。
-          </p>
-          <div class="hero__actions">
-            <a class="btn" href="desktop.html" target="_top">打开 Memoria 控制台</a>
-            <a class="btn btn--ghost" href="#modules">先看架构</a>
-          </div>
-          <dl class="hero__facts">
-            <div><dt>模型</dt><dd>1,352,744 参数 · 3,000 词表</dd></div>
-            <div><dt>桌面</dt><dd>多窗口 · 浏览器与 Electron 同页</dd></div>
-            <div><dt>边界</dt><dd>权重不进仓库 · 内核后端保留</dd></div>
-          </dl>
+      </li>
+      <li>
+        <span class="mods__name">memoria <i class="mods__tag">记忆</i></span>
+        <div>
+          <p class="mods__path">src/memoria</p>
+          <p class="mods__desc">记忆层、知识与检索；把讨论、工具产出和训练记录沉淀成可检索的长期记忆。模型在仓库外重新训练：1,352,744 参数、3,000 词表，权重不进仓库。</p>
         </div>
+      </li>
+    </ul>
 
-        <aside class="hero__plate" aria-label="模型前向链示意图">
-          <div class="plate__head"><span>FORWARD PASS</span><span>ONE CYCLE</span></div>
-          <ol class="plate__flow">
-            <li><span class="plate__no">01</span><strong>EMBEDDING</strong><small>token → 向量</small></li>
-            <li><span class="plate__no">02</span><strong>GATED VALVE</strong><small>控制写入</small></li>
-            <li><span class="plate__no">03</span><strong>CHAIN UNIT × 3</strong><small>三路循环</small></li>
-            <li><span class="plate__no">04</span><strong>TRI-BALANCER × 3</strong><small>三路平衡</small></li>
-            <li><span class="plate__no">05</span><strong>STRATA MEMORY</strong><small>分层记忆</small></li>
-            <li><span class="plate__no">06</span><strong>FUSION + V REG</strong><small>加权融合 / V 正则</small></li>
-            <li><span class="plate__no">07</span><strong>NORMALIZE</strong><small>FixedRMSNorm / LayerNorm</small></li>
-            <li><span class="plate__no">08</span><strong>OUTPUT</strong><small>dim → vocab</small></li>
-          </ol>
-          <p class="plate__note">图示是代码里的真实顺序，不是另一个独立架构。</p>
-        </aside>
-      </section>
+    <p class="motto">创造高于消费，心法高于功能，自由高于归属。</p>
+  </section>
 
-      <section class="section world" id="world" aria-labelledby="world-title">
-        <div class="section__head">
-          <p class="kicker">WORLD / 3D 地面网格</p>
-          <h2 id="world-title">页面不是列表，是一块可以走进去的场地</h2>
-          <p class="section__lede">用引擎自己的地面网格把架构、阶段、控制台和参与入口摆进同一块场地。拖拽旋转、滚轮缩放，点一个节点就回到对应内容；两个角色位在 3D 桌面里已接入 VRM 与 PMX，这个展示场景保留入口圆环。</p>
+  <section class="about" id="desktop">
+    <header class="section-head">
+      <h2>桌面是程序，不是另一个展示页</h2>
+      <p>3D 桌面先渲染窗口、启动项和状态，再把角色模型交给引擎；MrHua、订阅、内核实况和中继都在桌面里打开，不用为同一个入口再做一个页面。下面这块只说明边界，操作留在桌面里。</p>
+    </header>
+
+    <ul class="mods">
+      <li>
+        <span class="mods__name">3D 桌面 <i class="mods__tag">入口</i></span>
+        <div>
+          <p class="mods__path">apps/community/web/desktop.html</p>
+          <p class="mods__desc">窗口、启动项、场景与角色分两段加载：功能先出来，模型随后进场，避免大文件把页面卡住。浏览器和以后的桌面外壳打开的是同一份页面。</p>
         </div>
-        <div class="world-stage" id="showcase-scene"></div>
-        <div class="world__foot">
-          <span>拖拽旋转 · 滚轮缩放 · 点击节点</span>
-          <a class="btn btn--small" href="desktop.html" target="_top">打开 3D 桌面</a>
+      </li>
+      <li>
+        <span class="mods__name">MrHua <i class="mods__tag">程序</i></span>
+        <div>
+          <p class="mods__path">apps/community/web/mrhua</p>
+          <p class="mods__desc">3D 桌面里的一个程序，不是独立页面。身份、治理、广域网和模型对话按角色权限接入；没有后端能力的启动项先不摆样式，避免点开是空的。</p>
         </div>
-      </section>
-
-      <section class="section" id="modules" aria-labelledby="modules-title">
-        <div class="section__head">
-          <p class="kicker">ARCHITECTURE / 社区 AI 架构</p>
-          <h2 id="modules-title">三个目录：fortuna、libertas、memoria</h2>
-          <p class="section__lede">这是 Aevum 社区自己的开源 AI 架构，核心算法在 Memoria：门控阀、链式单元、三路平衡、分层记忆与多轮回写。这里按这套架构自己的模块和连接方式描述，不套用现成架构的名字，也不强行把它归入某一类现有体系。仓库根下是三个方向目录：<code>src/fortuna</code> 做内核与引导，<code>src/libertas</code> 做身份、安全与工具，<code>src/memoria</code> 做模型与训练；桌面看板和展示页在 <code>apps</code> 外层。下面的图只画 Memoria 的前向主链：输入、门控、三个链式单元、分层记忆的写入与检索，再到融合、归一化与输出；训练、生成、检查点在外围，不在主链上。</p>
-          <p class="arch-claim"><span>COMMUNITY ARCH / 社区架构</span>Memoria 的核心算法由门控阀、链式单元、三路平衡、分层记忆与多轮回写组成；这里按它自己的模块命名和连接关系写。</p>
+      </li>
+      <li>
+        <span class="mods__name">订阅 <i class="mods__tag">原生窗口</i></span>
+        <div>
+          <p class="mods__path">js/desktop/panels/subscribe.js</p>
+          <p class="mods__desc">订阅走桌面原生窗口，不再嵌入一层网页。同一套样式只维护一份，避免“桌面里一个样、网页里另一个样”。</p>
         </div>
-        <figure class="arch-figure">
-          <svg class="arch-svg" viewBox="0 0 900 980" role="img" aria-label="Memoria 单周期前向架构图">
-            <defs>
-              <marker id="ah" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                <path d="M0 0 L6 3 L0 6 Z" fill="#8a8070"/>
-              </marker>
-            </defs>
-
-            <text x="35" y="18" class="label">MEMORIA / 单周期前向</text>
-
-            <rect x="35" y="30" width="360" height="30" class="frame-main"/>
-            <text x="215" y="49" text-anchor="middle" class="title">输入 input_ids [B, S]</text>
-            <path class="flow" d="M215 60 V85" marker-end="url(#ah)"/>
-
-            <rect x="35" y="85" width="360" height="52" class="frame-main"/>
-            <text x="215" y="106" text-anchor="middle" class="title">嵌入层 Embedding Layer</text>
-            <text x="215" y="121" text-anchor="middle" class="sub">token embedding + 固定正弦位置编码</text>
-
-            <path class="flow-dashed" d="M395 111 H440"/>
-            <rect x="440" y="85" width="440" height="52" class="frame-side"/>
-            <text x="452" y="104" class="label">MARKER BRANCH</text>
-            <text x="452" y="118" class="sub">3 → 16 → 32，仅旁路输出</text>
-            <text x="452" y="131" class="sub">不进入主路径</text>
-
-            <path class="flow" d="M215 137 V160" marker-end="url(#ah)"/>
-            <rect x="35" y="160" width="360" height="52" class="frame-main"/>
-            <text x="215" y="181" text-anchor="middle" class="title">门控阀 Gated Valve</text>
-            <text x="215" y="196" text-anchor="middle" class="sub">Q / K / V 三路门控混合</text>
-
-            <path class="flow" d="M215 212 V220"/>
-            <path class="flow" d="M215 220 H100 V230" marker-end="url(#ah)"/>
-            <path class="flow" d="M215 220 V230" marker-end="url(#ah)"/>
-            <path class="flow" d="M215 220 H330 V230" marker-end="url(#ah)"/>
-            <rect x="50" y="230" width="100" height="28" class="frame"/>
-            <text x="100" y="248" text-anchor="middle" class="title-sm">Q</text>
-            <rect x="165" y="230" width="100" height="28" class="frame"/>
-            <text x="215" y="248" text-anchor="middle" class="title-sm">K</text>
-            <rect x="280" y="230" width="100" height="28" class="frame-v"/>
-            <text x="330" y="248" text-anchor="middle" class="title-sm">V</text>
-            <path class="flow" d="M215 258 V275" marker-end="url(#ah)"/>
-
-            <rect x="35" y="275" width="360" height="215" class="frame-group"/>
-            <text x="50" y="294" class="label">CHAIN UNIT ×3  ·  TRI-BALANCER ×3</text>
-
-            <rect x="50" y="305" width="180" height="42" class="frame"/>
-            <text x="60" y="323" class="title-sm">CHAIN UNIT 1</text>
-            <text x="60" y="337" class="sub">3 SubNet / 9 Processor</text>
-            <path class="flow" d="M230 326 H255" marker-end="url(#ah)"/>
-            <rect x="255" y="305" width="120" height="42" class="frame"/>
-            <text x="265" y="323" class="title-sm">TRI-BALANCER 1</text>
-            <text x="265" y="337" class="sub">Q/K/V 配比</text>
-
-            <path class="flow" d="M315 347 V351 H140 V355" marker-end="url(#ah)"/>
-            <rect x="50" y="355" width="180" height="42" class="frame"/>
-            <text x="60" y="373" class="title-sm">CHAIN UNIT 2</text>
-            <text x="60" y="387" class="sub">3 SubNet / 9 Processor</text>
-            <path class="flow" d="M230 376 H255" marker-end="url(#ah)"/>
-            <rect x="255" y="355" width="120" height="42" class="frame"/>
-            <text x="265" y="373" class="title-sm">TRI-BALANCER 2</text>
-            <text x="265" y="387" class="sub">Q/K/V 配比</text>
-
-            <path class="flow" d="M315 397 V401 H140 V405" marker-end="url(#ah)"/>
-            <rect x="50" y="405" width="180" height="42" class="frame"/>
-            <text x="60" y="423" class="title-sm">CHAIN UNIT 3</text>
-            <text x="60" y="437" class="sub">3 SubNet / 9 Processor</text>
-            <path class="flow" d="M230 426 H255" marker-end="url(#ah)"/>
-            <rect x="255" y="405" width="120" height="42" class="frame"/>
-            <text x="265" y="423" class="title-sm">TRI-BALANCER 3</text>
-            <text x="265" y="437" class="sub">Q/K/V 配比</text>
-
-            <path class="flow-dashed" d="M395 294 H440"/>
-            <rect x="440" y="275" width="440" height="225" class="frame-side"/>
-            <text x="452" y="294" class="label">CHAIN UNIT / 一个单元展开（其余同构）</text>
-            <text x="455" y="323" class="title-sm">SubNet 1</text>
-            <text x="560" y="323" class="sub">V → K → Q</text>
-            <text x="660" y="323" class="sub">3 个 Processor，顺序更新</text>
-            <line x1="452" y1="347" x2="868" y2="347" class="rule"/>
-            <text x="455" y="373" class="title-sm">SubNet 2</text>
-            <text x="560" y="373" class="sub">Q → V → K</text>
-            <text x="660" y="373" class="sub">每个 Processor 看前一步结果</text>
-            <line x1="452" y1="397" x2="868" y2="397" class="rule"/>
-            <text x="455" y="423" class="title-sm">SubNet 3</text>
-            <text x="560" y="423" class="sub">K → Q → V</text>
-            <text x="660" y="423" class="sub">残差 0.1，V 权重 1.5</text>
-            <text x="452" y="455" class="sub">Processor = Linear(3d→2d) → FixedRMSNorm → GELU</text>
-            <text x="452" y="468" class="sub">→ Linear(2d→d) → FixedRMSNorm → Dropout 0.1</text>
-            <text x="452" y="483" class="sub">3 units × 3 SubNet × 3 Processor = 27 Processor</text>
-
-            <path class="flow" d="M215 490 V515" marker-end="url(#ah)"/>
-            <rect x="35" y="515" width="360" height="150" class="frame-group"/>
-            <text x="50" y="535" class="label">STRATA MEMORY / 分层记忆</text>
-            <text x="50" y="549" class="sub">3 层 × 3 槽；每槽存 Q/K + 3 个 V 子值</text>
-            <text x="50" y="570" class="title-sm">D0 / 最新</text>
-            <text x="135" y="570" class="sub">写入当前均值，能量按 Q/K/V 密度计算</text>
-            <text x="50" y="600" class="title-sm">D1 / 中期</text>
-            <text x="135" y="600" class="sub">从 D0 复制，能量 ×0.9</text>
-            <text x="50" y="630" class="title-sm">D2 / 深层</text>
-            <text x="135" y="630" class="sub">能量 &lt; 0.1 时由 D1 修复</text>
-            <text x="50" y="649" class="sub">每次写入前所有能量 ×0.7；记忆是状态，不是可训练权重</text>
-
-            <path class="flow" d="M215 665 V680" marker-end="url(#ah)"/>
-            <rect x="35" y="680" width="360" height="28" class="frame-main"/>
-            <text x="50" y="692" class="title-sm">RETRIEVE(depth, time_layer)</text>
-            <text x="260" y="692" class="sub">Q/K 整槽；V 取第 3 子值</text>
-
-            <path class="flow" d="M215 708 V720" marker-end="url(#ah)"/>
-            <rect x="35" y="720" width="360" height="64" class="frame-main"/>
-            <text x="215" y="739" text-anchor="middle" class="title">加权融合 + V 正则</text>
-            <text x="215" y="754" text-anchor="middle" class="sub">Q/K：0.5 · 0.3 · 0.2　　V：0.6 · 0.3 · 0.1（按历史均值微调）</text>
-            <text x="215" y="768" text-anchor="middle" class="sub">V regularization + QK 关系后处理</text>
-
-            <path class="flow" d="M215 784 V800" marker-end="url(#ah)"/>
-            <rect x="35" y="800" width="360" height="46" class="frame-main"/>
-            <text x="215" y="819" text-anchor="middle" class="title">归一化 LayerNorm</text>
-            <text x="215" y="834" text-anchor="middle" class="sub">输出前归一化</text>
-            <path class="flow-dashed" d="M395 823 H440"/>
-            <rect x="440" y="800" width="440" height="56" class="frame-side"/>
-            <text x="452" y="819" class="label">NORMALIZATION / 两处</text>
-            <text x="452" y="833" class="sub">Processor 内：FixedRMSNorm ×2，无可学习缩放/偏置</text>
-            <text x="452" y="846" class="sub">输出前：LayerNorm(dim)</text>
-
-            <path class="flow" d="M215 846 V870" marker-end="url(#ah)"/>
-            <rect x="35" y="870" width="360" height="46" class="frame-main"/>
-            <text x="215" y="889" text-anchor="middle" class="title">输出投影 Output Projection</text>
-            <text x="215" y="904" text-anchor="middle" class="sub">dim → vocab</text>
-
-            <path class="flow" d="M215 916 V940" marker-end="url(#ah)"/>
-            <rect x="35" y="940" width="360" height="28" class="frame-main"/>
-            <text x="215" y="958" text-anchor="middle" class="title">logits [B, S, V]</text>
-
-            <path class="flow-dashed" d="M440 908 H410 V186 H395" marker-end="url(#ah)"/>
-            <rect x="440" y="870" width="440" height="76" class="frame-side"/>
-            <text x="452" y="889" class="label">CYCLE / 多轮</text>
-            <text x="452" y="903" class="sub">q_final → cycle_projection</text>
-            <text x="452" y="917" class="sub">d→2d→d + tanh → 下一轮</text>
-            <text x="452" y="931" class="sub">V health &lt; 0.25 → 提前停止</text>
-          </svg>
-          <figcaption>图 1 / Aevum 社区自己的 Memoria 架构：按当前代码画的单周期前向。训练器、文本数据集、生成器和检查点在外围；此图只画模型内部前向与记忆读写。</figcaption>
-        </figure>
-        <p class="note">代码入口：<code>docs/memoria/design.md</code> → <code>src/memoria/include/memoria/model.h</code> → <code>src/memoria/model.cpp</code>。</p>
-      </section>
-
-      <section class="section" id="state" aria-labelledby="state-title">
-        <div class="section__head">
-          <p class="kicker">STATE / 按仓库事实写</p>
-          <h2 id="state-title">现在做到哪一步</h2>
-          <p class="section__lede">2026-09-16 三个模块定名；2026-11-05 首次公开提交；2026-11-08 首版展示页；2026-11-17 3D 桌面与账号链路接入。现在已有 Windows 安装包、本地模型生成、3D 桌面和 FastAPI 服务；未完成的事项列在后面。</p>
-          <p class="note">当前仓库（2026-11-17，排除 .git、构建产物与模型）：2,188 个受版本控制文件，1,405 个非空；0 字节占位不计入完成。</p>
+      </li>
+      <li>
+        <span class="mods__name">角色模型 <i class="mods__tag">引擎</i></span>
+        <div>
+          <p class="mods__path">engine/assets/models</p>
+          <p class="mods__desc">VRM 主角色与 PMX 引导角色由引擎自己的解析器加载；模型路径从配置进，权重和人物资产不塞进仓库。低配时先只加载一个角色，另一个按需再进场。</p>
         </div>
-        <div class="state__scroll-shell">
-        <div class="state__scroll" tabindex="0" aria-label="项目进度时间轴，可滚动">
-        <ol class="timeline">
-          <li class="timeline__row">
-            <div class="timeline__when"><span>09-16</span><small>立项</small></div>
-            <div class="timeline__body">
-              <h3>立项</h3>
-              <p>三个模块定名，主体用 C/C++，目录先按职责分开。</p>
-            </div>
-            <span class="badge badge--pre">前史</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>09-17</span><small>fortuna 第一屏</small></div>
-            <div class="timeline__body">
-              <h3>fortuna 第一屏</h3>
-              <p>引导程序在 QEMU 里打出第一行字；实模式到保护模式再到分页的链路走通。</p>
-            </div>
-            <span class="badge badge--pre">前史</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P0</span><small>骨架与文档</small></div>
-            <div class="timeline__body">
-              <h3>三模块目录、许可与入口文档</h3>
-              <ul>
-                <li>三模块目录：fortuna / libertas / memoria</li>
-                <li>许可定为 MPL-2.0，行为准则单独成文</li>
-                <li>入口文档六份，静态站首版可打开</li>
-              </ul>
-            </div>
-            <span class="badge badge--done">完成</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P1</span><small>一个能打开的地址</small></div>
-            <div class="timeline__body">
-              <h3>域名可访问，二维码入库</h3>
-              <ul>
-                <li>域名 <code>http://www.mrhua.cn/</code> 已可访问</li>
-                <li>社区二维码已入库，按原比例显示</li>
-                <li>证书与安全基线（只开 80/443、关目录索引）未做</li>
-              </ul>
-            </div>
-            <span class="badge badge--work">当时部分完成</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P2</span><small>服务端 API</small></div>
-            <div class="timeline__body">
-              <h3>服务端形态已定，接口开始接通</h3>
-              <ul>
-                <li>形态：FastAPI + Uvicorn；监控服务保留标准库 HTTP 入口，负责桌面静态页和旧接口</li>
-                <li>存储：先落本机 SQLite / 数据目录，ECS 2C2G 不先上中间件</li>
-                <li>身份：账号、子用户档案、会话分别管理；本机验证码登录已接入</li>
-              </ul>
-            </div>
-            <span class="badge badge--done">已定</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P3</span><small>平台化</small></div>
-            <div class="timeline__body">
-              <h3>工具调度、桌面端、记忆接入</h3>
-              <ul>
-                <li>桌面端：3D 桌面、MrHua 程序、原生订阅窗口已接入</li>
-                <li>工具调度：libertas 的工具运行与治理已有代码，镜像化仍待整理</li>
-                <li>memoria：讨论与工具产出沉淀成可检索记忆的工作还在继续</li>
-              </ul>
-            </div>
-            <span class="badge badge--work">部分落地</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P4</span><small>长期</small></div>
-            <div class="timeline__body">
-              <h3>fortuna 引导、memoria 独立服务</h3>
-              <ul>
-                <li>fortuna 能真正引导起来，memoria 作为独立服务运行</li>
-                <li>社区数据落在自己的服务器上，有备份与迁移路径</li>
-              </ul>
-            </div>
-            <span class="badge badge--work">未启动</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P5</span><small>模型链</small></div>
-            <div class="timeline__body">
-              <h3>C++ 模型链跑通</h3>
-              <ul>
-                <li>模型、训练、文本处理、检查点、生成器连成一条链路</li>
-                <li>3,000 行语料，8 个 epoch、424 步</li>
-                <li>只验证链路可跑，不证明算法有效</li>
-              </ul>
-            </div>
-            <span class="badge badge--done">已落地</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P6</span><small>桌面</small></div>
-            <div class="timeline__body">
-              <h3>3D 桌面与多窗口</h3>
-              <ul>
-                <li>窗口、启动项和监控状态先渲染；VRM / PMX 角色随后载入</li>
-                <li>MrHua 作为 3D 桌面启动项，订阅使用原生窗口，不再另开页面</li>
-                <li>云端入口仍只保留位置，尚未做完整验收</li>
-              </ul>
-            </div>
-            <span class="badge badge--done">已接入</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P7</span><small>安装包</small></div>
-            <div class="timeline__body">
-              <h3>Windows 安装包</h3>
-              <ul>
-                <li>约 95 MB 的 Windows 安装包已产出</li>
-                <li>模型在开源目录之外重新训练：1,352,744 参数、3,000 词表</li>
-                <li>旧权重未复制，仓库不放大型模型文件</li>
-                <li>安装与卸载仍只在本机验证，未在干净用户目录实跑</li>
-              </ul>
-            </div>
-            <span class="badge badge--done">已产出</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>P8</span><small>云端</small></div>
-            <div class="timeline__body">
-              <h3>Linux 构建与部署脚本</h3>
-              <ul>
-                <li>完整部署走 <code>apps/console/deploy/install.sh</code>：nginx、四个 systemd 服务、静态页、API、WebSocket 一起配置</li>
-                <li>部署依赖补齐 FastAPI / Uvicorn / cryptography；角色模型与动作库按 7 天缓存</li>
-                <li>ECS 实机仍未验收，relay-only 安装器不用于完整桌面</li>
-              </ul>
-            </div>
-            <span class="badge badge--work">待实机</span>
-          </li>
-          <li class="timeline__row">
-            <div class="timeline__when"><span>11-17</span><small>账号与桌面</small></div>
-            <div class="timeline__body">
-              <h3>主用户、子用户与 3D 桌面</h3>
-              <ul>
-                <li>FastAPI + Uvicorn 身份接口；主账号与子用户拥有独立登录账号、会话和身份档案</li>
-                <li>本机验证码仅 <code>127.0.0.1 / ::1</code> 可生成，6 位、5 分钟、一次性</li>
-                <li>3D 桌面先渲染窗口与程序，再载入 VRM / PMX 角色</li>
-                <li>聊天、上传、记忆等历史目录仍共享，尚未按用户彻底分区</li>
-              </ul>
-            </div>
-            <span class="badge badge--work">进行中</span>
-          </li>
-        </ol>
-        </div>
-        <p class="state__scroll-hint">上下滚动查看全部 12 个节点</p>
-        </div>
-      </section>
+      </li>
+    </ul>
 
-      <section class="section console" id="console" aria-labelledby="console-title">
-        <div class="console__copy">
-          <p class="kicker">DESKTOP / 看板入口</p>
-          <h2 id="console-title">展示页不重复看板，<br>看板只做可操作的事。</h2>
-          <p class="section__lede">
-            内核帧、训练折线、中继房间和错误码都在控制台里。这个页面只给入口和解释，避免同一份数据在两个地方各说各的。
-          </p>
-          <a class="btn" href="desktop.html" target="_top">进入控制台</a>
-          <p class="note note--tight">浏览器和 Electron 打开的是同一页；窗口位置存在本机，不写进仓库。</p>
-        </div>
-        <div class="console__grid" aria-label="控制台窗口">
-          <div><span class="console__id">01</span><strong>内核实况</strong><span>80×25 VGA · 串口帧</span></div>
-          <div><span class="console__id">02</span><strong>训练监控</strong><span>loss / epoch / device</span></div>
-          <div><span class="console__id">03</span><strong>模型对话</strong><span>checkpoint → 生成</span></div>
-          <div><span class="console__id">04</span><strong>中继交流</strong><span>房间 / 在线 / 消息</span></div>
-          <div><span class="console__id">05</span><strong>错误看板</strong><span>0xRRFFTT / 日志</span></div>
-          <div><span class="console__id">06</span><strong>展示页</strong><span>就是当前这一页</span></div>
-        </div>
-      </section>
+    <p class="motto">同一件事只留一个入口：桌面负责操作，展示页负责说清楚。</p>
+  </section>
 
-      <section class="section" id="join" aria-labelledby="join-title">
-        <div class="join">
-          <div class="join__copy">
-            <p class="kicker">JOIN / 参与</p>
-            <h2 id="join-title">把问题带进来，<br>把能跑的东西留下来。</h2>
-            <p>欢迎内核、C++、前端和测试方向的朋友。提 issue 时请附上环境、命令和真实日志；不要用“本地完成，待部署”代替可复现的结果。</p>
-            <dl class="join__links">
-              <div><dt>邮箱</dt><dd><a href="mailto:open@mrhua.cn">open@mrhua.cn</a></dd></div>
-              <div><dt>代码</dt><dd><a href="https://gitcode.com/AevumArk/Aevum" rel="noopener">gitcode.com/AevumArk/Aevum</a></dd></div>
-              <div><dt>许可</dt><dd>MPL-2.0</dd></div>
-            </dl>
-          </div>
-          <figure class="join__qr">
-            <img src="assets/qrcode.png" alt="Aevum 社区 QQ 群二维码" width="176" height="165" loading="lazy">
-            <figcaption>扫码进社区群</figcaption>
-          </figure>
+  <section class="about" id="model">
+    <header class="section-head">
+      <h2>模型一周期怎么走</h2>
+      <p>Memoria 的前向主链按代码里的真实顺序写，不套用现成架构的名字。训练、生成和检查点在外围，下面只列一个周期的主路径。</p>
+    </header>
+
+    <ol class="phases">
+      <li class="phase">
+        <span class="phase__id">01</span>
+        <div class="phase__body">
+          <h3>嵌入与位置</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>token embedding + 固定正弦位置编码</li>
+            <li>输入形状 [B, S]，3,000 词表</li>
+          </ul>
         </div>
-      </section>
+      </li>
+      <li class="phase">
+        <span class="phase__id">02</span>
+        <div class="phase__body">
+          <h3>门控阀</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>Q / K / V 三路门控混合，控制写入强度</li>
+            <li>旁路标记分支只出结果，不进入主路径</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <span class="phase__id">03</span>
+        <div class="phase__body">
+          <h3>链式单元 × 3</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>每个链式单元 3 个 SubNet、9 个 Processor，顺序更新</li>
+            <li>三路平衡器按 Q/K/V 配比收敛，再交给下一层</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <span class="phase__id">04</span>
+        <div class="phase__body">
+          <h3>分层记忆与融合</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>分层记忆写入与检索，多轮回写</li>
+            <li>融合后做 V 正则，再归一化到输出层</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <span class="phase__id">05</span>
+        <div class="phase__body">
+          <h3>云端对话与工具</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分验收</p>
+          <ul class="phase__items">
+            <li>后端代理已接：登录用户可拿 web_search，配置齐全才发 generate_media</li>
+            <li>访客只走文本；媒体产物写入各自的 data_scope 目录</li>
+            <li>真实云端密钥仍未配置，返回“未配置密钥”是当前预期</li>
+          </ul>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="live" id="live">
+    <header class="section-head">
+      <h2>内核实况</h2>
+      <p>内核跑起来时，引导程序把 80×25 文本屏逐格经串口发出，桥接转成 WebSocket，落在这块画布上。没连上时走同一套帧格式的演示回放。</p>
+    </header>
+
+    <section class="terminal" aria-label="VGA 文本屏幕">
+      <header class="terminal__bar">
+        <span class="terminal__link">
+          <i class="dot" id="dot" data-state="offline"></i>
+          <span id="link-text">未连接</span>
+        </span>
+        <span class="terminal__stats">
+          <span>帧 <b id="stat-frames">0</b></span>
+          <span>格 <b id="stat-cells">0</b></span>
+        </span>
+        <button class="terminal__reconnect" id="reconnect" type="button">重连</button>
+      </header>
+
+      <div class="terminal__screen">
+        <canvas id="vga" width="960" height="400"></canvas>
       </div>
-    </main>
 
-    <footer class="foot">
-      <span>AEVUM / MEMORIA · 2026 · 文档口径 2026-11-08</span>
-      <span><a href="https://beian.miit.gov.cn/" rel="noopener">鄂ICP备2026056886号-2</a></span>
-      <span>展示页不代替看板；看板不代替代码。</span>
-    </footer>
-  </div>
-  <script src="/engine/math/math.js"></script>
-  <script src="/engine/world/pipeline/world-pipeline.js"></script>
-  <script src="js/scene/scene-core.js"></script>
-  <script src="js/scene/scene-showcase.js"></script>
+      <footer class="terminal__meta">
+        <span id="source-hint">串口帧 · ws://127.0.0.1:8765</span>
+        <span>12×16 格 · 16 色</span>
+      </footer>
+    </section>
+  </section>
+
+  <section class="relay" id="relay" data-base="http://127.0.0.1:8790">
+    <header class="section-head">
+      <h2>中继交流</h2>
+      <p>房间开在服务端内存里，关掉就没了。后端不在线时，这一块会切到当前标签页的前端内存演示：能发帖、能看见回复，但刷新即清空。</p>
+    </header>
+
+    <div class="relay__room">
+      <div class="relay__bar">
+        <span class="relay__room-id">房间 · <span id="relay-room">lobby</span></span>
+        <dl class="relay__meters">
+          <div><dt>在线</dt><dd id="relay-online">—</dd></div>
+          <div><dt>浏览</dt><dd id="relay-views">—</dd></div>
+          <div><dt>落盘</dt><dd>false</dd></div>
+        </dl>
+        <span class="relay__led" id="relay-state" data-state="idle">未连接</span>
+      </div>
+
+      <div id="pane-talk">
+        <ol class="relay__feed" id="relay-feed" aria-live="polite"></ol>
+        <p class="relay__empty" id="relay-empty">还没有人说话。发第一条——它会进服务端房间，也会随房间一起消失；连不上后端时，它只留在当前标签页的内存里。</p>
+        <div class="relay__compose">
+          <input id="relay-nick" placeholder="昵称" maxlength="16" autocomplete="off">
+          <textarea id="relay-text" rows="2" placeholder="说点什么。后端在线时写进房间会话；离线时只写进当前页面的内存。都不落盘。" maxlength="2000"></textarea>
+          <button class="relay__send" id="relay-send" type="button">发送</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="progress" id="progress">
+    <header class="section-head">
+      <h2>开源进度</h2>
+      <p>数字只写能对上的：模型规模、词表、安装包和方向数。阶段按实际进度标注；没做的直接写没做，不用“本地完成，待部署”代替可复现的结果。</p>
+    </header>
+
+    <dl class="numbers">
+      <div><dt>方向</dt><dd>3</dd></div>
+      <div><dt>模型参数</dt><dd>1,352,744</dd></div>
+      <div><dt>词表</dt><dd>3,000</dd></div>
+      <div><dt>安装包</dt><dd>95 MB</dd></div>
+    </dl>
+    <p class="numbers__note">模型在仓库外训练；权重、角色资产和大文件都不进仓库。</p>
+
+    <ol class="phases">
+
+      <li class="phase">
+        <span class="phase__id">P0</span>
+        <div class="phase__body">
+          <h3>骨架与文档</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>完成</p>
+          <ul class="phase__items">
+            <li>三模块目录：fortuna / libertas / memoria</li>
+            <li>许可定为 MPL-2.0，行为准则单独成文</li>
+            <li>入口文档六份，静态站首版可打开</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P1</span>
+        <div class="phase__body">
+          <h3>一个能打开的地址</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分完成</p>
+          <ul class="phase__items">
+            <li>域名 https://www.mrhua.cn/ 已可访问，证书已生效</li>
+            <li>页面与中继的部署配置已随仓库提供</li>
+            <li>社区二维码已入库，页脚备案号已指向备案系统</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P2</span>
+        <div class="phase__body">
+          <h3>纯内存中继</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>中继落在 apps/relay：会话、上下文、分片传输、在线计数</li>
+            <li>没有数据库、没有账号；进程重启，房间与文件一起消失</li>
+            <li>端到端验证通过；部署配置在 apps/relay/deploy</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P3</span>
+        <div class="phase__body">
+          <h3>桌面与平台化</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分完成</p>
+          <ul class="phase__items">
+            <li>3D 桌面、启动项、MrHua 和原生订阅窗口已接进同一套入口</li>
+            <li>窗口与功能先渲染，VRM / PMX 角色随后加载</li>
+            <li>主用户与子用户的身份、会话和 data_scope 已分开；历史目录仍在收口</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P4</span>
+        <div class="phase__body">
+          <h3>云端对话与工具</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分验收</p>
+          <ul class="phase__items">
+            <li><code>chat_api</code> 把 <code>data_scope</code> 传给生成函数；云端模式不再固定走本地模型</li>
+            <li>登录用户可获得 <code>web_search</code>；<code>video_generation</code> 配置齐全且密钥有效时才发 <code>generate_media</code></li>
+            <li>访客只走文本；媒体产物写入各自的 data_scope 目录</li>
+            <li>真实 DeepSeek 调用未跑：云端密钥为空，当前返回“未配置密钥”</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P5</span>
+        <div class="phase__body">
+          <h3>长期</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分启动</p>
+          <ul class="phase__items">
+            <li>fortuna 内核已在 QEMU 跑通</li>
+            <li>memoria 独立服务、社区数据落库与备份都未开始</li>
+          </ul>
+        </div>
+      </li>
+
+    </ol>
+
+    <h3 class="trace-head">几个节点</h3>
+    <ol class="trace">
+      <li>
+        <span class="trace__date">09-16</span>
+        <div>
+          <p class="trace__title">立项</p>
+          <p class="trace__desc">三个模块定名，主体用 C/C++，目录先按职责分开。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">09-17</span>
+        <div>
+          <p class="trace__title">fortuna 第一屏</p>
+          <p class="trace__desc">引导程序在 QEMU 里打出第一行字；实模式到保护模式再到分页的链路走通。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">11-08</span>
+        <div>
+          <p class="trace__title">骨架入库</p>
+          <p class="trace__desc">结构与文档占位进仓库，LICENSE 定为 MPL-2.0，行为准则归位。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">11-09</span>
+        <div>
+          <p class="trace__title">内核跑通</p>
+          <p class="trace__desc">引导程序在 QEMU 中启动，串口帧经桥接推到页面；没有登录与存储。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">11-10</span>
+        <div>
+          <p class="trace__title">中继与页面入库</p>
+          <p class="trace__desc">纯内存中继落到 apps/relay，页面归入 apps/community/web；旧页面移除，内核后端保留。</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="join" id="join">
+    <header class="section-head">
+      <h2>扫码进群，或者写信</h2>
+      <p>群里发的是进度、卡点和求助，不是公告板；代码、文档、路线图都在仓库里，进度以仓库为准。</p>
+    </header>
+
+    <div class="join__grid">
+      <figure class="qr">
+        <img src="assets/qrcode.png" alt="Aevum 社区 QQ 群二维码" width="176" height="165" loading="lazy">
+        <figcaption>扫码进 QQ 群；屏幕扫不动就放大这一块，或者直接写信。</figcaption>
+      </figure>
+
+      <div class="join__text">
+        <p>行为准则对仓库、讨论区、群聊和线下活动同样适用；举报渠道与处理流程写在 <span class="join__mono">CODE_OF_CONDUCT.md</span>。</p>
+        <p>想先看东西再说话：<span class="join__mono">PROGRESS.md</span> 是做到哪一步，<span class="join__mono">ROADMAP.md</span> 是接下来打算做什么，<span class="join__mono">CONTRIBUTING.md</span> 是一次提交该怎么交。</p>
+        <p class="join__mail">
+          <a href="mailto:open@mrhua.cn">open@mrhua.cn</a>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span><a href="https://gitcode.com/AevumArk/Aevum" rel="noopener">gitcode.com/AevumArk/Aevum</a></span>
+    <span>MPL-2.0</span>
+    <span><a href="desktop.html" target="_top">打开 3D 桌面</a></span>
+    <span>文档口径 2026-11-17</span>
+    <span><a href="https://beian.miit.gov.cn/" rel="noopener">鄂ICP备2026056886号-2</a></span>
+  </footer>
+
+</main>
+
+<script src="js/core/bus.js"></script>
+<script src="js/core/ws-connection.js"></script>
+<script src="js/core/wander.js"></script>
+<script src="js/core/demo-feed.js"></script>
+<script src="js/components/essence.js"></script>
+<script src="js/components/screen.js"></script>
+<script src="js/components/hud.js"></script>
+<script src="js/components/relay.js"></script>
+<script src="js/main.js"></script>
+
 </body>
 </html>

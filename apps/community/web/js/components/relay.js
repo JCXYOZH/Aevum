@@ -3,7 +3,8 @@
    进房心跳（在线/浏览计数）→ 轮询房间上下文 → 发帖。
 
    所有内容都只在服务端内存里：房间会话一过期或进程退出，帖子全部消失。
-   面板不伪造成功：任何非 2xx 都原样显示 0xRRFFTT。
+   后端不在线时切到当前标签页的前端内存演示，仍然不落盘、刷新即清空。
+   面板不伪造成功：真实请求的非 2xx 原样显示 0xRRFFTT；演示模式会明确标“前端演示”。
    ============================================================ */
 (function () {
   var section = document.getElementById('relay');
@@ -49,6 +50,34 @@
   var lastSignature = '';
   var polling = false;
   var hasRendered = false;
+  var demoMode = false;
+  var demoMessages = [];
+
+  function seedDemo() {
+    var now = Math.floor(Date.now() / 1000);
+    demoMessages = [
+      { role: 'system', content: '房间开在当前标签页的内存里；刷新、关页或进程结束，消息一起消失。', ts: now - 90 },
+      { role: 'user', content: '演示·林：中继不落盘，所以这里能看见的只有此刻。', ts: now - 60 },
+      { role: 'user', content: '演示·阿禾：如果后端在线，这些消息会写进服务端房间；离线时就只剩这份前端演示。', ts: now - 30 }
+    ];
+  }
+
+  function enterDemo(reason) {
+    if (demoMode) {
+      return;
+    }
+    demoMode = true;
+    room = 'lobby';
+    seedDemo();
+    els.room.textContent = room;
+    els.online.textContent = '3';
+    els.views.textContent = '27';
+    setState('前端演示 · 内存中继', 'demo');
+    render(demoMessages);
+    if (reason) {
+      els.empty.textContent = '后端中继未连接：' + reason + '。下面是当前标签页内存里的演示消息，刷新即清空。';
+    }
+  }
 
   // ------------------------- 基础 -------------------------
   function call(method, path, body) {
@@ -97,9 +126,12 @@
 
   // ------------------------- 进房与计数 -------------------------
   function heartbeat() {
+    if (demoMode) {
+      return Promise.resolve();
+    }
     return call('POST', '/v1/presence', { client: client }).then(function (result) {
       if (!result.data.ok) {
-        setState(describe(result), 'error');
+        enterDemo(describe(result));
         return;
       }
       room = result.data.room || room;
@@ -108,7 +140,7 @@
       els.views.textContent = result.data.views;
       setState('已连接 · 契约 ' + (result.data.magic || '?') + '/' + (result.data.v || '?'), 'online');
     }).catch(function (err) {
-      setState('连不上：' + (err && err.message ? err.message : err), 'error');
+      enterDemo(err && err.message ? err.message : String(err));
     });
   }
 
@@ -183,7 +215,7 @@
   }
 
   function poll() {
-    if (polling) {
+    if (demoMode || polling) {
       return Promise.resolve();
     }
     polling = true;
@@ -201,10 +233,10 @@
           els.empty.textContent = '房间已冷却，等下一次心跳重开。';
           return;
         }
-        setState(describe(result), 'error');
+        enterDemo(describe(result));
       })
       .catch(function (err) {
-        setState('连不上：' + (err && err.message ? err.message : err), 'error');
+        enterDemo(err && err.message ? err.message : String(err));
       })
       .then(function () {
         polling = false;
@@ -220,6 +252,17 @@
     var who = (els.nick.value.trim() || '匿名').slice(0, 16);
     els.nick.value = who;
     localStorage.setItem('relay.nick', who);
+
+    if (demoMode) {
+      demoMessages.push({
+        role: 'user',
+        content: who + '：' + text,
+        ts: Math.floor(Date.now() / 1000)
+      });
+      els.text.value = '';
+      render(demoMessages);
+      return;
+    }
 
     els.send.disabled = true;
     call('POST', '/v1/sessions/' + encodeURIComponent(room) + '/messages', {

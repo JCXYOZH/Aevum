@@ -76,6 +76,10 @@
   background: var(--teal);
 }
 
+.relay__led[data-state="demo"]::before {
+  background: var(--amber);
+}
+
 .relay__led[data-state="error"]::before {
   background: var(--coral);
 }
