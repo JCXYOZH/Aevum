@@ -5,5 +5,6 @@
   "/apps/console/ui/orb/orb-ui.js",
   "/apps/console/ui/skin/skin-app.js",
   "/apps/console/ui/world/world-app.js",
-  "/apps/console/ui/dialogue/voice.js"
+  "/apps/console/ui/dialogue/voice.js",
+  "./js/loop-subscribe.js"
 ]

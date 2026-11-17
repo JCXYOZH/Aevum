@@ -1024,6 +1024,7 @@
                     search: { width: 600, height: 400, top: '20%', left: '25%' },
                     status: { width: 550, height: 450, top: '25%', left: '30%' },
                     feedback: { width: 550, height: 400, top: '25%', left: '30%' },
+                    subscribe: { width: 620, height: 520, top: '14%', left: '20%' },
                     auth: { width: 500, height: 550, top: '20%', left: '30%' },
                     http: { width: 650, height: 500, top: '15%', left: '20%' },
                     browser: { width: 900, height: 680, top: '5%', left: '8%' },
@@ -1142,7 +1143,7 @@
                                         // 未登入时不允许打开其它窗口，一律转到身份认证。
                     // 放在 openWindow 这一层：所有入口（灵体、启动器、命令面板、任务栏、
                     // Exposé、AI 调用）就都覆盖到了 —— 只堵灵体是堵不住的。
-                    const MR_PRELOGIN_WINDOWS = ['identity'];
+                    const MR_PRELOGIN_WINDOWS = ['identity', 'subscribe'];
                     let _preloginOK = true;
                     try {
                         const _st = window.MR_AUTH || {};
@@ -1249,7 +1250,7 @@ const win = document.getElementById('win-' + id);
                     // 兜底表：只有不在 ORB_TOOLS（启动器）里的窗口才需要在这里登记。
                     // ORB_TOOLS 是工具窗口的唯一来源，这里不再重复登记，避免两处漂移
                     // （终端曾经只加进 ORB_TOOLS，任务栏就找不到了）。
-                    const labels = {'launcher':'🚀 启动器',terminal:'⌨️ 终端',chat:'💬 对话',mirror:'🪞 镜像舱',scan:'🛠️ 工具箱',quickscan:'⚡ 快速扫描',search:'🔍 搜索',status:'📈 状态',feedback:'🌺 反馈',auth:'🎭 人格',settings:'⚙️ 设置',http:'🌐 HTTP',browser:'🧭 内置浏览器',codegen:'💻 代码工坊',codeeditor:'📂 代码编辑器',devtools:'🔧 开发者工具',memory:'🧠 记忆',experiments:'🧪 实验',knowledge:'📚 知识库',netshare:'📡 局域网',wanshare:'🌍 广域网',governance:'⚖️ 治理',cloud:'☁️ 云同步',httppro:'🛰️ HTTP专业',versionmgr:'🚀 版本发布',toolinstaller:'📦 工具安装',manual:'📖 操作手册',identity:'🪪 身份认证',tasks:'📋 任务',contributions:'🏆 贡献',contacts:'👥 联系人',monitor:'📊 系统监控',security:'🛡️ 防护中心',notes:'📝 速记板',notifications:'🔔 通知中心',alerts:'🚨 告警规则',snapshots:'📸 快照管理',rulewriter:'🤖 AI规则编写',whiteboard:'📋 协作白板',graph:'🕸️ 知识图谱',delegation:'🗝️ 权限委托',desensitize:'🎭 脱敏工具',reportgen:'📄 报告生成',nodesync:'🔄 节点同步',plugins:'🧩 插件',sandbox:'🔒 沙箱',workflow:'🔗 工作流','network-center':'🌐 统一网络中心','security-combat':'⚔️ 安全实战中心','ai-center':'⚖️ 审议庭'};
+                    const labels = {'launcher':'🚀 启动器',terminal:'⌨️ 终端',chat:'💬 对话',mirror:'🪞 镜像舱',scan:'🛠️ 工具箱',quickscan:'⚡ 快速扫描',search:'🔍 搜索',status:'📈 状态',feedback:'🌺 反馈',subscribe:'📮 订阅',auth:'🎭 人格',settings:'⚙️ 设置',http:'🌐 HTTP',browser:'🧭 内置浏览器',codegen:'💻 代码工坊',codeeditor:'📂 代码编辑器',devtools:'🔧 开发者工具',memory:'🧠 记忆',experiments:'🧪 实验',knowledge:'📚 知识库',netshare:'📡 局域网',wanshare:'🌍 广域网',governance:'⚖️ 治理',cloud:'☁️ 云同步',httppro:'🛰️ HTTP专业',versionmgr:'🚀 版本发布',toolinstaller:'📦 工具安装',manual:'📖 操作手册',identity:'🪪 身份认证',tasks:'📋 任务',contributions:'🏆 贡献',contacts:'👥 联系人',monitor:'📊 系统监控',security:'🛡️ 防护中心',notes:'📝 速记板',notifications:'🔔 通知中心',alerts:'🚨 告警规则',snapshots:'📸 快照管理',rulewriter:'🤖 AI规则编写',whiteboard:'📋 协作白板',graph:'🕸️ 知识图谱',delegation:'🗝️ 权限委托',desensitize:'🎭 脱敏工具',reportgen:'📄 报告生成',nodesync:'🔄 节点同步',plugins:'🧩 插件',sandbox:'🔒 沙箱',workflow:'🔗 工作流','network-center':'🌐 统一网络中心','security-combat':'⚔️ 安全实战中心','ai-center':'⚖️ 审议庭'};
 
                     // 统一取「图标 + 名称」：优先用启动器的 ORB_TOOLS，再退回上面的兜底表。
                     function winMeta(id){
@@ -9924,6 +9925,8 @@ const results = asArray(data.results);
                         if (searchInput) searchInput.focus();
                     } else if (id === 'feedback') {
                         if (feedbackText) feedbackText.focus();
+                    } else if (id === 'subscribe') {
+                        if (window.MrHuaSubscribe) window.MrHuaSubscribe.focus();
                     } else if (id === 'http') {
                         if (httpUrl) httpUrl.focus();
                     } else if (id === 'auth') {
@@ -10003,6 +10006,7 @@ const results = asArray(data.results);
                     {id:'notifications',name:'通知中心',icon:'🔔',cat:'系统'},{id:'cloud',name:'云同步',icon:'☁️',cat:'系统'},
                     {id:'identity',name:'身份认证',icon:'🪪',cat:'系统'},{id:'auth',name:'人格设置',icon:'🎭',cat:'系统'},
                     {id:'manual',name:'操作手册',icon:'📖',cat:'系统'},{id:'feedback',name:'反馈',icon:'🌺',cat:'系统'},
+                    {id:'subscribe',name:'订阅',icon:'📮',cat:'系统'},
                     {id:'experiments',name:'实验功能',icon:'🧪',cat:'系统'},
                     {id:'status',name:'状态',icon:'📈',cat:'系统'},
                 ];

@@ -1,0 +1,43 @@
+    <div class="window" id="win-subscribe" data-window="subscribe" style="width:620px;height:520px;top:14%;left:20%;">
+        <div class="window-header">
+            <span class="title">📮 订阅 · 只订一件事</span>
+            <div class="window-controls">
+                <button class="btn-minimize" title="最小化">─</button>
+                <button class="btn-maximize" title="最大化">☐</button>
+                <button class="btn-close" title="关闭">✕</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;gap:14px;overflow-y:auto;">
+            <div style="padding:12px 14px;border:1px solid #e0d4f0;border-radius:10px;background:#f5f0fa;color:#444;font-size:0.85rem;line-height:1.7;">
+                <b>只订一件事：Aevum 的更新与发布记录。</b><br>
+                一人一封、不群发、不追踪打开和点击。提交后只登记为待确认；确认邮件点开后才算正式订阅。
+            </div>
+
+            <form id="loop-subscribe-form" class="auth-form" novalidate>
+                <div class="form-group">
+                    <label for="loop-subscribe-email" style="display:block;font-size:0.85rem;color:#666;font-weight:600;margin-bottom:6px;">邮箱</label>
+                    <input class="auth-input" id="loop-subscribe-email" type="email" autocomplete="email" placeholder="name@example.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label style="display:block;font-size:0.85rem;color:#666;font-weight:600;margin-bottom:6px;">订阅事项</label>
+                    <input class="auth-input" id="loop-subscribe-scope" type="text" value="Aevum 更新与发布记录" readonly>
+                </div>
+
+                <label style="display:flex;align-items:flex-start;gap:8px;font-size:0.85rem;color:#555;line-height:1.6;cursor:pointer;">
+                    <input id="loop-subscribe-consent" type="checkbox" style="width:auto;padding:0;border:0;border-radius:0;box-shadow:none;flex:0 0 auto;margin-top:3px;">
+                    <span>我同意接收这一类更新邮件，并知道可以随时退订。</span>
+                </label>
+
+                <button class="btn-primary" id="loop-subscribe-submit" type="submit" style="margin-top:12px;">登记订阅</button>
+            </form>
+
+            <div id="loop-subscribe-result" role="status" aria-live="polite" style="font-size:0.9rem;line-height:1.7;color:#555;"></div>
+
+            <div style="margin-top:auto;padding-top:10px;border-top:1px solid #eee;color:#999;font-size:0.78rem;line-height:1.7;">
+                这里只保存邮箱、同意时间、订阅事项和来源；来源只留域名和页面组，不保存完整 URL、搜索词、IP 或 UA。<br>
+                退订不需要登录：每封邮件底部都有一次性退订链接。
+            </div>
+        </div>
+        <div class="window-resize-handle"></div>
+    </div>
