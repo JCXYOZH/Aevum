@@ -74,7 +74,7 @@ nginx -t
 ss -lntp | grep -E ':80|:443'
 curl -I https://www.mrhua.cn/engine/validate.html
 curl -fsS https://www.mrhua.cn/engine/validate.html | grep '渲染引擎验证'
-curl -fsS https://www.mrhua.cn/ | grep -q 'class="masthead"'
+curl -fsS https://www.mrhua.cn/ | grep -q 'data-page="showcase"'
 curl -fsS https://www.mrhua.cn/api/health
 curl -fsS https://www.mrhua.cn/desktop.html -o /dev/null
 curl -fsS https://www.mrhua.cn/mrhua/index.html -o /dev/null

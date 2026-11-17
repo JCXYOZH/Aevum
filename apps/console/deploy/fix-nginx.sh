@@ -136,7 +136,7 @@ check() {
 }
 check "验证页 200"       "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN'"
 check "验证页不是首页"   "curl -fsS --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN' | grep -q '渲染引擎验证'"
-check "根页是展示页"     "curl -fsS --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN' | grep -q 'class=\"masthead\"'"
+check "根页是展示页"     "curl -fsS --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN' | grep -q 'data-page=\"showcase\"'"
 check "桌面页 200"       "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/desktop.html -H 'Host: $DOMAIN'"
 check "API 健康"         "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/api/health -H 'Host: $DOMAIN'"
 if [ "$TLS_ACTIVE" = "yes" ]; then

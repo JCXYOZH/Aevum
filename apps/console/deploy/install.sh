@@ -372,7 +372,7 @@ check "看板健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.
 check "能力清单为三项"    "curl -fsS --max-time 5 http://127.0.0.1:8781/api/capabilities | grep -q '\"count\": 3'"
 check "中继健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8790/v1/health"
 check "页面能取到 200"    "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN'"
-check "根页是展示页"      "curl -fsS --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN' | grep -q 'class=\"masthead\"'"
+check "根页是展示页"      "curl -fsS --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN' | grep -q 'data-page=\"showcase\"'"
 check "桌面页能取到 200"  "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/desktop.html -H 'Host: $DOMAIN'"
 check "MrHua 页面能取到 200" "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/mrhua/index.html -H 'Host: $DOMAIN'"
 check "验证页能取到 200"  "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/engine/validate.html -H 'Host: $DOMAIN'"
