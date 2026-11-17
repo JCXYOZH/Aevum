@@ -16,16 +16,24 @@ import time
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, urlparse
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator
 
 from libertas.data.backup import BackupItem, get_backup_manager
 from libertas.foundation.ratelimit import get_rate_limiter
 from libertas.identity.auth_manager import AuthManager
 from libertas.identity.user import UserManager
 from libertas.identity.user.storage import LOOP_PAGE_GROUPS
+
+try:
+    from .api.capabilities import create_router as create_capabilities_router
+    from .api.loop import create_router as create_loop_router
+    from .api.system import create_router as create_system_router
+except ImportError:  # 直接以脚本方式运行
+    from api.capabilities import create_router as create_capabilities_router
+    from api.loop import create_router as create_loop_router
+    from api.system import create_router as create_system_router
 
 COOKIE_NAME = "mrhua_session"
 MAX_BODY = 1_000_000
@@ -680,48 +688,11 @@ class AuthAPI:
         handler._send_json({"success": self.auth.update_sub_user_identity(sid, body.get("identity") or {})})
 
 
-class LoopSubscribeBody(BaseModel):
-    email: str
-    scope: str = "release"
-    page: str = ""
-
-    @field_validator("email")
-    @classmethod
-    def email_shape(cls, value: str) -> str:
-        value = (value or "").strip().lower()
-        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", value):
-            raise ValueError("邮箱格式不正确")
-        return value
-
-
-class LoopVisitBody(BaseModel):
-    source: str = ""
-    page_group: str = ""
-    page: str = ""
-
-
-class LoopMarkContactedBody(BaseModel):
-    subscription_id: str
-
-
-class LoopDeleteBody(BaseModel):
-    subscription_id: str
-
-
-class LoopWallBody(BaseModel):
-    platform: str
-    symptom: str
-    target: str = ""
-    note: str = ""
-    observed_at: float = 0
-
-
-class LoopExportTicketBody(BaseModel):
-    password: str
-
-
 def create_fastapi_app():
-    """FastAPI 只接 /api/loop/*；旧 desktop_server 继续跑原有页面和接口。
+    """FastAPI 按领域装载：capabilities / system / loop。
+
+    账号认证与 /api/auth/* 仍由 desktop_server 里的 AuthAPI 适配；这里只承载
+    FastAPI 侧的回路、系统状态和能力清单。
 
     启动示例：
         uvicorn apps.console.monitor.auth_api:create_fastapi_app --factory \
@@ -751,6 +722,9 @@ def create_fastapi_app():
         allow_headers=["*"],
     )
     app.state.loop_api = api
+    app.include_router(create_capabilities_router())
+    app.include_router(create_system_router(api))
+    app.include_router(create_loop_router(api))
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, error: HTTPException):
@@ -758,187 +732,6 @@ def create_fastapi_app():
             status_code=error.status_code,
             content={"success": False, "message": str(error.detail)},
         )
-
-    def require_user(request: Request):
-        token = request.cookies.get(COOKIE_NAME, "")
-        user = api.users.validate_session(token) if token else None
-        if user is None:
-            raise HTTPException(status_code=401, detail="请先登录")
-        return user
-
-    @app.get("/api/health")
-    def health():
-        return {
-            "success": True,
-            "service": "aevum-loop-api",
-            "loop_db": os.path.basename(api.users.loop_db_path),
-            "manual_send": True,
-            "one_at_a_time": True,
-        }
-
-    @app.post("/api/loop/subscribe")
-    def subscribe(body: LoopSubscribeBody):
-        if not get_rate_limiter().check("loop_subscribe_public"):
-            return {"success": True, "message": "已收到。"}
-        try:
-            api.users.loop_subscribe(
-                body.email,
-                scope=body.scope or "release",
-                consent_page=body.page,
-            )
-        except RuntimeError:
-            raise HTTPException(status_code=503, detail="订阅暂时不可用")
-        # 统一话术：不告诉外部这个邮箱是否已在名单里。
-        return {
-            "success": True,
-            "message": "已收到。请等确认链接点开后再算正式订阅。",
-        }
-
-    @app.get("/api/loop/confirm")
-    def confirm(token: str = Query("")):
-        result = api.users.loop_confirm(token)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail=result.get("error", "确认失败"))
-        return {"success": True, "message": "已确认订阅。"}
-
-    @app.get("/api/loop/unsubscribe")
-    def unsubscribe(token: str = Query("")):
-        result = api.users.loop_unsubscribe(token)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail=result.get("error", "退订失败"))
-        return {"success": True, "message": "已退订。"}
-
-    @app.post("/api/loop/visit")
-    def visit(body: LoopVisitBody, request: Request):
-        if not get_rate_limiter().check("loop_visit_public"):
-            return {"success": True}
-        source = body.source or request.headers.get("referer", "")
-        source = api.users._loop_normalize_source(source)
-        page_value = body.page_group or body.page
-        page_group = api.users._loop_page_group(page_value)
-        api.users.loop_record_source(
-            time.strftime("%Y-%m-%d"), source, page_group
-        )
-        return {"success": True}
-
-    @app.get("/api/loop/summary")
-    def summary(user=Depends(require_user)):
-        return {"success": True, "summary": api.users.loop_summary()}
-
-    @app.get("/api/loop/subscriptions")
-    def subscriptions(
-        status: str = Query(""),
-        reveal: bool = Query(False),
-        user=Depends(require_user),
-    ):
-        rows = api.users.loop_list(status=status, include_email=reveal)
-        return {"success": True, "subscriptions": rows}
-
-    @app.get("/api/loop/next")
-    def next_subscription(
-        scope: str = Query(""),
-        include_contacted: bool = Query(False),
-        user=Depends(require_user),
-    ):
-        result = api.users.loop_next_confirmed(
-            scope=scope, include_contacted=include_contacted
-        )
-        if not result.get("ok"):
-            raise HTTPException(status_code=500, detail=result.get("error", "读取失败"))
-        return {"success": True, **result}
-
-    @app.get("/api/loop/sources")
-    def sources(limit: int = Query(400), user=Depends(require_user)):
-        return {"success": True, "sources": api.users.loop_sources(limit=limit)}
-
-    @app.get("/api/loop/walls")
-    def walls(limit: int = Query(200), user=Depends(require_user)):
-        return {"success": True, "walls": api.users.loop_walls(limit=limit)}
-
-    @app.post("/api/loop/walls")
-    def add_wall(body: LoopWallBody, user=Depends(require_user)):
-        if not body.platform.strip() or not body.symptom.strip():
-            raise HTTPException(status_code=400, detail="平台和现象都必须填写")
-        result = api.users.loop_record_wall(
-            platform=body.platform,
-            symptom=body.symptom,
-            target=body.target,
-            note=body.note,
-            observed_at=body.observed_at,
-        )
-        return {"success": True, "result": result}
-
-    @app.post("/api/loop/mark_contacted")
-    def mark_contacted(body: LoopMarkContactedBody, user=Depends(require_user)):
-        result = api.users.loop_mark_contacted(body.subscription_id)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail=result.get("error", "标记失败"))
-        return {"success": True, **result}
-
-    @app.post("/api/loop/delete")
-    def delete(body: LoopDeleteBody, user=Depends(require_user)):
-        result = api.users.loop_delete(body.subscription_id)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail=result.get("error", "删除失败"))
-        return {"success": True, **result}
-
-    @app.post("/api/loop/export_ticket")
-    def export_ticket(body: LoopExportTicketBody, user=Depends(require_user)):
-        if not body.password or not user.verify_password(body.password):
-            raise HTTPException(status_code=403, detail="密码错误，不能导出名单")
-        now = time.time()
-        for key, expires in list(api._export_tickets.items()):
-            if expires < now:
-                api._export_tickets.pop(key, None)
-        ticket = secrets.token_urlsafe(24)
-        api._export_tickets[ticket] = now + 60
-        return {
-            "success": True,
-            "ticket": ticket,
-            "expires_in": 60,
-            "message": "把 ticket 放到 X-Loop-Export-Token 请求头里，60 秒内只能用一次。",
-        }
-
-    @app.get("/api/loop/export")
-    def export(
-        x_loop_export_token: str = Header("", alias="X-Loop-Export-Token"),
-        user=Depends(require_user),
-    ):
-        ticket = (x_loop_export_token or "").strip()
-        expires = api._export_tickets.pop(ticket, 0)
-        if not ticket or expires < time.time():
-            raise HTTPException(
-                status_code=403,
-                detail="导出需要重新验证密码并申请一次性票据。",
-            )
-        rows = api.users.loop_export()
-        return {
-            "success": True,
-            "format": "json",
-            "count": len(rows),
-            "subscriptions": rows,
-        }
-
-    @app.get("/api/loop/acceptance")
-    def acceptance(user=Depends(require_user)):
-        with sqlite3.connect(api.users.db_path) as users_conn:
-            user_tables = [
-                row[0] for row in users_conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                ).fetchall()
-            ]
-        return {
-            "success": True,
-            "manual_send": True,
-            "one_at_a_time": True,
-            "email_encrypted": True,
-            "page_groups": list(LOOP_PAGE_GROUPS),
-            "loop_db": api.users.loop_db_path,
-            "users_db_tables": user_tables,
-            "no_loop_tables_in_users_db": not any(
-                name.startswith("loop_") for name in user_tables
-            ),
-        }
 
     return app
 

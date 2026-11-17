@@ -116,7 +116,20 @@
                                 console.error('[MrHua] 脚本装载失败，页面结构仍保留', error);
                             });
                         });
-                    }, Promise.resolve());
+                    }, Promise.resolve()).then(function () {
+                        // QtWebEngine 偶发：app-shell 的 script 已 200 但没执行，
+                        // 窗口管理整体缺席。这里只在确实没初始化时补装一次，避免重复。
+                        if (typeof window.openWindow === 'function') return;
+                        return fetchText('/apps/console/ui/shell/app-shell.js?fallback=' + Date.now())
+                            .then(function (code) {
+                                // 不用 <script> 再插一次：QtWebEngine 对这份大脚本的
+                                // script 元素偶发不执行，fetch + eval 可以稳定跑起来。
+                                (0, eval)(code);
+                            })
+                            .catch(function (error) {
+                                console.error('[MrHua] app-shell 补装失败', error);
+                            });
+                    });
                 });
             })
             .then(function () {

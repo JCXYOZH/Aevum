@@ -1,6 +1,8 @@
 
         (function() {
             'use strict';
+            if (window.__MR_APP_SHELL_STARTED__) return;
+            window.__MR_APP_SHELL_STARTED__ = true;
 
             // ==================== 通用健壮性辅助 ====================
             // 安全赋值：元素不存在时静默跳过，避免 "Cannot set properties of null (setting 'innerHTML')"。
@@ -9982,7 +9984,7 @@ const results = asArray(data.results);
                 const exposeGrid = document.getElementById('expose-grid');
                 if (!orb || !orbStage) return;
 
-                const ORB_TOOLS = [
+                const ORB_TOOLS_ALL = [
                     {id:'terminal',name:'终端',icon:'⌨️',cat:'核心'},{id:'chat',name:'对话',icon:'💬',cat:'核心'},{id:'ai-center',name:'审议庭',icon:'⚖️',cat:'核心'},{id:'security-combat',name:'安全实战中心',icon:'⚔️',cat:'安全'},{id:'network-center',name:'统一网络中心',icon:'🌐',cat:'安全'},
                     {id:'scan',name:'工具箱',icon:'🛠️',cat:'安全'},
                     {id:'quickscan',name:'快速扫描',icon:'⚡',cat:'安全'},{id:'browser',name:'内置浏览器',icon:'🧭',cat:'安全'},
@@ -10010,8 +10012,25 @@ const results = asArray(data.results);
                     {id:'experiments',name:'实验功能',icon:'🧪',cat:'系统'},
                     {id:'status',name:'状态',icon:'📈',cat:'系统'},
                 ];
+                // 只渲染已经有真实后端的功能；其余窗口保留源码，等 API 接好再放回。
+                // 首屏先用静态兜底，随后用 /api/capabilities 校正，避免后端扩容后前端还要改清单。
+                const BACKEND_READY_FALLBACK = ['identity', 'chat', 'wanshare', 'subscribe'];
+                const ORB_TOOLS = ORB_TOOLS_ALL.filter(t => BACKEND_READY_FALLBACK.includes(t.id));
                 // 工具窗口的唯一来源：任务栏 / Exposé / 启动器都从这里取，避免多处登记漂移
                 window.MR_ORB_TOOLS = ORB_TOOLS;
+
+                fetch('/api/capabilities', { credentials: 'include' })
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        const ready = (data && Array.isArray(data.tools)) ? data.tools.map(function (t) { return t.id; }) : [];
+                        if (!ready.length) return;
+                        const filtered = ORB_TOOLS_ALL.filter(function (t) { return ready.includes(t.id); });
+                        if (filtered.length === ORB_TOOLS.length) return;
+                        window.MR_ORB_TOOLS = filtered;
+                        if (typeof window.mrRenderLauncher === 'function') window.mrRenderLauncher();
+                        document.dispatchEvent(new CustomEvent('mrhua-capabilities', { detail: { tools: filtered } }));
+                    })
+                    .catch(function () {});
 
                 let chatOpen = false;
                 let orbPos = {x:window.innerWidth/2, y:window.innerHeight/2};

@@ -28,10 +28,12 @@ if _SRC_DIR.is_dir() and str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 try:
+    from .api.capabilities import capabilities_payload
     from .auth_api import AuthAPI
     from .chat_api import ChatAPI
     from .wan_api import WANAPI
 except ImportError:  # 直接以脚本方式运行 desktop_server.py
+    from api.capabilities import capabilities_payload
     from auth_api import AuthAPI
     from chat_api import ChatAPI
     from wan_api import WANAPI
@@ -528,6 +530,9 @@ class MonitorHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/health":
             self._send_json(health_payload(metrics_path, getattr(self.server, "ports", None)))
+            return
+        if route == "/api/capabilities":
+            self._send_json(capabilities_payload())
             return
         if route == "/api/trainer":
             self._send_json(
