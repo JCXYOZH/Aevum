@@ -95,7 +95,7 @@
       w: 1200,
       h: 800,
       desc: "完整 MrHua 工作台：3D 灵体、窗口体系与广域网",
-      url: "/mrhua/"
+      url: "/mrhua/?public=1"
     },
     {
       id: "subscribe",
@@ -119,7 +119,7 @@
   ];
 
   // 当前演示阶段显示 MrHua 工作台、订阅、内核实况、原展示页和拍照窗口；其它窗口代码仍在，避免删掉以后要用的入口。
-  MD.visibleApps = ["mrhua", "subscribe", "kernel", "exhibit", "camera"];
+  MD.visibleApps = ["overview", "mrhua", "subscribe", "kernel", "exhibit", "camera"];
 
   MD.state = {
     wins: new Map(),

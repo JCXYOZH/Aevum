@@ -4,6 +4,8 @@
 - capabilities.py  能力清单（前端启动项的唯一后端依据）
 - loop.py          回路订阅 / 确认 / 退订 / 一屏一人
 - system.py        服务健康状态
+- visitor.py       访客入口、公开社区概览与隔离数据作用域
+- governance.py    社区治理只读接口（角色、统计、提案、分叉）
 
 账号认证的 /api/auth/* 仍由 desktop_server 的 AuthAPI 适配，后续再按同样方式拆。
 """

@@ -28,12 +28,16 @@ from libertas.identity.user.storage import LOOP_PAGE_GROUPS
 
 try:
     from .api.capabilities import create_router as create_capabilities_router
+    from .api.governance import create_router as create_governance_router
     from .api.loop import create_router as create_loop_router
     from .api.system import create_router as create_system_router
+    from .api.visitor import create_router as create_visitor_router
 except ImportError:  # 直接以脚本方式运行
     from api.capabilities import create_router as create_capabilities_router
+    from api.governance import create_router as create_governance_router
     from api.loop import create_router as create_loop_router
     from api.system import create_router as create_system_router
+    from api.visitor import create_router as create_visitor_router
 
 COOKIE_NAME = "mrhua_session"
 MAX_BODY = 1_000_000
@@ -851,10 +855,10 @@ class AuthAPI:
 
 
 def create_fastapi_app():
-    """FastAPI 按领域装载：capabilities / system / loop。
+    """FastAPI 按领域装载：capabilities / system / loop / visitor。
 
     账号认证与 /api/auth/* 仍由 desktop_server 里的 AuthAPI 适配；这里只承载
-    FastAPI 侧的回路、系统状态和能力清单。
+    FastAPI 侧的回路、系统状态、能力清单和访客入口。
 
     启动示例：
         uvicorn apps.console.monitor.auth_api:create_fastapi_app --factory \
@@ -887,6 +891,8 @@ def create_fastapi_app():
     app.include_router(create_capabilities_router())
     app.include_router(create_system_router(api))
     app.include_router(create_loop_router(api))
+    app.include_router(create_visitor_router(api))
+    app.include_router(create_governance_router(api))
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, error: HTTPException):

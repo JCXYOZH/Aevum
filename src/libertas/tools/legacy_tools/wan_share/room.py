@@ -46,6 +46,7 @@ class RoomMixin:
         self.room_id = ""
         self.nickname = ""
         self.display_name = ""
+        self.data_scope = ""
         self.peer_id = self._load_or_create_peer_id()
         self.key = b""
         self.topic_base = ""

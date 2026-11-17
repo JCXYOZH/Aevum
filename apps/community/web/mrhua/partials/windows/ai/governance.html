@@ -40,10 +40,12 @@
                 <div id="gov-permissions" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px;"></div>
                 <div id="gov-role-expiry" style="font-size:0.75rem;color:#e65100;margin-top:8px;"></div>
             </div>
+            <div style="background:#fff8e1;border:1px solid #ffcc80;border-radius:8px;padding:8px 12px;font-size:0.76rem;color:#8a6d3b;">
+                当前治理窗口只读：统计、角色、提案和分叉列表可以直接查看。投票、发起提案和分叉需要先接角色权限校验，暂未开放。
+            </div>
             <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:12px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                     <span style="font-size:0.9rem;font-weight:600;color:#333;">📋 提案与投票</span>
-                    <button id="gov-new-proposal-btn" style="padding:4px 12px;background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;">➕ 新提案</button>
                 </div>
                 <div id="gov-proposals" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;"></div>
             </div>
@@ -53,11 +55,6 @@
                     ⚠️ 分叉是极其严肃的社区决定。要求：社区≥1000人参与、80%以上共识、贡献分≥200、已激活身份、180天冷却期。所有用户可见分叉信息和投票。代码包需贡献分≥50才可下载。
                 </div>
                 <div id="gov-fork-requirements" style="font-size:0.75rem;color:#666;margin-bottom:8px;"></div>
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                    <input type="text" id="gov-fork-name" placeholder="新平台名称（至少3字）" style="flex:1;min-width:150px;padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.82rem;" />
-                    <input type="text" id="gov-fork-desc" placeholder="分叉宣言（至少30字，说明新平台方向和规则）" style="flex:2;min-width:200px;padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.82rem;" />
-                    <button id="gov-fork-btn" style="padding:6px 16px;background:#7b1fa2;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;">🚩 立起旗帜</button>
-                </div>
                 <div id="gov-forks-list" style="margin-top:8px;font-size:0.78rem;color:#666;"></div>
             </div>
             <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:12px;">

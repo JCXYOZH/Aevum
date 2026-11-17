@@ -46,6 +46,10 @@ def capabilities_payload() -> Dict[str, Any]:
         "success": True,
         "tools": READY_TOOLS,
         "count": len(READY_TOOLS),
+        "public": {
+            "visitor_bootstrap": "/api/visitor/bootstrap",
+            "community_overview": "/api/community/overview",
+        },
         "note": "MrHua 启动器只列自身窗口；订阅由 3D 桌面原生窗口承载，不在 MrHua 内重复。",
     }
 

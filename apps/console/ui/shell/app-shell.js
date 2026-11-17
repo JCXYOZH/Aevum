@@ -3476,6 +3476,14 @@ const win = document.getElementById('win-' + id);
                     if (response.status === 401) {
                         throw new Error('登录状态已失效，请重新登录后再发送消息');
                     }
+                    if (response.status === 429) {
+                        let quotaMessage = '今日访客额度已用完，登录后继续';
+                        try {
+                            const payload = await response.json();
+                            quotaMessage = payload.message || payload.error || quotaMessage;
+                        } catch (e) {}
+                        throw new Error(quotaMessage);
+                    }
                     if (!response.ok) throw new Error('HTTP ' + response.status);
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder();
@@ -9995,7 +10003,10 @@ const results = asArray(data.results);
                 // 只渲染已经有真实后端的功能；其余窗口保留源码，等 API 接好再放回。
                 // 首屏先用静态兜底，随后用 /api/capabilities 校正，避免后端扩容后前端还要改清单。
                 // MrHua 内部不设订阅入口：订阅只保留 3D 桌面的原生窗口，避免入口重复。
-                const BACKEND_READY_FALLBACK = ['identity', 'chat', 'wanshare'];
+                // governance 的统计/角色接口本轮已接上；它不进 /api/capabilities 的
+                // 三项 READY_TOOLS（部署脚本仍检查 count:3），所以前端单独保留。
+                const BACKEND_READY_FALLBACK = ['identity', 'chat', 'wanshare', 'governance'];
+                const LOCAL_READY_TOOLS = ['governance'];
                 const ORB_TOOLS = ORB_TOOLS_ALL.filter(t => BACKEND_READY_FALLBACK.includes(t.id));
                 // 工具窗口的唯一来源：任务栏 / Exposé / 启动器都从这里取，避免多处登记漂移
                 window.MR_ORB_TOOLS = ORB_TOOLS;
@@ -10005,7 +10016,8 @@ const results = asArray(data.results);
                     .then(function (data) {
                         const ready = (data && Array.isArray(data.tools)) ? data.tools.map(function (t) { return t.id; }) : [];
                         if (!ready.length) return;
-                        const filtered = ORB_TOOLS_ALL.filter(function (t) { return ready.includes(t.id); });
+                        const merged = ready.concat(LOCAL_READY_TOOLS);
+                        const filtered = ORB_TOOLS_ALL.filter(function (t) { return merged.includes(t.id); });
                         if (filtered.length === ORB_TOOLS.length) return;
                         window.MR_ORB_TOOLS = filtered;
                         if (typeof window.mrRenderLauncher === 'function') window.mrRenderLauncher();
@@ -10056,36 +10068,8 @@ const results = asArray(data.results);
 
                 // 悬停状态卡片已隐藏（无言模式）
 
-                // 单击对话（延迟 280ms 区分双击，避免双击时先打开对话又弹出命令面板）
-                let _orbClickTimer = null;
-                orb.addEventListener('click',e=>{
-                    if(e.button!==0)return;
-                    // 修饰键点击由 orb_extra.js 的 capture 监听器处理
-                    if(e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
-                    if(_orbClickTimer){clearTimeout(_orbClickTimer);_orbClickTimer=null;return;}
-                    _orbClickTimer=setTimeout(()=>{
-                        _orbClickTimer=null;
-                        // 停靠在菜单栏时，点击灵体=释放停靠，不打开对话
-                        if(window.OrbHub&&window.OrbHub.isDocking&&window.OrbHub.isDocking()){
-                            window.OrbHub.dockToBar(false);
-                            return;
-                        }
-                        // MMD 模型点击反应
-                        if(window.orbSkins && window.orbSkins.mmdReact) window.orbSkins.mmdReact('happy');
-                        // 未认证时点击灵体先打开身份认证，而不是直接进对话。
-                        //
-                        // 不能只看 orb.dataset.authAlert：它只在拦截到 401 时才被设上，
-                        // 而页面加载时的 /api/current_user 检查并不会设它，唯一会设它的
-                        // recheckAuth() 更是从来没有被调用过 —— 结果是「明明没登录，点灵体
-                        // 却直接进了对话」。这里以 isLoggedIn 为准。
-                        if(!isLoggedIn || orb.dataset.authAlert==='1'){
-                            try{ openWindow('identity'); }
-                            catch(err){ console.warn('打开身份认证失败:', err); }
-                            return;
-                        }
-                        openChatWindow();
-                    },280);
-                });
+                // 单击不再绑定任何窗口动作：双击命令面板、右键环形菜单、
+                // 中键 Exposé、滚轮切窗、长按语音都保留。
                 function openChatDock(){openChatWindow();}
                 function closeChatDock(){chatOpen=false;}
                 function openChatWindow(){
@@ -24401,3 +24385,17 @@ const tools = asArray(d.tools);
             
                 })();
             })();
+
+// 公开页启动时取一次访客身份与社区概览：落访客 Cookie、同步广域网作用域。
+// 失败不影响页面；访客仍可在首次发言时由 /api/chat/stream_token 补发身份。
+(function () {
+    if (!window.MR_PUBLIC_PAGE || typeof fetch !== 'function') return;
+    fetch('/api/visitor/bootstrap', { credentials: 'include' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+            if (!data || !data.actor) return;
+            window.MR_VISITOR = data.actor;
+            window.MR_COMMUNITY = data.community || null;
+        })
+        .catch(function () {});
+})();

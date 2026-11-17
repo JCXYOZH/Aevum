@@ -13,6 +13,14 @@
       '<h1 class="h1">一个桌面，<span>不只一个页面</span></h1>' +
       '<p class="lead">左边是启动项，中间可以同时开多个窗口。内核串口、AI 训练、模型加载、中继房间和错误码各占一个窗口；原来的展示长页没有删，已经改成「展示页」启动项。</p>' +
       '<div class="rule"></div>' +
+      '<div class="eyebrow">桌面操作</div>' +
+      '<p class="lead">窗口先渲染，3D 场景和角色模型随后加载，避免功能等模型。拖标题栏移动，拖右下角缩放，双击标题栏最大化；左侧启动项、底部 Dock 和启动台都能重新打开窗口。灵体单击不打开任何窗口；双击灵体打开命令面板，右键打开环形菜单，中键看 Exposé，滚轮切窗，长按进语音。</p>' +
+      '<p class="small">MrHua 是桌面里的程序入口，订阅是桌面原生窗口；两套手册分开，MrHua 的内部说明留在 MrHua 里。这里只写桌面本身怎么用，不放按钮，也不做第二个启动项。</p>' +
+      '<div class="rule"></div>' +
+      '<div class="eyebrow">社区角色文化</div>' +
+      '<p class="lead">角色是社区里的职责和权限，不是 AI 模型，也不是可以购买或上传的角色皮肤。注册用户和访客各自拥有隔离数据作用域；角色不会自动获得平台管理权。访客可以先看公开概览、进入公共广域网、用 AI 对话和发送文本；文件、投票和治理写操作仍要登录或相应角色。</p>' +
+      '<p class="small">访客：可查看公开概览、进入公共广域网、和 AI 对话、发送文本；不能上传文件、投票或管理社区。成员：已注册并激活，拥有自己的隔离数据目录，可保存对话、使用文件与回路订阅。贡献者：持续参与代码、文档或社区内容，可对提案投票。审核员：审核内容和标记违规，没有封禁、改角色权。维护者：维护具体项目或模块，可审核合并、发布候选版本。版主：删除消息、置顶话题、踢人、警告。仲裁者：处理申诉和争议，可否决不当提案。管理员：分配角色、封禁用户、管理房间、发布版本，不能修改治理规则。所有者：平台创建者，最高决策权，可修改治理规则和发起分叉。禁言：因违规被限制发言，可查看但不能发送，到期恢复。</p>' +
+      '<div class="rule"></div>' +
       '<div class="cards">' +
         '<button class="card" type="button" data-open="kernel"><div class="card__top"><span class="card__title">内核实况</span><span class="card__state" data-field="ov-kernel">等待</span></div><div class="card__num" data-field="ov-frames">—</div><p class="card__desc">80×25 格子，串口帧直接画到 canvas。连不上桥接时显示未连接，不假装有帧。</p></button>' +
         '<button class="card" type="button" data-open="trainer"><div class="card__top"><span class="card__title">训练监控</span><span class="card__state" data-field="ov-trainer">等待</span></div><div class="card__num" data-field="ov-loss">—<small>loss</small></div><p class="card__desc">读 JSONL 指标：step、epoch、loss、eval、device 与参数。没有数据就显示等待，不编造曲线。</p></button>' +

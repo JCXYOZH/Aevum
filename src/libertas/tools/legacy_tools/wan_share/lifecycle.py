@@ -60,6 +60,7 @@ class LifecycleMixin:
             "nickname": self.nickname,
             "display_name": self.display_name or self.nickname,
             "role": self.role,
+            "data_scope": getattr(self, "data_scope", ""),
             "timestamp": datetime.now().strftime("%H:%M:%S"),
         }
         if room_id and room_id != self.room_id:

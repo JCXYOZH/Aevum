@@ -23,9 +23,12 @@
 | 模型权重 | 不入库 | 明确边界 | `.gitignore` 挡 `*.pt`、`*.safetensors`、`checkpoint*/`、`build/` |
 | fortuna | `src/fortuna/` | 有代码 | 内核与引导相关实现、文档；仍与 `apps/console/kernel` 并行维护 |
 | libertas | `src/libertas/` | 有代码 | 身份、安全、工具、回路等模块；不再是空骨架 |
-| 3D 桌面 | `apps/community/web/desktop.html` | 可打开 | 窗口、启动项先渲染；VRM / PMX 角色随后载入 |
+| 3D 桌面 | `apps/community/web/desktop.html` | 可打开 | 窗口、启动项先渲染；VRM / PMX 角色随后载入；桌面操作和十级角色文化并进「总览」纯文字 |
 | MrHua 与订阅 | `apps/community/web/mrhua/`、`apps/console/ui/shell/` | 已接入 | MrHua 是 3D 桌面启动项；订阅走 3D 原生窗口，不用 iframe |
+| 社区治理只读 | `apps/console/monitor/api/governance.py`、`mrhua/partials/windows/ai/governance.html` | 已接入 | `/api/governance/status|proposals|forks|requirements`、`/api/community/stats` 只读；投票/提案/分叉写操作 403，角色文化不在治理页 |
 | 账号 | `apps/console/monitor/auth_api.py`、`src/libertas/identity/` | 已接入 | 主账号 / 子用户账号、会话、身份档案隔离；本机验证码登录 |
+| 访客入口 | `apps/console/monitor/api/visitor.py` | 已接入 | `/api/visitor/bootstrap`、`/api/community/overview`；访客 Cookie、每日额度、隔离数据作用域 |
+| 访客 AI 与数据目录 | `apps/console/monitor/chat_api.py` | 已接入 | 未登录可对话；按 `data_scope` 落盘到 `user_data/users` 或 `user_data/guests`；WAN 只传作用域 |
 | 部署编排 | `deployment/` | 空骨架 | 占位文件，不可直接照做 |
 | 配置样例 | `configs/` | 空骨架 | 占位文件 |
 | CI | `.github/workflows/` | 空骨架 | 占位文件 |
@@ -55,6 +58,8 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - 3000 行公开语料入库；模型权重、构建产物、`node_modules` 明确忽略。
 - 3D 桌面接入 VRM / PMX，窗口与程序先渲染、角色后载入；MrHua 作为启动项，订阅走原生窗口。
 - FastAPI + Uvicorn 身份接口、主账号 / 子用户隔离、本机验证码登录接入；历史内容目录尚未按用户彻底分区。
+- 访客入口接入：服务端签发 `mrhua_visitor` Cookie，访客可用 AI 对话（每日 30 条），聊天历史按 `data_scope` 落到独立目录；WAN presence 只传播不透明作用域，不传播服务器路径。
+- `/api/model` 对非本机请求只返回模型元信息；`/api/model/generate` 只在本机开放，避免公网拿到路径和模型入口。
 
 ## 缺口（按优先级）
 
@@ -63,7 +68,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 3. **云端模型/训练接口未接通**。看板里有「云端加载 / 预留位」，只保存地址，不假装已连。
 4. **训练参数未调低**。当前仍是 `dim=64 / seq=16 / batch=32 / vocab=3000`，约 1,352,744 参数；下一轮按目标值调整。
 5. **`docs/` 多数文件仍为空**。本轮只补 Memoria 与开发入口，其余按需填写。
-6. **账号与登录只完成基础闭环**。主账号、子用户账号、会话和身份档案已隔离；邀请/邮件准入、帖子检索、回复层级、签名与自动更新仍未完成。聊天、上传、记忆等历史目录也还没有按 `user_id` 彻底分区。
+6. **账号与登录只完成基础闭环**。主账号、子用户账号、会话和身份档案已隔离；邀请/邮件准入、帖子检索、回复层级、签名与自动更新仍未完成。聊天已按 `data_scope` 分区；上传、记忆等历史目录尚未按作用域彻底分区。
 7. **AI 动作桥还没有接运行时**。`tools/ai-bridge` 只完成“模型文本 -> 33 维标签向量 -> 带时区 JSON”，参数化树、YAML 注册表、JSON 记录提取、成功判定和动画驱动都未落地；现状与约束见 [docs/architecture/ai-action.md](docs/architecture/ai-action.md)。
 8. **代码结构还没有整理好**。公共头文件刚改为 `src/memoria/include/` 直属、源码统一 `<include/aevum_core.h>`，后续仍要整理 AI 动作桥的正式落点、模块边界和导入路径。
 

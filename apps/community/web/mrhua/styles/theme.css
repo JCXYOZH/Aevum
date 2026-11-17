@@ -38,6 +38,11 @@
             z-index:1000; background:#000; transition:opacity 1.2s ease, background 1.2s ease;
         }
         #gateway-stage.gate-fading { opacity:0; background:transparent; }        .gateway-content { text-align:center; position:relative; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+        /* 访客公开页不再等开门动画：窗口和功能先出来，角色模型随后加载。 */
+        body.mrhua-public-page #gateway-stage { display:none !important; }
+        body.mrhua-public-page #main-stage { opacity:1 !important; }
+        body.mrhua-public-page #taskbar { display:flex !important; }
+        body.mrhua-public-page #win-launcher { display:flex !important; }
         .gate-door { position:absolute; width:100%; height:100%; background:#000; display:flex; justify-content:center; align-items:center; overflow:hidden; }
         .door-left,.door-right { position:absolute; width:50%; height:100%; background:#000; transition:transform 2.5s cubic-bezier(0.77,0,0.18,1); display:flex; justify-content:center; align-items:center; font-size:2.5rem; color:rgba(255,255,255,0.7); opacity:0; animation:doorTextFade 1.2s cubic-bezier(0.25,0.1,0.25,1) forwards; }
         .door-right { animation-delay:0.15s; }

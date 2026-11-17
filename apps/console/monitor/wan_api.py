@@ -29,6 +29,7 @@ class WANAPI:
         self._wan = None
         self._connect_lock = threading.Lock()
         self._auto_state = "idle"
+        self._data_scope = ""
         if auto_join:
             self._auto_state = "connecting"
             threading.Thread(
@@ -78,6 +79,21 @@ class WANAPI:
             result = self.wan.auto_join_default_room()
             self._auto_state = "connected" if result.get("success") else "failed"
             return result
+
+    def set_data_scope(self, scope: str) -> None:
+        """只把不透明作用域交给广域网；路径、目录结构永远不出本机。"""
+        scope = str(scope or "").strip()
+        if not scope:
+            return
+        if scope == self._data_scope:
+            return
+        self._data_scope = scope
+        try:
+            self.wan.data_scope = scope
+            if self.wan.is_connected():
+                self.wan._send_presence("update")
+        except Exception:
+            pass
 
     # ---------------------------------------------------------------- GET
     def handle_get(self, handler, route: str) -> bool:

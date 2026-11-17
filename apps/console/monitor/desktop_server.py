@@ -29,11 +29,15 @@ if _SRC_DIR.is_dir() and str(_SRC_DIR) not in sys.path:
 
 try:
     from .api.capabilities import capabilities_payload
+    from .api.governance import handle_get as governance_get, handle_post as governance_post
+    from .api.visitor import community_overview, visitor_payload
     from .auth_api import AuthAPI
     from .chat_api import ChatAPI
     from .wan_api import WANAPI
 except ImportError:  # 直接以脚本方式运行 desktop_server.py
     from api.capabilities import capabilities_payload
+    from api.governance import handle_get as governance_get, handle_post as governance_post
+    from api.visitor import community_overview, visitor_payload
     from auth_api import AuthAPI
     from chat_api import ChatAPI
     from wan_api import WANAPI
@@ -248,30 +252,48 @@ def checkpoint_entries() -> list[dict]:
     return entries
 
 
-def model_payload(exe: Path, default_data: Path, cuda_exe: Path) -> dict:
+def is_local_http_request(handler) -> bool:
+    """仅本机回环地址返回完整模型路径；公网/局域网请求只拿元信息。"""
+    try:
+        host = str(handler.headers.get("Host", "")).strip().lower()
+    except Exception:
+        return True
+    host = host.split(":", 1)[0].strip("[]")
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
+def model_payload(exe: Path, default_data: Path, cuda_exe: Path, public: bool = False) -> dict:
     checkpoints = checkpoint_entries()
+    if public:
+        checkpoints = [
+            {key: value for key, value in item.items() if key != "path"}
+            for item in checkpoints
+        ]
     preferred = next(
-        (item["path"] for item in checkpoints if "full" in item["name"].lower()),
-        checkpoints[0]["path"] if checkpoints else "",
+        (item.get("path", "") for item in checkpoints if "full" in item["name"].lower()),
+        checkpoints[0].get("path", "") if checkpoints else "",
     )
     return {
         "ok": True,
-        "exe": str(exe),
+        "exe": exe.name if public else str(exe),
         "available": exe.exists(),
-        "cuda_exe": str(cuda_exe),
+        "cuda_exe": cuda_exe.name if public else str(cuda_exe),
         "cuda_available": cuda_exe.exists(),
         "checkpoints": checkpoints,
         "defaults": {
             "checkpoint": preferred,
-            "data": display_path(default_data)
-            if default_data.exists()
-            else "data/tinyshakespeare_3000.txt",
+            "data": "" if public else (
+                display_path(default_data)
+                if default_data.exists()
+                else "data/tinyshakespeare_3000.txt"
+            ),
             "prompt": "What ",
             "max_new_tokens": 48,
             "temperature": 1.0,
             "device": "cpu",
         },
-        "note": "Weights live under build/ and are excluded from Git.",
+        "note": "公网只返回模型元信息，不返回服务器路径。" if public
+        else "Weights live under build/ and are excluded from Git.",
     }
 
 
@@ -511,6 +533,26 @@ class MonitorHandler(BaseHTTPRequestHandler):
             if wan_api.handle_get(self, route):
                 return
 
+        if route == "/api/visitor/bootstrap":
+            user = auth_api.current_user(self) if auth_api is not None else None
+            payload, cookie = visitor_payload(
+                self, auth_api, wan_api, user=user, create_guest=True,
+            )
+            scope = str(payload.get("actor", {}).get("data_scope", ""))
+            if wan_api is not None and scope:
+                wan_api.set_data_scope(scope)
+            self._send_json(
+                payload,
+                headers={"Set-Cookie": cookie} if cookie else None,
+            )
+            return
+        if route == "/api/community/overview":
+            self._send_json({"success": True, **community_overview(auth_api, wan_api)})
+            return
+        if route.startswith("/api/governance/") or route == "/api/community/stats":
+            if governance_get(self, route, auth_api, wan_api):
+                return
+
         if route == "/":
             self._send_file(WEB_ROOT / "index.html")
             return
@@ -578,6 +620,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
                     Path(getattr(self.server, "model_exe", BUILD_ROOT / "memoria_gen_cpu.exe")),
                     Path(getattr(self.server, "model_data", ROOT / "data" / "tinyshakespeare_3000.txt")),
                     Path(getattr(self.server, "model_exe_cuda", BUILD_ROOT / "memoria_gen.exe")),
+                    public=not is_local_http_request(self),
                 )
             )
             return
@@ -612,11 +655,18 @@ class MonitorHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         auth_api = getattr(self.server, "auth_api", None)
+        wan_api = getattr(self.server, "wan_api", None)
         # 会话历史与取消标记必须跨请求保留，所以 ChatAPI 只创建一次，挂在 server 上。
         chat_api = getattr(self.server, "chat_api", None)
         if chat_api is None and auth_api is not None:
-            chat_api = ChatAPI(auth_api, self._generate_for_chat)
+            chat_api = ChatAPI(
+                auth_api,
+                self._generate_for_chat,
+                on_scope=wan_api.set_data_scope if wan_api is not None else None,
+            )
             self.server.chat_api = chat_api
+        elif chat_api is not None and wan_api is not None:
+            chat_api.on_scope = wan_api.set_data_scope
         if auth_api is not None and (
             parsed.path.startswith("/api/auth/")
             or parsed.path.startswith("/api/loop/")
@@ -630,11 +680,18 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 return
             self._send_json({"success": False, "message": "unknown chat api"}, 404)
             return
-        wan_api = getattr(self.server, "wan_api", None)
         if wan_api is not None and parsed.path.startswith("/api/wan/"):
             if wan_api.handle_post(self, parsed.path):
                 return
             self._send_json({"success": False, "message": "unknown wan api"}, 404)
+            return
+        if parsed.path.startswith("/api/governance/"):
+            if governance_post(self, parsed.path, auth_api, wan_api):
+                return
+            self._send_json({"success": False, "message": "unknown governance api"}, 404)
+            return
+        if parsed.path == "/api/model/generate" and not is_local_http_request(self):
+            self._send_json({"ok": False, "message": "模型生成只在本机开放"}, 403)
             return
         if parsed.path != "/api/model/generate":
             self._send_json({"ok": False, "message": "unknown api"}, 404)

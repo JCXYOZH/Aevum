@@ -6,6 +6,12 @@
 
 ### Added
 
+- `apps/console/monitor/api/visitor.py`：访客入口、公开社区概览与隔离数据作用域；访客 Cookie 由服务端签发，前端传入的 `user_id` 不再作为身份依据。
+- `/api/visitor/bootstrap` 与 `/api/community/overview`：返回访客角色、权限说明、每日额度、社区注册/在线/房间统计和角色文化；不返回任何服务器路径。
+- 访客 AI 对话：`/api/chat/stream_token` 未登录也可用，按访客作用域落盘；每日 30 条，额度用尽提示登录；文件分析仍要求登录。
+- 注册用户/访客各自使用 `user_data/users/<user_id>` 与 `user_data/guests/<guest_id>` 隔离目录，聊天历史从内存字典改为按作用域持久化。
+- 广域网 presence 只传播 `data_scope`（`user:<id>` / `guest:<id>`），不传播绝对路径；各节点在本机解析目录。
+- `/api/model` 对非本机 Host 只返回模型元信息，`/api/model/generate` 只在本机开放，避免公网拿到服务器路径和模型子进程入口。
 - `src/memoria/`：Memoria C++ 内核（17 个 `.cpp`：门控、链单元、三层平衡、分层记忆、训练、生成、检查点）。
 - `include/memoria/`：与源码对应的 15 个公共头文件。
 - `apps/console/monitor/`：桌面监控 API、模型生成子进程与检查点发现。
@@ -20,6 +26,12 @@
 
 ### Changed
 
+- 治理窗口改为只读：`/api/governance/status|proposals|forks|requirements` 和 `/api/community/stats` 返回角色与统计；投票、提案、分叉写操作统一 403。角色文化卡片不再放在治理窗口，改到 3D 桌面「总览」的纯文字介绍里。
+- 3D 桌面取消了独立的「操作手册」启动项和按钮式卡片；桌面操作与十级社区角色文化并进「总览」页，只保留文字，不再新增第二个入口。
+- MrHua 首页主舞台去掉写死的 `opacity:0`，并让 `boot.js` 先直接装载 `app-shell`，避免页面只剩灵体、启动项和窗口不出现。
+- FastAPI 侧接入治理只读路由；`Request` 显式注解，避免 `from __future__ import annotations` 下被当成查询参数返回 422。
+- 3D 桌面的 MrHua 启动项改为 `/mrhua/?public=1`，访客先看到工作台，再按需登录；访客 AI 对话不再被 401 挡住。
+- 前端聊天对 429 额度耗尽返回可读提示，不再只显示 `HTTP 429`。
 - `README.md` 代码位置表改为当前真实结构；本地开发命令改到 `scripts/desktop.ps1`。
 - `PROGRESS.md` 状态与新目录对齐；安装包与 Linux 产物单独标为未验收。
 - `apps/desktop/README.md` 改掉 portable-only 与“必须本机 Python”的旧说法。

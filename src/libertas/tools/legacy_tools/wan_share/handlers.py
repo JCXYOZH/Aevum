@@ -228,6 +228,7 @@ class HandlersMixin:
                     "peer_id": pid,
                     "nickname": msg.get("nickname", "未知"),
                     "display_name": msg.get("display_name", "") or msg.get("nickname", "未知"),
+                    "data_scope": str(msg.get("data_scope", "") or ""),
                     "last_seen": time.time(),
                     "room_id": room,
                 }
