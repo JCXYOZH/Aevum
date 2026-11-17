@@ -44,7 +44,7 @@ MAX_HISTORY_TURNS = 6
 
 
 class ChatAPI:
-    def __init__(self, auth_api, generate: Callable[[dict], tuple[dict, int]],
+    def __init__(self, auth_api, generate: Callable[..., tuple[dict, int]],
                  on_scope: Optional[Callable[[str], None]] = None) -> None:
         self.auth = auth_api
         self.generate = generate
@@ -206,14 +206,14 @@ class ChatAPI:
             "role": "guest" if is_guest else str(getattr(user, "role", "member") or "member"),
             "quota": quota,
         })
-        self._sse(handler, {"type": "tool_status", "content": "正在调用本地模型…"})
+        self._sse(handler, {"type": "tool_status", "content": "正在调用模型…"})
         prompt = self._prompt(conversation, message)
         payload, status = self.generate({
             "prompt": prompt,
-            "max_new_tokens": min(96, max(24, int(body.get("max_new_tokens", 96))) if not is_guest else 64),
+            "max_new_tokens": min(512, max(24, int(body.get("max_new_tokens", 512))) if not is_guest else 128),
             "temperature": float(body.get("temperature", 0.8)),
             "device": str(body.get("device", "cpu")),
-        })
+        }, scope=scope)
         if cancel.is_set():
             self._sse(handler, {"type": "done"})
             return
@@ -245,10 +245,10 @@ class ChatAPI:
         prompt = self._prompt(conversation, message, f"[{file_name}]\n{file_content}")
         payload, _ = self.generate({
             "prompt": prompt,
-            "max_new_tokens": min(96, max(24, int(body.get("max_new_tokens", 96)))),
+            "max_new_tokens": min(512, max(24, int(body.get("max_new_tokens", 512)))),
             "temperature": float(body.get("temperature", 0.8)),
             "device": str(body.get("device", "cpu")),
-        })
+        }, scope=conversation)
         if not payload.get("ok"):
             handler._send_json({
                 "success": False,

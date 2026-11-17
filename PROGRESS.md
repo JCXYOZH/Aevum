@@ -65,7 +65,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 
 1. **安装包只在本机验收**。`dist:installer` 用 Inno Setup 的 ISCC 编译成功，形式与 mrhua 一致；安装器尚未做静默安装/卸载实跑，建议在干净 Windows 用户目录再验一次。
 2. **Linux 安装包未做**。Linux C++ 编译脚本已补，但未在真实 Linux 主机跑过；PyInstaller 监控的 Linux 产物也未生成。
-3. **云端模型/训练接口未接通**。看板里有「云端加载 / 预留位」，只保存地址，不假装已连。
+3. **云端模型已接对话，视频工具默认关闭**。`model_runtime_mode: cloud` 时对话经监控服务代理，按 `data_scope` 隔离；`web_search` 只给登录用户；`generate_media` 需要 `video_generation.enabled` 与真实端点，默认不开放。
 4. **训练参数未调低**。当前仍是 `dim=64 / seq=16 / batch=32 / vocab=3000`，约 1,352,744 参数；下一轮按目标值调整。
 5. **`docs/` 多数文件仍为空**。本轮只补 Memoria 与开发入口，其余按需填写。
 6. **账号与登录只完成基础闭环**。主账号、子用户账号、会话和身份档案已隔离；邀请/邮件准入、帖子检索、回复层级、签名与自动更新仍未完成。聊天已按 `data_scope` 分区；上传、记忆等历史目录尚未按作用域彻底分区。

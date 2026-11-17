@@ -12,7 +12,7 @@
     root.innerHTML =
       '<div class="eyebrow">MODEL / CHECKPOINT</div>' +
       '<h1 class="h1">加载模型，<span>然后对话</span></h1>' +
-      '<p class="lead">本地检查点走生成 exe；云端地址只留位置，等 Linux 训练接口就绪后再接。权重留在 build/ 下，不进开源目录。</p>' +
+      '<p class="lead">本地检查点走生成 exe；云端模型由监控服务代理，地址和密钥留在后端 config.yaml，页面不保存、不直连。</p>' +
       '<div class="model-status">' +
         '<span class="model-chip" data-field="m-exe">检查可执行文件…</span>' +
         '<span class="model-chip" data-field="m-count">检查点 —</span>' +
@@ -28,27 +28,15 @@
         '<div class="model-actions"><button class="tbtn tbtn--primary" type="button" data-field="m-run">加载并生成</button><span class="model-hint">Ctrl+Enter 也可以提交</span></div>' +
       '</div>' +
       '<details class="model-cloud">' +
-        '<summary class="model-cloud__head"><span>云端加载 / 预留位</span><span class="tag tag--teal">测试</span></summary>' +
-        '<p class="model-hint">本地检查点继续走上面的生成 exe。云端训练产物留在 Linux 机器上，这里只保存地址，等接口就绪后再接对话。</p>' +
-        '<div class="model-cloud__row">' +
-          '<label class="model-field model-field--wide"><span>云端模型地址</span><input type="text" data-field="m-remote" spellcheck="false" placeholder="https://www.mrhua.cn/api/model"></label>' +
-          '<button class="tbtn" type="button" data-field="m-remote-save">保存地址</button>' +
-        '</div>' +
-        '<div class="model-meta" data-field="m-remote-state">还没有配置云端地址。</div>' +
+        '<summary class="model-cloud__head"><span>云端模型 / 后端代理</span><span class="tag tag--teal">后端代理</span></summary>' +
+        '<p class="model-hint">云端对话走监控服务，模型名、接口和密钥只读 config.yaml。此页只显示后端状态，不保存地址、不直接请求模型服务。</p>' +
+        '<div class="model-meta" data-field="m-cloud-state">读取云端状态…</div>' +
       '</details>' +
       '<div class="model-meta" data-field="m-meta">还没有请求。</div>' +
       '<div class="model-result"><div class="model-result__head"><span>生成结果</span><span>stdout / stderr</span></div>' +
         '<pre class="model-output" data-field="m-output">还没有生成结果。选择检查点后点「加载并生成」。</pre>' +
         '<pre class="model-log" data-field="m-log"></pre>' +
       '</div>';
-
-    var REMOTE_KEY = "memoria.remoteModel";
-
-    function remoteProblem(value) {
-      if (!/^https?:\/\/[^\s/]+/i.test(value)) return "地址要以 http:// 或 https:// 开头。";
-      if (/example\.com|你的域名|YOUR_DOMAIN/i.test(value)) return "这是占位地址，请填真实域名。";
-      return "";
-    }
 
     function q(name) { return root.querySelector('[data-field="' + name + '"]'); }
     function set(name, text) { var node = q(name); if (node) node.textContent = text; }
@@ -96,36 +84,6 @@
       set("m-count", "检查点 " + items.length);
     }
 
-    function loadRemote() {
-      var node = q("m-remote");
-      if (!node) return;
-      var saved = "";
-      try { saved = global.localStorage.getItem(REMOTE_KEY) || ""; } catch (err) { saved = ""; }
-      if (saved && remoteProblem(saved)) {
-        try { global.localStorage.removeItem(REMOTE_KEY); } catch (err) { /* ignore */ }
-        node.value = "";
-        set("m-remote-state", "已清除无效云端地址：" + remoteProblem(saved));
-        return;
-      }
-      if (saved) node.value = saved;
-      set("m-remote-state", saved ? "已保存云端地址；本地生成仍可用。" : "还没有配置云端地址。");
-    }
-
-    function saveRemote() {
-      var node = q("m-remote");
-      if (!node) return;
-      var value = node.value.trim();
-      if (!value) {
-        try { global.localStorage.removeItem(REMOTE_KEY); } catch (err) { /* ignore */ }
-        set("m-remote-state", "已清空云端地址。");
-        return;
-      }
-      var problem = remoteProblem(value);
-      if (problem) { set("m-remote-state", problem); return; }
-      try { global.localStorage.setItem(REMOTE_KEY, value); } catch (err) { set("m-remote-state", "本机不允许写 localStorage。"); return; }
-      set("m-remote-state", "已保存云端地址；等 Linux 接口就绪后接入。");
-    }
-
     function refresh() {
       MD.api.model().then(function (data) {
         var exeName = (data.exe || "memoria_gen_cpu.exe").split(/[\\/]/).pop();
@@ -133,10 +91,18 @@
         renderCheckpoints(data);
         fillDefaults(data);
         set("m-state", data.available ? "待加载" : "需要先构建");
+        var cloud = data.cloud || {};
+        var mode = cloud.mode === "cloud" ? "云端" : "本地";
+        var key = cloud.has_key ? "密钥已配置" : "密钥未配置";
+        var tools = cloud.video_tool ? "生成工具已启用" : "生成工具未启用";
+        set("m-cloud-state", mode + " · " + (cloud.model || "未配置模型") +
+          (cloud.endpoint_host ? " · " + cloud.endpoint_host : "") +
+          " · " + key + " · " + tools);
       }).catch(function (err) {
         set("m-exe", "监控服务不可用");
         set("m-state", "未连接");
         set("m-meta", err.message);
+        set("m-cloud-state", "读不到云端状态：" + err.message);
       });
     }
 
@@ -196,7 +162,6 @@
 
     root.addEventListener("click", function (event) {
       if (event.target.closest("[data-field='m-run']")) run();
-      if (event.target.closest("[data-field='m-remote-save']")) saveRemote();
     });
     root.addEventListener("keydown", function (event) {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && event.target.closest("[data-field='m-prompt']")) {
@@ -206,7 +171,6 @@
     });
 
     refresh();
-    loadRemote();
     return { element: root };
   };
 })(window);
