@@ -10204,6 +10204,20 @@ const results = asArray(data.results);
                 // 不是灵体长按。所以这里不会覆盖既有功能。
                 let _orbPressTimer = null, _orbPressFired = 0, _orbPressOrigin = null;
                 const MR_LONGPRESS_MS = 500;
+                // 第一次点击后短暂停住灵体，给第二次点击留出稳定落点。
+                // 灵体默认在游走/伴飞，原生 dblclick 常因两次点击之间位置变化而失败。
+                let _orbClickHoldTimer = null;
+                orb.addEventListener('pointerdown', function(e){
+                    if (e.button && e.button !== 0) return;
+                    if (window.OrbHub && window.OrbHub.pauseWander) {
+                        window.OrbHub.pauseWander();
+                        if (_orbClickHoldTimer) clearTimeout(_orbClickHoldTimer);
+                        _orbClickHoldTimer = setTimeout(function(){
+                            _orbClickHoldTimer = null;
+                            if (window.OrbHub && window.OrbHub.resumeWander) window.OrbHub.resumeWander();
+                        }, 700);
+                    }
+                });
                 function _orbPressDown(e){
                     const t = (e.touches && e.touches[0]) || e;
                     _orbPressOrigin = { x: t.clientX, y: t.clientY };
@@ -10242,13 +10256,29 @@ const results = asArray(data.results);
                     }
                 }, true);
 
-                orb.addEventListener('dblclick',e=>{
-                    e.preventDefault();
-                    if(window.OrbHub&&window.OrbHub.isDocking&&window.OrbHub.isDocking()){
-                        window.OrbHub.dockToBar(false);
+                // 双击命令面板：不用原生 dblclick，避免灵体移动/尺寸变化时
+                // 两次点击被浏览器判成两次单击。自己按 520ms + 36px 判定，
+                // 第一次 pointerdown 已经把灵体停住，第二次点击落点更稳。
+                let _orbLastTap = 0, _orbLastTapX = 0, _orbLastTapY = 0;
+                orb.addEventListener('pointerup', function(e){
+                    if (e.button && e.button !== 0) return;
+                    if (_orbPressFired && Date.now() - _orbPressFired < 800) return;
+                    const now = performance.now();
+                    const dx = e.clientX - _orbLastTapX;
+                    const dy = e.clientY - _orbLastTapY;
+                    if (_orbLastTap && now - _orbLastTap < 520 && Math.sqrt(dx * dx + dy * dy) < 36) {
+                        _orbLastTap = 0;
+                        e.preventDefault();
+                        if (window.OrbHub && window.OrbHub.isDocking && window.OrbHub.isDocking()) {
+                            window.OrbHub.dockToBar(false);
+                            return;
+                        }
+                        showCommandPalette();
                         return;
                     }
-                    showCommandPalette();
+                    _orbLastTap = now;
+                    _orbLastTapX = e.clientX;
+                    _orbLastTapY = e.clientY;
                 });
 
                 // 右键环形菜单

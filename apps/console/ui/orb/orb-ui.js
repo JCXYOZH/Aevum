@@ -488,7 +488,7 @@
 
         const isMMD = orb.classList.contains('skin-mmd');
         const baseSize = isMMD ? 150 : 110;
-        const orbsize = wander.barDocked ? (isMMD ? 28 : 24) : wander.companion ? (isMMD ? 64 : 36) : orb.classList.contains('docked') ? (isMMD ? 90 : 56) : orb.classList.contains('small') ? 72 : baseSize;
+        const orbsize = wander.barDocked ? (isMMD ? 28 : 24) : wander.companion ? (isMMD ? 64 : 44) : orb.classList.contains('docked') ? (isMMD ? 90 : 56) : orb.classList.contains('small') ? 72 : baseSize;
         const speed = wander.mode === 'bar-dock' ? 0.3 : wander.mode === 'magnetic' ? 0.08 : wander.mode === 'companion' ? 0.35 : wander.mode === 'flee' ? 0.15 : wander.mode === 'guide' ? 0.08 : wander.mode === 'follow' ? 0.06 : 0.04;
 
         // 引导模式：朝目标元素移动
