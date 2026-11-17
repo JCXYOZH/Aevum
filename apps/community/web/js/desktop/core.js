@@ -79,27 +79,27 @@
   })();
 
   MD.baseApps = [
-    { id: "kernel", title: "内核实况", meta: "80×25 VGA", icon: "terminal", w: 1000, h: 600, desc: "QEMU 串口帧 / VGA" },
+    { id: "kernel", title: "内核实况", meta: "串口 / VGA", icon: "terminal", w: 1000, h: 600, desc: "真实串口帧" },
     { id: "trainer", title: "训练监控", meta: "LOSS / EPOCH", icon: "pulse", w: 690, h: 610, desc: "JSONL 指标 / 错误" },
     { id: "model", title: "模型对话", meta: "CHECKPOINT", icon: "layers", w: 720, h: 620, desc: "加载检查点并生成文本" },
     { id: "relay", title: "中继交流", meta: "ROOM / LOBBY", icon: "chat", w: 590, h: 590, desc: "在线、浏览、发帖" },
     { id: "errors", title: "错误看板", meta: "0xRRFFTT", icon: "alert", w: 680, h: 600, desc: "错误码与日志" },
-    { id: "exhibit", title: "展示页", meta: "LEGACY PAGE", icon: "page", w: 940, h: 660, desc: "原 AEVUM 长页" },
-    { id: "camera", title: "拍照", meta: "LOCAL / RAM", icon: "camera", w: 560, h: 560, desc: "拍下 3D 场景；图片只在本次页面内存中" },
+    { id: "exhibit", title: "展示页", meta: "社区长页", icon: "page", w: 940, h: 660, desc: "社区共建展示页" },
+    { id: "camera", title: "拍照", meta: "本机 / 内存", icon: "camera", w: 560, h: 560, desc: "拍下 3D 场景；图片只在本次页面内存中" },
     {
       id: "mrhua",
       title: "MrHua",
-      meta: "WORKBENCH / SHELL",
+      meta: "工作台",
       icon: "grid",
       w: 1200,
       h: 800,
-      desc: "完整 MrHua 工作台：3D 灵体、窗口体系与广域网",
+      desc: "灵体、窗口与广域网",
       url: "/mrhua/?public=1"
     },
     {
       id: "subscribe",
       title: "订阅",
-      meta: "AEVUM / MAIL",
+      meta: "邮件 / 一人一封",
       icon: "mail",
       w: 620,
       h: 520,

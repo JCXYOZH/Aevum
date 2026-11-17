@@ -51,43 +51,46 @@
   .scene3d__readout {
     position: absolute;
     left: 50%;
-    bottom: 14px;
+    bottom: 18px;
     transform: translateX(-50%);
     z-index: 6;
-    padding: 5px 9px;
-    border: 1px solid var(--line);
-    background: rgba(255, 253, 248, .82);
+    padding: 7px 14px;
+    border: 0;
+    border-top: 1px solid var(--line);
+    background: rgba(251, 250, 247, .76);
     color: var(--muted);
-    font: 10px/1.3 var(--mono);
-    letter-spacing: .02em;
+    font: 9.5px/1.4 var(--mono);
+    letter-spacing: .04em;
     white-space: nowrap;
     pointer-events: none;
   }
   .scene3d__tools {
     position: absolute;
-    right: 16px;
-    bottom: 12px;
+    right: 20px;
+    bottom: 16px;
     z-index: 7;
     display: flex;
-    gap: 5px;
-    padding: 4px;
-    border: 1px solid var(--line);
-    background: rgba(255, 253, 248, .82);
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    background: transparent;
     pointer-events: auto;
   }
   .scene3d__tool {
-    height: 24px;
-    padding: 0 8px;
-    border: 1px solid transparent;
+    height: 28px;
+    padding: 0 10px;
+    border: 0;
+    border-bottom: 1px solid transparent;
     background: transparent;
     color: var(--muted);
-    font: 10px/1 var(--mono);
+    font-family: var(--serif);
+    font-size: 11.5px;
     cursor: pointer;
   }
   .scene3d__tool:hover {
-    border-color: var(--line-2);
-    background: var(--panel);
-    color: var(--amber);
+    border-bottom-color: var(--accent);
+    background: transparent;
+    color: var(--accent);
   }
   .scene3d__cursor {
     position: absolute;
@@ -106,19 +109,20 @@
     position: absolute;
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
     min-width: 112px;
     max-width: 190px;
-    padding: 5px 8px 5px 7px;
-    border: 1px solid var(--line-2);
-    background: rgba(255, 253, 248, .9);
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 254, 250, .9);
     color: var(--text);
     text-align: left;
     cursor: default;
     pointer-events: none;
     user-select: none;
     transform: translate(-50%, -100%);
-    box-shadow: 2px 3px 0 rgba(80, 64, 45, .1);
+    box-shadow: 0 8px 22px rgba(22, 24, 26, .08);
     backdrop-filter: blur(3px);
     -webkit-backdrop-filter: blur(3px);
   }
@@ -138,19 +142,21 @@
     border-color: var(--tone);
     outline: none;
     background: var(--panel);
-    box-shadow: 3px 4px 0 rgba(80, 64, 45, .16);
+    box-shadow: 0 12px 28px rgba(22, 24, 26, .12);
   }
   .scene-node__mark {
-    width: 7px;
-    height: 7px;
-    flex: 0 0 7px;
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
+    border-radius: 50%;
     background: var(--tone);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 13%, transparent);
   }
-  .scene-node__copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .scene-node__copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .scene-node__title {
-    font-size: 11px;
-    font-weight: 600;
+    font-family: var(--serif);
+    font-size: 12.5px;
+    font-weight: 400;
     line-height: 1.2;
     white-space: nowrap;
   }
@@ -234,10 +240,9 @@
   }
 
   .desk.has-scene::before { display: none; }
-  .desk.has-scene .desk__hint { color: rgba(138, 128, 112, .7); }
+  .desk.has-scene .desk__hint { color: rgba(102, 107, 112, .7); }
   .desk.scene-focus .windows,
-  .desk.scene-focus .desk__hint,
-  .desk.scene-focus .launchpad { display: none !important; }
+  .desk.scene-focus .desk__hint { display: none !important; }
   .desk.scene-focus .scene3d { z-index: 3; }
 
   @media (max-width: 900px) {

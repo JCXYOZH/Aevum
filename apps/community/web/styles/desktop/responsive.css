@@ -2,11 +2,17 @@
     :root { --dock: 56px; }
     .brand__sub, .dock__btn span, .topbar__status .pill span, .clock { display: none; }
     .brand { min-width: 0; }
-    .pill { padding: 0 7px; }
-    .dock { padding: 6px 4px; }
-    .dock__btn { justify-content: center; padding: 8px 4px; }
+    .brand__name { font-size: 22px; }
+    .topbar { padding: 0 18px; gap: 18px; }
+    .pill { padding: 0; }
+    .dock { padding: 8px 4px; }
+    .dock__btn { justify-content: center; padding: 10px 4px; }
     .dock__label { display: none; }
-    .launchpad__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dock__presence { justify-content: center; padding-left: 4px; }
+    .launchpad { display: block; padding: 32px 24px 28px; }
+    .launchpad__head { margin-bottom: 26px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+    .launchpad__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
+    .launchpad__note { margin-top: 22px; }
     .win { min-width: 0; }
     .win__meta { display: none; }
     .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
