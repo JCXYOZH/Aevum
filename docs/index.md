@@ -13,14 +13,18 @@
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | 提交规范与代码质量要求 |
 | [../CHANGELOG.md](../CHANGELOG.md) | 版本变更 |
 | [../apps/community/README.md](../apps/community/README.md) | 社区平台本体 |
+| [architecture/overview.md](architecture/overview.md) | 运行面、分层与边界 |
+| [architecture/code-map.md](architecture/code-map.md) | 入口、领域模块与拆分规则 |
+| [audit/2026-11-18-code-audit.md](audit/2026-11-18-code-audit.md) | 本轮全仓审计、指标与风险 |
 
 ## 目录说明
 
 | 目录 | 存放 |
 | --- | --- |
 | `api/` | 各模块对外接口说明 |
-| `architecture/` | 架构总览与三模块设计 |
+| `architecture/` | 架构总览、代码地图与三模块设计 |
 | `adr/` | 架构决策记录，一篇一个决定 |
+| `audit/` | 可复算的代码审计报告 |
 | `guides/` | 安装、开发、测试、部署的操作步骤 |
 | `operations/` | 运维手册 |
 | `security/` | 安全说明与基线 |
@@ -31,4 +35,4 @@
 
 ## 状态
 
-`docs/` 仍有许多 0 字节占位；本轮已补 `memoria/README.md`、`memoria/design.md`、`memoria/usage.md`、`architecture/memoria.md`、`guides/development.md`。其他文件按用途填写，不要另造平行文档。
+页面文档已全部补齐，不再保留 0 字节占位。指标口径和最新数值见 `audit/2026-11-18-code-audit.md`，复算命令是 `python tools/analyze.py`。
