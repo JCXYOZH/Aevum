@@ -7,6 +7,7 @@ behind the desktop shell.
 | --- | --- |
 | `world.html` | Standalone world capture page |
 | `world.html?embed=1` | Same world with the capture HUD hidden |
+| `world.html?time=0.72` | Set the day/night clock (`0..1`) for a fixed lighting moment |
 | `desktop.html?world=1` | Desktop shell with the world rendered inside the scene layer |
 
 ## Layers

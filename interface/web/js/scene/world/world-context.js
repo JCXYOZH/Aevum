@@ -41,7 +41,10 @@
   var FOV = 56 * Math.PI / 180;
   var TERRAIN_SIZE = 200;
   var WATER_LEVEL = -3.2;
-  var WEATHER_MODE = new URLSearchParams((window.location && window.location.search) || '').get('weather') || (((window.location && window.location.search) || '').indexOf('rain') >= 0 ? 'rain' : 'clear');
+  var params = new URLSearchParams((window.location && window.location.search) || '');
+  var WEATHER_MODE = params.get('weather') || (((window.location && window.location.search) || '').indexOf('rain') >= 0 ? 'rain' : 'clear');
+  var TIME_OF_DAY = parseFloat(params.get('time'));
+  if (!isFinite(TIME_OF_DAY) || TIME_OF_DAY < 0 || TIME_OF_DAY > 1) TIME_OF_DAY = 0.30;
   var SUN_DIR = normalize3([-0.35, 0.44, -0.83]);
   var SPAWN = [0, 0];
   var LAKE = [0, -52];

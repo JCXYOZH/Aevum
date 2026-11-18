@@ -394,7 +394,7 @@
     world.sky.setTime(0.285);
     world.sky.update(0);
     styleSky();
-    world.dayNight.time = 0.30;
+    world.dayNight.time = TIME_OF_DAY;
     world.dayNight.dayLength = 1800;
     world.dayNight.update(0);
     SUN_DIR = sunDirectionFor(world.dayNight.time);
