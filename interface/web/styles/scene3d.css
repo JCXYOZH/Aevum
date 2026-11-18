@@ -259,6 +259,14 @@
     .scene-slot__meta { display: none; }
   }
 
-  .desktop-world { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; z-index: 0; pointer-events: none; background: #08121c; display: block; }
-  html[data-world='1'] .scene3d, html[data-world='1'] .scene3d__characters-layer { display: none; }
+  .scene3d__world {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .scene3d__canvas { z-index: 1; }
   html[data-world='1'] .desk::before, html[data-world='1'] .desk::after { opacity: .18; }

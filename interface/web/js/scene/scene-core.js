@@ -174,6 +174,8 @@
     var viewProjection = new Float32Array(16);
     var cameraPosition = new Float32Array(3);
     var opacity = options.opacity == null ? 0.9 : options.opacity;
+    var groundVisible = options.ground !== false;
+    var groundHeight = typeof options.groundHeight === "function" ? options.groundHeight : null;
     var width = 0;
     var height = 0;
     var dpr = 1;
@@ -385,7 +387,9 @@
     }
 
     function worldForGrid(grid) {
-      return [grid[0] * 2.0, 0.05, grid[1] * 2.0];
+      var x = grid[0] * 2.0;
+      var z = grid[1] * 2.0;
+      return [x, groundHeight ? groundHeight(x, z) + 0.02 : 0.05, z];
     }
 
     function layout() {
@@ -483,6 +487,10 @@
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
+      if (!groundVisible) {
+        drawBackdrop();
+        return;
+      }
       gl.useProgram(program);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.enableVertexAttribArray(locations.aPos);
@@ -541,12 +549,21 @@
       if (Math.abs(direction[1]) < 0.0001) return null;
       var t = -origin[1] / direction[1];
       if (t <= 0) return null;
-      return [origin[0] + direction[0] * t, 0, origin[2] + direction[2] * t];
+      var point = [origin[0] + direction[0] * t, 0, origin[2] + direction[2] * t];
+      if (groundHeight) {
+        for (var step = 0; step < 5; step += 1) {
+          var h = groundHeight(point[0], point[2]);
+          t = (h - origin[1]) / direction[1];
+          if (t <= 0) return null;
+          point = [origin[0] + direction[0] * t, h, origin[2] + direction[2] * t];
+        }
+      }
+      return point;
     }
 
     function showCursor(point) {
       if (!point) return;
-      var projected = project(viewProjection, [point[0], 0.01, point[2]], width, height);
+      var projected = project(viewProjection, [point[0], point[1] + 0.02, point[2]], width, height);
       if (!projected) return;
       cursor.hidden = false;
       cursor.style.left = projected.x + "px";
@@ -733,12 +750,22 @@
       project: function (world) { return project(viewProjection, world, width, height); },
       getViewProjection: function () { return viewProjection; },
       getSize: function () { return { width: width, height: height, dpr: dpr }; },
+      setGroundVisible: function (visible) {
+        groundVisible = Boolean(visible);
+        draw();
+      },
+      setGroundHeight: function (heightFn) {
+        groundHeight = typeof heightFn === "function" ? heightFn : null;
+        layout();
+        updateAnchors();
+      },
+      hasGroundHeight: function () { return Boolean(groundHeight); },
       setBackdrop: setBackdrop,
       clearBackdrop: clearBackdrop,
       hasBackdrop: function () { return boardVisible; },
       slotWorld: function (id) {
         for (var i = 0; i < slots.length; i += 1) {
-          if (slots[i].id === id) return [slots[i].grid[0] * 2.0, 0, slots[i].grid[1] * 2.0];
+          if (slots[i].id === id) return worldForGrid(slots[i].grid);
         }
         return null;
       },

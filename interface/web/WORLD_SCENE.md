@@ -7,17 +7,20 @@ behind the desktop shell.
 | --- | --- |
 | `world.html` | Standalone world capture page |
 | `world.html?embed=1` | Same world with the capture HUD hidden |
-| `desktop.html?world=1` | Desktop shell with the world as its background layer |
+| `desktop.html?world=1` | Desktop shell with the world rendered inside the scene layer |
 
 ## Layers
 
-`desktop.html?world=1` keeps the normal desktop DOM and loads
-`world.html?embed=1` in a full-bleed iframe behind the windows. The world layer
-is `pointer-events: none`; the desktop dock, windows and dialogs stay on top.
-The old grid/character layer is hidden while this mode is active.
+`desktop.html?world=1` keeps the normal desktop DOM and adds a real WebGL2
+`scene3d__world` canvas behind the transparent `scene-core` overlay. The
+scene-core canvas still owns the orbit camera, pointer picking, DOM anchors and
+character slots, but its grid is hidden. The world renderer is a render-only
+build of the same world runtime: no VRM model, no capture HUD, no iframe.
 
-The iframe source is stored in `data-src` and only assigned when `world=1`, so
-the normal desktop does not download the 38 MB VRM model.
+The world canvas is created by `js/scene/scene-world.js` only when `world=1`;
+the normal desktop never downloads the world bundle. Character loading waits
+for `AEVUM_SCENE_READY`, so the VRM/PMX slots start on terrain height instead of
+the old `y=0` plane.
 
 ## Source files
 
@@ -31,6 +34,7 @@ The scene is split by responsibility under `js/scene/world/`:
 | `world-terrain.js` | terrain shaping around spawn and lake |
 | `world-runtime.js` | boot, engine systems, camera, draw loop, VRM action |
 | `world-scene.bundle.js` | generated runtime bundle loaded by `world.html` |
+| `../scene-world.js` | desktop adapter: creates the world canvas, bridges the desktop camera, terrain height and readiness |
 
 The five source files are classic script fragments that must share one lexical
 scope. Browser `<script>` tags do not share top-level `var` state reliably, so
@@ -53,6 +57,21 @@ $bundle = "(function(){`r`n'use strict';`r`n" + $all + "`r`n})();`r`n"
 
 Do not reorder the files: the shader programs must exist before runtime boot,
 and terrain/vegetation helpers must exist before the draw loop starts.
+
+## Desktop render-only mode
+
+`scene-world.js` sets these globals before it loads the bundle:
+
+| Global | Meaning |
+| --- | --- |
+| `AEVUM_WORLD_RENDER_ONLY` | skip VRM loading/HUD and use the supplied canvas |
+| `AEVUM_WORLD_CANVAS` | the `scene3d__world` canvas |
+| `AEVUM_WORLD_CAMERA` | returns desktop camera position, target, fov and buffer size |
+| `AEVUM_WORLD_RENDERER` | ready world API: `heightAt(x,z)`, `resize(w,h)`, `frame(now)` |
+| `AEVUM_SCENE_READY` | set after terrain height is wired into scene slots |
+
+The render-only branch returns before `VRMRenderer` is created. `world.html`
+still uses the full boot path, VRM model and capture HUD.
 
 ## Engine systems actually used
 

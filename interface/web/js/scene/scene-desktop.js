@@ -153,6 +153,10 @@
       : "#f7f1e4";
     ctx.fillRect(0, 0, output.width, output.height);
     ctx.imageSmoothingEnabled = true;
+    var world = mount.querySelector(".scene3d__world");
+    if (world) {
+      ctx.drawImage(world, 0, 0, world.width, world.height, 0, 0, output.width, output.height);
+    }
     ctx.drawImage(ground, 0, 0, ground.width, ground.height, 0, 0, output.width, output.height);
 
     if (characterLayer && !characterLayer.classList.contains("is-hidden")) {
@@ -278,6 +282,16 @@
 
   function scheduleCharacters() {
     var run = function () { global.setTimeout(startCharacters, 120); };
+    if (params.get("world") === "1") {
+      var waited = 0;
+      var wait = function () {
+        if (global.AEVUM_SCENE_READY || waited >= 5000) { run(); return; }
+        waited += 150;
+        global.setTimeout(wait, 150);
+      };
+      wait();
+      return;
+    }
     if ("requestIdleCallback" in global) {
       global.requestIdleCallback(run, { timeout: 1500 });
     } else {

@@ -66,7 +66,7 @@
   </aside>
 
   <main class="desk">
-    <iframe class="desktop-world" id="desktop-world" title="Aevum 3D world" data-src="world.html?embed=1" hidden></iframe>
+    <!-- The world is rendered inside the scene layer, not as an iframe. -->
     <div class="scene3d" id="scene3d"></div>
     <div class="windows" id="windows"></div>
     <div class="scene3d__characters-layer" id="scene-characters" aria-hidden="true"></div>
@@ -175,7 +175,8 @@
       "js/scene/scene-vrm.js",
       "js/scene/scene-pmx.js",
       "js/scene/scene-live2d.js",
-      "js/scene/scene-desktop.js"
+      "js/scene/scene-desktop.js",
+      "js/scene/scene-world.js"
     ];
 
     function loadSceneScripts() {
@@ -211,7 +212,7 @@
     else window.addEventListener("load", scheduleScene, { once: true });
   })();
 </script>
-<script>(function(){if(new URLSearchParams(location.search||"").get("world")!=="1")return;document.documentElement.setAttribute("data-world","1");var f=document.getElementById("desktop-world");if(f){f.src=f.getAttribute("data-src");f.hidden=false;}})();</script>
+<script>(function(){if(new URLSearchParams(location.search||"").get("world")!=="1")return;document.documentElement.setAttribute("data-world","1");})();</script>
 <script>(function(){var b=document.getElementById("open-world");if(!b)return;var on=new URLSearchParams(location.search||"").get("world")==="1";b.textContent=on?"网格":"世界";b.addEventListener("click",function(){var u=new URL(location.href);if(on)u.searchParams.delete("world");else u.searchParams.set("world","1");location.href=u;});})();</script>
 </body>
 </html>

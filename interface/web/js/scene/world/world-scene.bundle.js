@@ -4,8 +4,10 @@
 
   var math = window.AEVUM.math;
   var M4 = math.M4;
-  var canvasWorld = document.getElementById('worldCanvas');
-  var canvasModel = document.getElementById('model');
+  var renderOnly = window.AEVUM_WORLD_RENDER_ONLY === true;
+  var canvasWorld = window.AEVUM_WORLD_CANVAS || document.getElementById('worldCanvas');
+  if (!canvasWorld) throw new Error('world canvas is missing');
+  var canvasModel = renderOnly ? null : document.getElementById('model');
   var stateEl = document.getElementById('liveState');
   var statEl = document.getElementById('metaStat');
   var systemsEl = document.getElementById('metaSystems');
@@ -21,7 +23,7 @@
   });
   if (!gl) throw new Error('WebGL2 is not available');
   window.addEventListener('error', function (e) {
-    var el = document.getElementById('liveState'); var ld = document.getElementById('loading');
+    var el = stateEl; var ld = loading;
     if (ld) {
       ld.style.display = 'block';
       var line = ld.querySelector('div');
@@ -30,35 +32,38 @@
     if (el) { el.textContent = 'ERROR ' + e.message; el.style.color = '#ff5a5a'; }
   });
   window.addEventListener('unhandledrejection', function (e) {
-    var ld = document.getElementById('loading');
-    if (ld) {
-      ld.style.display = 'block';
-      var line = ld.querySelector('div');
-      if (line) line.textContent = 'REJECTED / ' + String(e.reason && (e.reason.message || e.reason));
-    }
+    if (!loading) return;
+    loading.style.display = 'block';
+    var line = loading.querySelector('div');
+    if (line) line.textContent = 'REJECTED / ' + String(e.reason && (e.reason.message || e.reason));
   });
 
-  var W = 1600;
-  var H = 900;
+  var W = renderOnly ? Math.max(1, canvasWorld.width) : 1600;
+  var H = renderOnly ? Math.max(1, canvasWorld.height) : 900;
   var FOV = 42 * Math.PI / 180;
   var TERRAIN_SIZE = 200;
   var WATER_LEVEL = -3.2;
-  var WEATHER_MODE = new URLSearchParams(window.location.search || '').get('weather') || ((window.location.search || '').indexOf('rain') >= 0 ? 'rain' : 'clear');
+  var WEATHER_MODE = new URLSearchParams((window.location && window.location.search) || '').get('weather') || (((window.location && window.location.search) || '').indexOf('rain') >= 0 ? 'rain' : 'clear');
   var SUN_DIR = normalize3([-0.35, 0.44, -0.83]);
   var SPAWN = [0, 0];
   var LAKE = [0, -52];
 
   function setReady(text) {
+    if (!stateEl) return;
     document.body.classList.add('is-ready');
     stateEl.textContent = text;
-    setTimeout(function () { loading.style.display = 'none'; }, 500);
+    setTimeout(function () { if (loading) loading.style.display = 'none'; }, 500);
   }
   function fail(error) {
     console.error(error);
+    if (!stateEl) return;
     stateEl.textContent = 'FAIL';
-    statEl.textContent = String(error && error.message || error);
-    loading.querySelector('div').textContent = 'LOAD FAILED / ' + String(error && error.message || error);
-    loading.style.opacity = 1;
+    if (statEl) statEl.textContent = String(error && error.message || error);
+    if (loading) {
+      var line = loading.querySelector('div');
+      if (line) line.textContent = 'LOAD FAILED / ' + String(error && error.message || error);
+      loading.style.opacity = 1;
+    }
   }
 
   function compile(type, source) {
@@ -849,6 +854,16 @@
   }
 
   function updateCamera() {
+    if (renderOnly && typeof window.AEVUM_WORLD_CAMERA === 'function') {
+      var external = window.AEVUM_WORLD_CAMERA();
+      if (external) {
+        eye = external.position;
+        target = external.target;
+        FOV = external.fov;
+        W = Math.max(1, external.width || canvasWorld.width || W);
+        H = Math.max(1, external.height || canvasWorld.height || H);
+      }
+    }
     var view = M4.lookAt(M4.create(), eye, target, [0, 1, 0]);
     var proj = M4.perspective(M4.create(), FOV, W / H, 0.08, 700);
     M4.mult(viewProj, view, proj);
@@ -1072,7 +1087,7 @@
   }
 
   async function boot() {
-    function bootStage(text) { loading.querySelector('div').textContent = text; }
+    function bootStage(text) { if (loading) loading.querySelector('div').textContent = text; }
     bootStage('LOADING / WORLD INIT');
     world = new window.World3DEngine.WorldEngine();
     await world.init({
@@ -1196,6 +1211,33 @@
     createShadowTarget();
     createSceneTarget();
 
+    if (renderOnly) {
+      start = performance.now();
+      last = start;
+      window.AEVUM_WORLD_RENDERER = {
+        heightAt: function (x, z) { return world.terrain.getHeight(x, z); },
+        resize: function (w, h) {
+          w = Math.max(1, Math.round(w));
+          h = Math.max(1, Math.round(h));
+          if (canvasWorld.width === w && canvasWorld.height === h) return;
+          W = w;
+          H = h;
+          canvasWorld.width = w;
+          canvasWorld.height = h;
+          if (sceneFBO) {
+            gl.deleteFramebuffer(sceneFBO);
+            gl.deleteTexture(sceneColorTex);
+            gl.deleteTexture(sceneDepthTex);
+          }
+          createSceneTarget();
+        },
+        frame: function (now) { frame(now); }
+      };
+      window.AEVUM_WORLD_READY = true;
+      requestAnimationFrame(frame);
+      return;
+    }
+
     var modelRenderer = new window.AEVUM.render.VRMRenderer(canvasModel, {
       clearColor: [0, 0, 0, 0],
       lighting: {
@@ -1253,29 +1295,34 @@
       }
       if (player) player.update(dt);
 
-      var pose = retarget(vrm, action.json, player.getPose(), {
-        neutralStance: false,
-        symmetricArms: false,
-        footClearance: true,
-        runPose: clip === 'run',
-        greetPose: false,
-        dt: dt
-      });
+      var pose = null;
+      if (player && vrm && retarget) {
+        pose = retarget(vrm, action.json, player.getPose(), {
+          neutralStance: false,
+          symmetricArms: false,
+          footClearance: true,
+          runPose: clip === 'run',
+          greetPose: false,
+          dt: dt
+        });
+      }
 
       renderWorld(now);
-      modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
-        viewProjection: viewProj,
-        modelMatrix: modelMatrix,
-        cameraPosition: eye,
-        lighting: {
-          direction: world.lights.directionalLight.direction,
-          color: world.lights.directionalLight.color,
-          ambient: world.lights.ambientLight.color,
-          rim: [0.48, 0.86, 1.0],
-          rimStrength: 0.52,
-          specular: 0.12
-        }
-      });
+      if (modelRenderer && pose) {
+        modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
+          viewProjection: viewProj,
+          modelMatrix: modelMatrix,
+          cameraPosition: eye,
+          lighting: {
+            direction: world.lights.directionalLight.direction,
+            color: world.lights.directionalLight.color,
+            ambient: world.lights.ambientLight.color,
+            rim: [0.48, 0.86, 1.0],
+            rimStrength: 0.52,
+            specular: 0.12
+          }
+        });
+      }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);

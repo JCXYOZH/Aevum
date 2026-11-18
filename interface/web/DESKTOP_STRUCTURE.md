@@ -57,6 +57,9 @@ Custom windows are persisted in `localStorage` under
 `memoria.desktop.windows`. The relay bridge address can be overridden with
 `?relay=http://host:8790` and `?bridge=ws://host:8765`.
 
-`?world=1` switches the desk background to the live world page
-(`world.html?embed=1`). The world iframe is loaded only in that mode; the
-normal grid background and character layer remain the default.
+`?world=1` switches the desk to the live 3D world. The world is a second WebGL2
+canvas inside `.scene3d`, behind the transparent grid/overlay canvas, so the
+desktop camera, picking, slots and windows keep working. The grid is hidden in
+this mode; characters are placed on the terrain after the world reports its
+height samples. The normal grid background and character layer remain the
+default.

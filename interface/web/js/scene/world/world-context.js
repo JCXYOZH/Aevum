@@ -2,8 +2,10 @@
 
   var math = window.AEVUM.math;
   var M4 = math.M4;
-  var canvasWorld = document.getElementById('worldCanvas');
-  var canvasModel = document.getElementById('model');
+  var renderOnly = window.AEVUM_WORLD_RENDER_ONLY === true;
+  var canvasWorld = window.AEVUM_WORLD_CANVAS || document.getElementById('worldCanvas');
+  if (!canvasWorld) throw new Error('world canvas is missing');
+  var canvasModel = renderOnly ? null : document.getElementById('model');
   var stateEl = document.getElementById('liveState');
   var statEl = document.getElementById('metaStat');
   var systemsEl = document.getElementById('metaSystems');
@@ -19,7 +21,7 @@
   });
   if (!gl) throw new Error('WebGL2 is not available');
   window.addEventListener('error', function (e) {
-    var el = document.getElementById('liveState'); var ld = document.getElementById('loading');
+    var el = stateEl; var ld = loading;
     if (ld) {
       ld.style.display = 'block';
       var line = ld.querySelector('div');
@@ -28,35 +30,38 @@
     if (el) { el.textContent = 'ERROR ' + e.message; el.style.color = '#ff5a5a'; }
   });
   window.addEventListener('unhandledrejection', function (e) {
-    var ld = document.getElementById('loading');
-    if (ld) {
-      ld.style.display = 'block';
-      var line = ld.querySelector('div');
-      if (line) line.textContent = 'REJECTED / ' + String(e.reason && (e.reason.message || e.reason));
-    }
+    if (!loading) return;
+    loading.style.display = 'block';
+    var line = loading.querySelector('div');
+    if (line) line.textContent = 'REJECTED / ' + String(e.reason && (e.reason.message || e.reason));
   });
 
-  var W = 1600;
-  var H = 900;
+  var W = renderOnly ? Math.max(1, canvasWorld.width) : 1600;
+  var H = renderOnly ? Math.max(1, canvasWorld.height) : 900;
   var FOV = 42 * Math.PI / 180;
   var TERRAIN_SIZE = 200;
   var WATER_LEVEL = -3.2;
-  var WEATHER_MODE = new URLSearchParams(window.location.search || '').get('weather') || ((window.location.search || '').indexOf('rain') >= 0 ? 'rain' : 'clear');
+  var WEATHER_MODE = new URLSearchParams((window.location && window.location.search) || '').get('weather') || (((window.location && window.location.search) || '').indexOf('rain') >= 0 ? 'rain' : 'clear');
   var SUN_DIR = normalize3([-0.35, 0.44, -0.83]);
   var SPAWN = [0, 0];
   var LAKE = [0, -52];
 
   function setReady(text) {
+    if (!stateEl) return;
     document.body.classList.add('is-ready');
     stateEl.textContent = text;
-    setTimeout(function () { loading.style.display = 'none'; }, 500);
+    setTimeout(function () { if (loading) loading.style.display = 'none'; }, 500);
   }
   function fail(error) {
     console.error(error);
+    if (!stateEl) return;
     stateEl.textContent = 'FAIL';
-    statEl.textContent = String(error && error.message || error);
-    loading.querySelector('div').textContent = 'LOAD FAILED / ' + String(error && error.message || error);
-    loading.style.opacity = 1;
+    if (statEl) statEl.textContent = String(error && error.message || error);
+    if (loading) {
+      var line = loading.querySelector('div');
+      if (line) line.textContent = 'LOAD FAILED / ' + String(error && error.message || error);
+      loading.style.opacity = 1;
+    }
   }
 
   function compile(type, source) {

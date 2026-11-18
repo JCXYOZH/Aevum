@@ -67,6 +67,16 @@
   }
 
   function updateCamera() {
+    if (renderOnly && typeof window.AEVUM_WORLD_CAMERA === 'function') {
+      var external = window.AEVUM_WORLD_CAMERA();
+      if (external) {
+        eye = external.position;
+        target = external.target;
+        FOV = external.fov;
+        W = Math.max(1, external.width || canvasWorld.width || W);
+        H = Math.max(1, external.height || canvasWorld.height || H);
+      }
+    }
     var view = M4.lookAt(M4.create(), eye, target, [0, 1, 0]);
     var proj = M4.perspective(M4.create(), FOV, W / H, 0.08, 700);
     M4.mult(viewProj, view, proj);
@@ -290,7 +300,7 @@
   }
 
   async function boot() {
-    function bootStage(text) { loading.querySelector('div').textContent = text; }
+    function bootStage(text) { if (loading) loading.querySelector('div').textContent = text; }
     bootStage('LOADING / WORLD INIT');
     world = new window.World3DEngine.WorldEngine();
     await world.init({
@@ -414,6 +424,33 @@
     createShadowTarget();
     createSceneTarget();
 
+    if (renderOnly) {
+      start = performance.now();
+      last = start;
+      window.AEVUM_WORLD_RENDERER = {
+        heightAt: function (x, z) { return world.terrain.getHeight(x, z); },
+        resize: function (w, h) {
+          w = Math.max(1, Math.round(w));
+          h = Math.max(1, Math.round(h));
+          if (canvasWorld.width === w && canvasWorld.height === h) return;
+          W = w;
+          H = h;
+          canvasWorld.width = w;
+          canvasWorld.height = h;
+          if (sceneFBO) {
+            gl.deleteFramebuffer(sceneFBO);
+            gl.deleteTexture(sceneColorTex);
+            gl.deleteTexture(sceneDepthTex);
+          }
+          createSceneTarget();
+        },
+        frame: function (now) { frame(now); }
+      };
+      window.AEVUM_WORLD_READY = true;
+      requestAnimationFrame(frame);
+      return;
+    }
+
     var modelRenderer = new window.AEVUM.render.VRMRenderer(canvasModel, {
       clearColor: [0, 0, 0, 0],
       lighting: {
@@ -471,29 +508,34 @@
       }
       if (player) player.update(dt);
 
-      var pose = retarget(vrm, action.json, player.getPose(), {
-        neutralStance: false,
-        symmetricArms: false,
-        footClearance: true,
-        runPose: clip === 'run',
-        greetPose: false,
-        dt: dt
-      });
+      var pose = null;
+      if (player && vrm && retarget) {
+        pose = retarget(vrm, action.json, player.getPose(), {
+          neutralStance: false,
+          symmetricArms: false,
+          footClearance: true,
+          runPose: clip === 'run',
+          greetPose: false,
+          dt: dt
+        });
+      }
 
       renderWorld(now);
-      modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
-        viewProjection: viewProj,
-        modelMatrix: modelMatrix,
-        cameraPosition: eye,
-        lighting: {
-          direction: world.lights.directionalLight.direction,
-          color: world.lights.directionalLight.color,
-          ambient: world.lights.ambientLight.color,
-          rim: [0.48, 0.86, 1.0],
-          rimStrength: 0.52,
-          specular: 0.12
-        }
-      });
+      if (modelRenderer && pose) {
+        modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
+          viewProjection: viewProj,
+          modelMatrix: modelMatrix,
+          cameraPosition: eye,
+          lighting: {
+            direction: world.lights.directionalLight.direction,
+            color: world.lights.directionalLight.color,
+            ambient: world.lights.ambientLight.color,
+            rim: [0.48, 0.86, 1.0],
+            rimStrength: 0.52,
+            specular: 0.12
+          }
+        });
+      }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
