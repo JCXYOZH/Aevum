@@ -8,7 +8,8 @@
 #     sudo bash ops/deploy/systemd/install.sh --tls     # 顺带申请证书
 #
 # 做的事：装依赖 → 建 venv → 起内核(QEMU 无头) → 起桥接 → 起中继 →
-#         起监控与模型 → 配 nginx → 校验四个服务端口与页面。
+#         配 nginx → 校验三个服务端口与页面。
+#         监控与模型后端已归档到 archive/backend-python，不再由本脚本启动。
 # =====================================================================
 set -euo pipefail
 
@@ -165,8 +166,7 @@ if ! "$PYTHON" -c 'import yaml' >/dev/null 2>&1; then
     "$PYTHON" -m pip install --quiet pyyaml \
         || log "警告：pyyaml 未安装，config.yaml 会退化为默认值；不影响桌面和内核实况启动"
 fi
-# auth_api / loop_api 依赖 FastAPI 与 cryptography；不装它们，aevum-monitor 会
-# 在 import 阶段直接退出，表现为“服务起不来、/api 全 502”。
+# auth_api / loop_api 依赖 FastAPI 与 cryptography；仅旧监控后端需要，归档后不再强制。
 if ! "$PYTHON" -c 'import fastapi, uvicorn, cryptography' >/dev/null 2>&1; then
     log "安装 API 运行依赖（requirements.txt）"
     "$PYTHON" -m pip install --quiet -r "$APP_ROOT/requirements.txt" \
@@ -252,18 +252,13 @@ sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" \
     "$CONSOLE_DIR/aevum-bridge.service" > /etc/systemd/system/aevum-bridge.service
 sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" \
     "$CONSOLE_DIR/aevum-relay.service" > /etc/systemd/system/aevum-relay.service
-sed -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@PYTHON@|$PYTHON|g" -e "s|@TORCH_LIB@|$TORCH_LIB|g" -e "s|@WEB_ROOT@|$WEB_ROOT|g" \
-    "$CONSOLE_DIR/aevum-monitor.service" > /etc/systemd/system/aevum-monitor.service
-
 systemctl daemon-reload
-systemctl enable aevum-kernel aevum-bridge aevum-relay aevum-monitor >/dev/null 2>&1
+systemctl enable aevum-kernel aevum-bridge aevum-relay >/dev/null 2>&1
 systemctl restart aevum-relay
 sleep 1
 systemctl restart aevum-kernel
 sleep 1
 systemctl restart aevum-bridge
-sleep 1
-systemctl restart aevum-monitor
 sleep 1
 
 # ---------------------------------------------------------------- 5 nginx
@@ -363,13 +358,9 @@ check() {
 check "内核服务在跑"      "systemctl is-active --quiet aevum-kernel"
 check "桥接服务在跑"      "systemctl is-active --quiet aevum-bridge"
 check "中继服务在跑"      "systemctl is-active --quiet aevum-relay"
-check "监控服务在跑"      "systemctl is-active --quiet aevum-monitor"
 check "5555 只绑回环"     "ss -lnt | grep -q '127.0.0.1:5555'"
 check "8765 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8765'"
-check "8781 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8781'"
 check "8790 只绑回环"     "ss -lnt | grep -q '127.0.0.1:8790'"
-check "看板健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8781/api/health"
-check "能力清单为三项"    "curl -fsS --max-time 5 http://127.0.0.1:8781/api/capabilities | grep -q '\"count\": 3'"
 check "中继健康接口"      "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8790/v1/health"
 check "页面能取到 200"    "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN'"
 check "根页是展示页"      "curl -fsS --max-time 5 http://127.0.0.1/ -H 'Host: $DOMAIN' | grep -q 'data-page=\"showcase\"'"
@@ -394,10 +385,9 @@ if [ "$fail" -ne 0 ]; then
   journalctl -u aevum-kernel -n 40      # 内核是否起来、是否报错
   journalctl -u aevum-bridge -n 40      # 桥接是否连上 5555
   journalctl -u aevum-relay -n 40       # 中继是否监听 8790
-  journalctl -u aevum-monitor -n 40     # 监控与模型是否起来
-  ss -lntp | grep -E '5555|8765|8781|8790'
+  ss -lntp | grep -E '5555|8765|8790'
 EOF
-    systemctl --no-pager -l status aevum-relay aevum-monitor aevum-bridge 2>&1 | tail -80
+    systemctl --no-pager -l status aevum-relay aevum-bridge 2>&1 | tail -80
     echo "--- nginx error ---"
     tail -20 /var/log/nginx/aevum-console.error.log 2>/dev/null || true
     exit 1
@@ -415,5 +405,5 @@ cat <<EOF
     验证页：$SCHEME://$DOMAIN/engine/validate.html?catalog=assets/models.local.yaml
     中继：$SCHEME://$DOMAIN/v1/health
     页面上的灯变青绿、帧/格在涨，就说明 内核 → 桥接 → 前端 全通了。
-    安全组只需要放行 80/443；5555、8765、8781、8790 不要对外开放。
+    安全组只需要放行 80/443；5555、8765、8790 不要对外开放。
 EOF

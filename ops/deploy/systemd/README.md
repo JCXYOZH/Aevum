@@ -18,10 +18,10 @@ sudo env DOMAIN=www.mrhua.cn EMAIL=admin@mrhua.cn bash ops/deploy/systemd/instal
 
 - 安装 nginx、QEMU、Python 3.10+ 和 `curl`；
 - 如果服务器上还没有可用 venv，就在仓库根目录创建 `.venv`，安装 `websockets`、`pyyaml`，并按 `requirements.txt` 安装 `fastapi`、`uvicorn`、`cryptography`；
-- 写入四个 systemd 服务：`aevum-kernel`（QEMU 串口内核）、`aevum-bridge`（串口转 WebSocket）、`aevum-relay`（内存中继）、`aevum-monitor`（桌面、身份认证、对话与回路 API）；
-- 写入 nginx 配置：静态首页、`desktop.html`、`/mrhua/`、`/engine/`、`/api/`、`/ws`、`/v1/`；角色模型与动作库按 7 天缓存，页面脚本仍为 `no-cache`；
+- 写入三个 systemd 服务：`aevum-kernel`（QEMU 串口内核）、`aevum-bridge`（串口转 WebSocket）、`aevum-relay`（内存中继）；监控与模型后端已归档到 `archive/backend-python/monitor`，不再由本脚本启动；
+- 写入 nginx 配置：静态首页、`desktop.html`、`/mrhua/`、`/engine/`、`/ws`、`/v1/`；角色模型与动作库按 7 天缓存，页面脚本仍为 `no-cache`；`/api/` 不再挂到归档后端；
 - 默认使用 `src/kernel/host/console/robot/disk.img`，也就是已经接好串口上报的真实内核镜像；
-- 模型生成器是可选项：没有 `build/linux/memoria_gen_cpu` 时，网站、MrHua、内核实况照常启动，只让模型对话窗口显示不可用。
+- 模型生成器与旧监控 API 不再作为部署前置条件；网站、MrHua、内核实况照常启动。
 
 当前根地址 `/` 显示 `interface/web/index.html` 展示页；`desktop.html` 是单独的桌面入口。桌面默认显示五个常驻启动项：MrHua、订阅、内核实况、展示页、拍照；启动台同样包含拍照。部署前请确认 `interface/web/mrhua/index.html`、`interface/web/desktop.html` 和 `interface/web/index.html` 都在仓库里。
 
@@ -75,7 +75,7 @@ ss -lntp | grep -E ':80|:443'
 curl -I https://www.mrhua.cn/engine/validate.html
 curl -fsS https://www.mrhua.cn/engine/validate.html | grep '渲染引擎验证'
 curl -fsS https://www.mrhua.cn/ | grep -q 'data-page="showcase"'
-curl -fsS https://www.mrhua.cn/api/health
+curl -fsS https://www.mrhua.cn/v1/health
 curl -fsS https://www.mrhua.cn/desktop.html -o /dev/null
 curl -fsS https://www.mrhua.cn/mrhua/index.html -o /dev/null
 curl -fsS https://www.mrhua.cn/engine/assets/models/live2d/xiaoyue/xiaoyue.model3.json -o /dev/null
