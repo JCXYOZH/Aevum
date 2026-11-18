@@ -200,12 +200,11 @@
 
 拆分文件按原顺序拼接后与原文逐字符一致；全部通过 `node --check`。原合集已移除，避免双份实现。
 
-### 2.12 `tests/` 与 `vendor/`
+### 2.12 契约、测试与 `vendor/`
 
 | 文件 | 行数 | 说明 |
 |---|---:|---|
-| `tests/action-boundary.test.js` | 149 | 动作模块边界测试 |
-| `tests/action-contract.test.js` | 32 | 动作模块接口契约测试；当前引用的 `contracts/action-contract.js` 不存在，属于迁移前已有的失效测试 |
+| `contracts/action-contract.js` | 68 | 动作字段所有权、冲突码与越界钳制；验证脚本已清理，不入库 |
 | `vendor/live2dcubismcore.min.js` | 9 | Live2D Cubism Core 官方运行时，不提交修改 |
 
 ## 3. 非引擎应用代码（已移出 `engine/`）
