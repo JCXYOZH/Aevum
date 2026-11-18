@@ -9,7 +9,7 @@
 // 用法：
 //   ai_action_bridge.exe --text "右手向镜头挥一下"
 //   ai_action_bridge.exe
-//   ai_action_bridge.exe --append D:\Aevum\logs\ai-labels.jsonl
+//   ai_action_bridge.exe --append D:\Aevum\var\logs\ai-labels.jsonl
 
 #include <windows.h>
 #include <winhttp.h>

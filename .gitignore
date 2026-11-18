@@ -44,7 +44,7 @@ engine/tests/
 *.glb
 engine/assets/
 # 外部参考实现与源码包只在本地
-.refs/
+labs/reference/
 *.tgz
 
 # P2P 运行期数据

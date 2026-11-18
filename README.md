@@ -36,7 +36,7 @@ Aevum 由三个核心运行时组成：**内核（Kernel）、AI 运行时（AI 
 | `labs/` | 基准、实验、示例、沙箱 | 实验 |
 | `configs/`、`tests/` | 配置样例与测试 | 骨架 |
 
-**边界**：`build/`、`checkpoints/`、`data/`、`logs/`、`models/`、`vendor/` 是运行状态与缓存，不参与目录迁移。模型权重不进 Git。
+**边界**：`build/` 是构建产物，`var/` 是本地运行状态（检查点、日志、模型缓存、vendor）；`data/` 是源码语料。三者都不参与源码分层，模型权重不进 Git。
 
 ## Python 路径
 

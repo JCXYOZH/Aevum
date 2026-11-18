@@ -5,6 +5,7 @@ labs/
 ├─ benchmarks/   # 原 benchmarks
 ├─ experiments/  # 原 experiments
 ├─ examples/     # 原 examples
+├─ reference/    # 外部参考实现与源码包，仅本地
 └─ sandbox/      # 原 sandbox
 ```
 

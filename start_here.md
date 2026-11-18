@@ -30,5 +30,5 @@
 - `fortuna`、`libertas`、`memoria` 是同一个仓库里的模块名，不是三个仓库；职责见 [docs/glossary.md](docs/glossary.md)。
 - `src/kernel`、`src/architecture`、`engine` 是三个核心运行时；`control/` 是控制平面，不是第四个核心。
 - `archive/backend-python/monitor` 是已放弃的 Python 业务后端，只读保留，不参与新功能。
-- `build/`、`checkpoints/`、`data/`、`logs/`、`models/`、`vendor/` 是运行状态和缓存，不提交。
+- `build/` 是构建产物，`var/` 是本地运行状态（检查点、日志、模型缓存、vendor），`data/` 是源码语料；都不提交。
 - 站点没有构建步骤，也没有依赖；改完 HTML 刷新即生效。

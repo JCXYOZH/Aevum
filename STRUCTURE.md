@@ -36,13 +36,20 @@ Aevum/
 │  ├─ scripts/                 # 原 scripts
 │  ├─ tools/                   # 原 tools
 │  └─ bin/                     # 原 bin
-├─ labs/                       # 实验与样例
+├─ labs/                       # 实验、样例与外部参考
 │  ├─ benchmarks/
 │  ├─ experiments/
 │  ├─ examples/
+│  ├─ reference/               # 外部参考实现与源码包，仅本地
 │  └─ sandbox/
 ├─ docs/ tests/ configs/
-├─ build/ checkpoints/ data/ logs/ models/ vendor/   # 运行状态与缓存
+├─ data/                       # 源码语料与固定数据
+├─ build/                      # 构建产物与本地工具缓存
+└─ var/                        # 本地运行状态
+   ├─ checkpoints/
+   ├─ logs/
+   ├─ models/
+   └─ vendor/
 ```
 
 ## 三个核心运行时
@@ -61,7 +68,7 @@ Aevum/
 2. **同一层的一个文件只承担一个职责**。职责变多，就拆成子目录，不在同一层堆杂项。
 3. **每个模块有 README**。目录 `README.md` 说明内容；`__init__.py` 只做导出，不写业务。
 4. **兼容代码只保留一处**。旧路径需要保留时，放在 `archive/` 或明确的兼容入口，不在新目录里复制一份实现。
-5. **运行状态不混进源码**。`build/`、`checkpoints/`、`data/`、`logs/`、`models/`、`vendor/` 原地保留，不参与目录迁移。
+5. **运行状态不混进源码**。`build/` 只放构建产物，`var/` 只放本地运行状态（检查点、日志、模型缓存、vendor），两者都不参与源码分层。
 
 ## Python 路径
 
