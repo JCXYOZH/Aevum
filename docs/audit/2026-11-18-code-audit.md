@@ -11,6 +11,7 @@
 | 文档完善性（页面） | 18.6% | 100.0% | `docs/*.md` 中正文 ≥200 字符的文档比例 |
 | 模块 docstring | 85.7% | 85.7% | `src/libertas` 有模块 docstring 的文件比例 |
 | 符号 docstring | 53.2% | 53.2% | 函数/类中有 docstring 的比例 |
+| 文档综合分 | 52.5% | 79.6% | 页面/模块/符号三项等权 |
 | 拆分规范性 | 99.3% 文件 ≤500 行 | 99.6% 文件 ≤500 行 | `src/libertas` + `apps/console/monitor` + `apps/relay` |
 | 超 500 行文件 | 7 个 | 4 个 | 同上 |
 | 最大文件 | 2793 行 | 2793 行 | `legacy_models/model_engine/generation_stream.py` |
@@ -80,9 +81,10 @@ name 'datetime' is not defined
 ## 文档完善性判断
 
 - 45/45 个 `docs/*.md` 已有实质正文，空占位清零。
+- 页面口径 100.0%，但模块 docstring 只有 85.7%、符号 docstring 只有 53.2%；三项等权综合为 **79.6%**。
 - 新增 `architecture/overview.md`、`architecture/code-map.md`、`docs/audit/2026-11-18-code-audit.md`。
 - 35 个原有空占位已补：架构、API、部署、运维、安全、发布、教程、FAQ、ADR。
-- 不足：符号 docstring 仍只有 53.2%，大量旧模块只有模块级说明，没有逐函数说明。文档“页面完整度”是 100%，但“代码内符号注释完整度”不是 100%。
+- 不足：符号 docstring 仍只有 53.2%，大量旧模块只有模块级说明，没有逐函数说明。文档“页面完整度”是 100%，“代码内符号注释完整度”不是 100%。
 
 ## 验证
 

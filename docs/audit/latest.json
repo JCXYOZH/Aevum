@@ -19,7 +19,8 @@
     "module_doc_rate": 0.8571,
     "symbol_docstrings": 4082,
     "symbol_total": 7675,
-    "symbol_doc_rate": 0.5319
+    "symbol_doc_rate": 0.5319,
+    "composite_rate": 0.7963
   },
   "split": {
     "python_files": 1071,

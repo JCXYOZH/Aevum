@@ -169,6 +169,15 @@ def docs_metrics() -> dict:
         "symbol_docstrings": symbol_doc,
         "symbol_total": symbol_total,
         "symbol_doc_rate": round(symbol_doc / symbol_total, 4) if symbol_total else 0.0,
+        "composite_rate": round(
+            (
+                (len(substantive) / len(docs) if docs else 0.0)
+                + (module_doc / module_total if module_total else 0.0)
+                + (symbol_doc / symbol_total if symbol_total else 0.0)
+            )
+            / 3,
+            4,
+        ),
     }
 
 
@@ -218,6 +227,7 @@ def main() -> None:
     print(f"code lines:   {code['reachable_loc']}/{code['loc']} = {code['loc_rate']:.1%}")
     print(f"docs:         {docs['docs_substantive']}/{docs['docs_total']} substantive = {docs['docs_rate']:.1%}")
     print(f"docstrings:   module {docs['module_doc_rate']:.1%}, symbol {docs['symbol_doc_rate']:.1%}")
+    print(f"docs composite: {docs['composite_rate']:.1%} (页面/模块/符号等权)")
     print(f"split:        {split['files_over_500']}/{split['python_files']} over 500 lines = {split['compliance_rate']:.1%} under threshold")
     print("\nLargest files:")
     for item in split["top_files"]:
