@@ -1,6 +1,6 @@
 # API 参考索引
 
-本文件是索引，不复制每个路由的完整字段。FastAPI 工厂位于 `apps/console/monitor/auth_api.py` 的 `create_fastapi_app`，路由按领域拆在 `apps/console/monitor/api/`：
+本文件是索引，不复制每个路由的完整字段。FastAPI 工厂位于 `archive/backend-python/monitor/auth_api.py` 的 `create_fastapi_app`，路由按领域拆在 `archive/backend-python/monitor/api/`：
 
 - `loop.py`：订阅、确认、退订、来源、墙、导出。
 - `governance.py`：治理只读状态、提案、分叉、门槛。

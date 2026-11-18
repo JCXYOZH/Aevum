@@ -19,7 +19,7 @@ Linux：
 Windows：
 
 ```powershell
-scripts\build.ps1
+ops\scripts\build.ps1
 ```
 
 机器路径可用参数或环境变量覆盖：
@@ -32,8 +32,8 @@ scripts\build.ps1
 Linux：
 
 ```bash
-bash scripts/build-linux.sh
-MEMORIA_TORCH_ROOT=/opt/libtorch bash scripts/build-linux.sh --clean
+bash ops/scripts/build-linux.sh
+MEMORIA_TORCH_ROOT=/opt/libtorch bash ops/scripts/build-linux.sh --clean
 ```
 
 输出：
@@ -49,7 +49,7 @@ Linux 输出在 `build/linux/`。`memoria_gen_cpu` 不链接 CUDA，适合低内
 ## 训练
 
 ```powershell
-scripts\train.ps1 -Epochs 4 -Batch 32 -SeqLen 16 -Vocab 3000 -Dim 64 -Device cuda
+ops\scripts\train.ps1 -Epochs 4 -Batch 32 -SeqLen 16 -Vocab 3000 -Dim 64 -Device cuda
 ```
 
 或直接调 exe：
@@ -75,7 +75,7 @@ build\memoria_train.exe --data data\tinyshakespeare_3000.txt --save build\checkp
 ## 生成
 
 ```powershell
-scripts\generate.ps1 -Checkpoint "build\checkpoint_demo" -Prompt "What " -MaxNewTokens 8 -Device cpu
+ops\scripts\generate.ps1 -Checkpoint "build\checkpoint_demo" -Prompt "What " -MaxNewTokens 8 -Device cpu
 ```
 
 输出契约：stdout 打印 `checkpoint:`、`device:`、`param_device:`、`generated:`；监控服务抓 `generated:` 前缀。

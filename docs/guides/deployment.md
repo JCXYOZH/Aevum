@@ -3,7 +3,7 @@
 Linux 服务器推荐 `systemd + nginx`。静态站点由 nginx 提供，监控 API 只监听 `127.0.0.1:8781`，中继监听 `127.0.0.1:8790`。
 
 ```bash
-sudo bash apps/console/deploy/install.sh
+sudo bash ops/deploy/systemd/install.sh
 sudo systemctl status aevum-monitor
 curl -fsS http://127.0.0.1:8781/api/health
 ```

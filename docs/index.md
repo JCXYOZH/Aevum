@@ -12,7 +12,7 @@
 | [../start_here.md](../start_here.md) | 新人入口，三条路 |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | 提交规范与代码质量要求 |
 | [../CHANGELOG.md](../CHANGELOG.md) | 版本变更 |
-| [../apps/community/README.md](../apps/community/README.md) | 社区平台本体 |
+| [../interface/web/README.md](../interface/web/README.md) | 社区平台本体 |
 | [architecture/overview.md](architecture/overview.md) | 运行面、分层与边界 |
 | [architecture/code-map.md](architecture/code-map.md) | 入口、领域模块与拆分规则 |
 | [audit/2026-11-18-code-audit.md](audit/2026-11-18-code-audit.md) | 本轮全仓审计、指标与风险 |
@@ -35,4 +35,4 @@
 
 ## 状态
 
-页面文档已全部补齐，不再保留 0 字节占位。指标口径和最新数值见 `audit/2026-11-18-code-audit.md`，复算命令是 `python tools/analyze.py`。
+页面文档已全部补齐，不再保留 0 字节占位。指标口径和最新数值见 `audit/2026-11-18-code-audit.md`，复算命令是 `python ops/tools/analyze.py`。

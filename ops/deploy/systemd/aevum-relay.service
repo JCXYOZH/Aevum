@@ -1,0 +1,15 @@
+[Unit]
+Description=Aevum in-memory relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=@APP_ROOT@/command/relay
+ExecStart=@PYTHON@ -m relay --port 8790
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

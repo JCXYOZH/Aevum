@@ -11,78 +11,78 @@
 
 ## 这是什么
 
-Aevum 是社区自己的平台，不是某个产品的官网。它的目标是：一份 Web 前端，既能挂在自己的服务器上访问，也能被桌面端打包带走，多窗口，并且带真实的工作能力（社区的工具按需调度、本地安装、内置更新）。
+Aevum 现在按三个指挥态核心组织：**内核、AI 架构、引擎**。界面只负责呈现，`command/` 只负责指挥，后端 Python 业务已归档。
 
-目前有三部分：一个静态站点，一个只活在内存里的中继服务，一套内核与串口后端。中继负责会话、上下文与分片传输，不写盘、不建账号、不做检索；内核只产生状态、错误码与 80×25 单元格，不参与显示；页面完全由前端呈现。
+目录规则、柜子边界和迁移对照统一写在 [STRUCTURE.md](STRUCTURE.md)。先读它，再读各柜的 README。
 
 ## 代码在哪里
 
 | 路径 | 是什么 | 状态 |
 | --- | --- | --- |
-| `apps/community/web/` | 展示页 `index.html` + 多窗口看板 `desktop.html`，可直接挂 nginx | 已实现 |
-| `apps/relay/` | **纯内存中继**：会话、上下文、分片传输、在线计数；无数据库、无落盘 | 已实现 |
-| `apps/relay/contracts/` | 唯一契约源：`errors.json`（`0xRRFFTT` 码表）、`api.json`（HTTP 面） | 定稿 |
-| `apps/relay/deploy/` | 一键部署：systemd 单元、nginx vhost、`install.sh` | 可用 |
-| `apps/console/monitor/` | `desktop_server.py`：桌面监控 API，读检查点、训练指标、错误码，起模型子进程 | 已实现 |
-| `apps/console/bridge/` | 串口帧转 WebSocket，页面不直接碰内核 | 已实现 |
-| `apps/console/kernel/` | 引导、状态机、错误码、80×25 单元格；只做逻辑，不含页面 | 维护中 |
-| `engine/` | 独立渲染引擎：数学核心、PMX/VMD 解析、WebGL2 蒙皮渲染、VRM/Live2D；真实模型只在本地验证 | MMD/VRM/Live2D 可用 |
-| `apps/desktop/` | Electron 壳；`npm run dist:installer` 出 Inno Setup 安装包，`dist:dir` 出免安装目录 | 安装包已出 |
-| `src/memoria/` | Memoria C++ 内核：门控、链单元、三层平衡、分层记忆、训练、生成、检查点 | 可编译 |
-| `src/memoria/include/` | C++ 公共头文件；与 `src/memoria` 一一对应 | 可编译 |
-| `data/tinyshakespeare_3000.txt` | 3000 行公开语料，用于小模型冒烟训练；不是权重 | 已入库 |
-| `scripts/` | 构建、训练、生成、桌面栈、Linux 编译、桌面打包 | 可用 |
-| `src/fortuna/` | 内核方向：引导、内核、内存、调度、文件系统、网络、沙箱 | 空骨架 |
-| `src/libertas/` | 安全方向：基础件、工具、扫描、蜜罐、取证、SIEM、逆向、响应；`core` 为兼容入口 | 基础模块已迁入 |
-| `src/common/` | 三个模块共用的基础件（缓存、队列、日志、校验等） | 空骨架 |
-| `src/integrations/` | 外部系统对接（redis / postgres / kafka / openai / huggingface 等） | 空骨架 |
-| `docs/` | 设计、架构、ADR、运维文档 | 入口已补 |
-| `deployment/` | docker-compose、镜像、k8s、helm、ansible、terraform | 占位 |
-| `configs/` | 各模块配置样例 | 占位 |
-| `tests/` | 分层测试（unit / integration / performance / security） | 占位 |
-| `benchmarks/`、`experiments/`、`models/` | 基准、实验记录、根目录模型产物占位；源码中的 `models/` 目录是代码 | 占位/代码 |
+| `src/kernel/fortuna/` | 内核核心：引导、内存、调度、文件系统、网络、沙箱 | 维护中 |
+| `src/kernel/host/` | 内核宿主：串口桥、引导盘、机器人例程 | 维护中 |
+| `src/architecture/libertas/` | AI 架构核心：身份、工具、通知、治理、安全 | 已迁入 |
+| `src/architecture/memoria/` | AI 架构核心：训练、生成、检查点 | 可编译 |
+| `src/shared/common/` | 跨核心基础件 | 可用 |
+| `src/shared/integrations/` | 外部系统适配 | 骨架 |
+| `engine/` | 第三个核心：数学、PMX/VMD、VRM、Live2D、WebGL2 | 可用 |
+| `command/` | 统一指挥态：登记、状态契约、多进程骨架、中继 | 骨架 + 中继可用 |
+| `interface/web/` | 展示页、3D 桌面、MrHua 页面 | 已实现 |
+| `interface/desktop/` | Electron 壳与安装包 | 已出包 |
+| `interface/console/` | 旧 QML / Web UI | 归档界面 |
+| `archive/backend-python/monitor/` | 已放弃的 Python 业务后端 | 只读归档 |
+| `ops/` | 部署、构建、脚本、工具 | 可用 |
+| `docs/` | 架构、审计、ADR、运维 | 已补 |
+| `labs/` | 基准、实验、示例、沙箱 | 实验 |
+| `configs/`、`tests/` | 配置样例与测试 | 骨架 |
 
-**边界**：`src/memoria` 里是代码和空接口占位，不是训练权重。`*.pt`、`*.safetensors`、`*.ckpt`、`checkpoint*/`、`build/`、`apps/desktop/node_modules/`、`dist-app/` 都在 `.gitignore` 里；根目录 `/models/` 只放模型产物，`src/**/models` 是源码目录，照常入库。要发布模型，走 Release 附件、对象存储或服务器下载，不把大文件塞进 Git。
+**边界**：`build/`、`checkpoints/`、`data/`、`logs/`、`models/`、`vendor/` 是运行状态与缓存，不参与目录迁移。模型权重不进 Git。
+
+## Python 路径
+
+新结构把 `src` 拆成三个包根，包名保持不变：
+
+```powershell
+$env:PYTHONPATH = "$env:AEVUM_ROOT\src\kernel;$env:AEVUM_ROOT\src\architecture;$env:AEVUM_ROOT\src\shared"
+```
+
+Linux：
+
+```bash
+export PYTHONPATH="$AEVUM_ROOT/src/kernel:$AEVUM_ROOT/src/architecture:$AEVUM_ROOT/src/shared"
+```
+
+这样 `import fortuna`、`import libertas`、`import memoria`、`import common` 都不需要改导入名。
 
 ## 本地开发
 
-Windows 上在仓库根目录执行：
+只起静态页面：
 
 ```powershell
-scripts\desktop.ps1
+cd interface\web
+python -m http.server 8080
 ```
 
-它起中继 `127.0.0.1:8790`、监控与看板 `127.0.0.1:8781`、QEMU 串口 `127.0.0.1:5555`、串口桥接 `ws://127.0.0.1:8765`，并打开看板。只起页面、中继与监控：
+起纯内存中继：
 
 ```powershell
-scripts\desktop.ps1 -NoKernel
+cd command\relay
+python -m relay --port 8790
 ```
 
-带 Electron 壳：
-
-```powershell
-scripts\desktop.ps1 -NoKernel -Electron
-```
-
-停止：
-
-```powershell
-scripts\desktop.ps1 -Stop
-```
-
-脚本从 `PATH` 找 `python`；没有激活虚拟环境时用 `-Python` 指定解释器。QEMU 从 `PATH`、`QEMU_BIN` 或默认安装位置找，也可以用 `-Qemu`。日志与 pid 状态在 `build\desktop-logs`。
+旧的 `ops\scripts\desktop.ps1` 仍然拉起监控与串口链路；那属于归档后的后端方向，不再作为新主线。新的主线只围绕内核、架构、引擎三个核心。
 
 内核是独立进程，不是网页的一部分：QEMU 只提供串口，桥接把串口帧转成 WebSocket；页面只连中继与桥接，不直接碰内核。任何一段挂掉，其余仍能启动。
 
 ## Libertas 安全模块
 
-`src/libertas/core` 只保留兼容入口，具体实现按职责分布在 `foundation`、`observability`、`security`、`identity`、`release`、`data`、`workflow`、`ai`、`tools`、`models`、`media`、`code`、`network` 等目录。
+`src/architecture/libertas/core` 只保留兼容入口，具体实现按职责分布在 `foundation`、`observability`、`security`、`identity`、`release`、`data`、`workflow`、`ai`、`tools`、`models`、`media`、`code`、`network` 等目录。
 
-- `src/libertas/foundation/`：异常、终端、事件总线、缓存、限流、重试、指标、健康检查、计时、配置。
-- `src/libertas/models/legacy_models/`：从 `mrhua/models` 迁入，36 个 `.py`，33 个不超过 500 行，3 个因单个方法体过大仍超过 500 行；`ModelEngine` 的 107 个方法全部保留。
-- `src/libertas/tools/legacy_tools/`：旧工具层迁入；外部扫描工具从 `PATH` 或环境变量解析，不在仓库里写死本机路径。
-- `src/libertas/security/legacy_security/`：旧安全模块迁入，121 个 `.py`，按资产发现、攻击链、扫描器、指纹库等职责分包。
-- `src/libertas/security/`：隐私、合规、守护、沙箱、规则、漏洞情报等能力。
+- `src/architecture/libertas/foundation/`：异常、终端、事件总线、缓存、限流、重试、指标、健康检查、计时、配置。
+- `src/architecture/libertas/models/legacy_models/`：从 `mrhua/models` 迁入，36 个 `.py`，33 个不超过 500 行，3 个因单个方法体过大仍超过 500 行；`ModelEngine` 的 107 个方法全部保留。
+- `src/architecture/libertas/tools/legacy_tools/`：旧工具层迁入；外部扫描工具从 `PATH` 或环境变量解析，不在仓库里写死本机路径。
+- `src/architecture/libertas/security/legacy_security/`：旧安全模块迁入，121 个 `.py`，按资产发现、攻击链、扫描器、指纹库等职责分包。
+- `src/architecture/libertas/security/`：隐私、合规、守护、沙箱、规则、漏洞情报等能力。
 
 旧 Web UI 的 `get_MrHua`、`queue_orb_command` 目前是 `_compat_web.py` 的兼容占位，接入 Aevum Web 层前不是完整实现。
 
@@ -91,14 +91,14 @@ scripts\desktop.ps1 -Stop
 验证：
 
 ```powershell
-python -m compileall -q src\libertas
+python -m compileall -q src\architecture\libertas
 ```
 
 当前结果：编译 0 错误；`legacy_models` 6 个子包导入通过，9 个单例工厂返回正确实例，函数全局名检查无实际未定义项。
 
 ## Memoria C++ 内核
 
-`src/memoria/` 是 C++（LibTorch）实现，`src/memoria/include/` 是公共头文件目录。统一入口是 `src/memoria/include/aevum_core.h`：模块内外都写 `#include <include/aevum_core.h>`，构建统一提供 `-I src/memoria`；同目录内部依赖用 `"..."`，公共路径不散落到每个源文件。当前默认单周期链路：
+`src/architecture/memoria/` 是 C++（LibTorch）实现，`src/architecture/memoria/include/` 是公共头文件目录。统一入口是 `src/architecture/memoria/include/aevum_core.h`：模块内外都写 `#include <include/aevum_core.h>`，构建统一提供 `-I src/architecture/memoria`；同目录内部依赖用 `"..."`，公共路径不散落到每个源文件。当前默认单周期链路：
 
 ```text
 embedding -> gated valve -> chain × 3 -> tri-balancer × 3
@@ -108,25 +108,25 @@ embedding -> gated valve -> chain × 3 -> tri-balancer × 3
 构建（Windows，需要 VS2022 Build Tools、Windows SDK、LibTorch 头与库）：
 
 ```powershell
-scripts\build.ps1
+ops\scripts\build.ps1
 ```
 
 产物是 `build\memoria_train.exe`、`build\memoria_gen.exe`、`build\memoria_gen_cpu.exe`。Linux 云端：
 
 ```bash
-bash scripts/build-linux.sh
+bash ops/scripts/build-linux.sh
 ```
 
 输出在 `build/linux/`。小语料训练：
 
 ```powershell
-scripts\train.ps1 -Epochs 2 -Batch 16 -Dim 48 -Device cuda
+ops\scripts\train.ps1 -Epochs 2 -Batch 16 -Dim 48 -Device cuda
 ```
 
 生成：
 
 ```powershell
-scripts\generate.ps1 -Checkpoint "build\checkpoint_shakespeare_words_full" -Prompt "What " -MaxNewTokens 8 -Device cpu
+ops\scripts\generate.ps1 -Checkpoint "build\checkpoint_shakespeare_words_full" -Prompt "What " -MaxNewTokens 8 -Device cpu
 ```
 
 模型权重默认写到 `build/checkpoint_*`，不进 Git。看板通过 `MEMORIA_BUILD_ROOT` 或 exe 旁的 `model-root.txt` 找检查点；语料目录可用 `MEMORIA_DATA_ROOT` 指定。
@@ -134,7 +134,7 @@ scripts\generate.ps1 -Checkpoint "build\checkpoint_shakespeare_words_full" -Prom
 ## 桌面壳与安装包
 
 ```powershell
-cd apps\desktop
+cd interface\desktop
 $env:MEMORIA_ELECTRON_DIST = "<path-to-electron-dist>"
 $env:MEMORIA_MONITOR_EXE = "<path-to-monitor-exe>"   # 可选
 npm run dist:installer  # Windows 安装包（Inno Setup，和 mrhua 同一形式）
@@ -161,15 +161,15 @@ npm run dist:dir        # 免安装目录
 
 ## 现在做到哪一步
 
-**展示页**：`apps/community/web/index.html` 已改成工作台结构，左侧 rail 常驻灵体与状态，右侧是连续内容，不再是独立展台。
+**展示页**：`interface/web/index.html` 已改成工作台结构，左侧 rail 常驻灵体与状态，右侧是连续内容，不再是独立展台。
 
-**看板**：`apps/community/web/desktop.html` 是多窗口桌面，总览、内核、训练、模型、中继、错误码、展示页都是可开的窗口；展示页保留为其中一个窗口，不删除。
+**看板**：`interface/web/desktop.html` 是多窗口桌面，总览、内核、训练、模型、中继、错误码、展示页都是可开的窗口；展示页保留为其中一个窗口，不删除。
 
 **中继**：会话与上下文、分片传输、在线/浏览计数、交流房间可用；HTTP 面 15 个端点，契约 `MRR1/1`，码表 `0xRRFFTT`。
 
-**监控服务**：`apps/console/monitor/desktop_server.py` 读检查点、训练日志和错误码，起模型生成子进程；`/api/model` 能看到本地检查点，`POST /api/model/generate` 能返回生成文本。
+**监控服务**：`archive/backend-python/monitor/desktop_server.py` 读检查点、训练日志和错误码，起模型生成子进程；`/api/model` 能看到本地检查点，`POST /api/model/generate` 能返回生成文本。
 
-**桌面壳**：`apps/desktop` 已能起 Electron 窗口，并拉起监控服务；Windows Inno Setup 安装包与免安装目录两套构建入口已配置。
+**桌面壳**：`interface/desktop` 已能起 Electron 窗口，并拉起监控服务；Windows Inno Setup 安装包与免安装目录两套构建入口已配置。
 
 **还没做**：账号与登录、帖子检索与回复层级、云端模型/训练接口的真实接通、Linux 安装包、签名与自动更新。
 
@@ -182,10 +182,10 @@ npm run dist:dir        # 免安装目录
 一台 Alibaba Cloud Linux 3 主机，克隆仓库后一条命令：
 
 ```bash
-sudo bash apps/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
+sudo bash command/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
 ```
 
-脚本做四件事：装 nginx 与 Python、起 `aevum-relay`（只监听 `127.0.0.1:8790`）、写 nginx vhost（静态站 + `/v1/` 反代，关闭缓冲）、用 certbot 申请证书并跳转 HTTPS。令牌由 nginx 注入，浏览器拿不到；中继进程 `MemoryMax=256M`，因为它本来就不需要磁盘。细节与排障见 [apps/relay/deploy/README.md](apps/relay/deploy/README.md)。
+脚本做四件事：装 nginx 与 Python、起 `aevum-relay`（只监听 `127.0.0.1:8790`）、写 nginx vhost（静态站 + `/v1/` 反代，关闭缓冲）、用 certbot 申请证书并跳转 HTTPS。令牌由 nginx 注入，浏览器拿不到；中继进程 `MemoryMax=256M`，因为它本来就不需要磁盘。细节与排障见 [command/relay/deploy/README.md](command/relay/deploy/README.md)。
 
 ## 怎么开始
 
@@ -193,8 +193,8 @@ sudo bash apps/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.
 | --- | --- |
 | 三分钟内弄清这是什么 | [start_here.md](start_here.md) |
 | 提代码 | [CONTRIBUTING.md](CONTRIBUTING.md)（一次更新一次提交），或下面的合并规则 |
-| 把站点跑起来 | [apps/community/README.md](apps/community/README.md) |
-| 部署整站与中继 | [apps/relay/deploy/README.md](apps/relay/deploy/README.md) |
+| 把站点跑起来 | [interface/web/README.md](interface/web/README.md) |
+| 部署整站与中继 | [command/relay/deploy/README.md](command/relay/deploy/README.md) |
 | 了解行为边界与举报流程 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
 | 看文档索引 | [docs/index.md](docs/index.md) |
 
@@ -223,4 +223,4 @@ sudo bash apps/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.
 
 ---
 
-In English: Aevum is a community-built platform for its own community — a static site plus a memory-only relay that keeps sessions, context and transfers in RAM and writes nothing to disk. The relay lives in `apps/relay/` and is being merged; it has no accounts, no database and no history. Code is licensed under MPL 2.0, and participation is governed by `CODE_OF_CONDUCT.md` (report to `open@mrhua.cn`).
+In English: Aevum is a community-built platform for its own community — a static site plus a memory-only relay that keeps sessions, context and transfers in RAM and writes nothing to disk. The relay lives in `command/relay/` and is being merged; it has no accounts, no database and no history. Code is licensed under MPL 2.0, and participation is governed by `CODE_OF_CONDUCT.md` (report to `open@mrhua.cn`).

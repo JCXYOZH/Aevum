@@ -1,6 +1,6 @@
 # Memoria
 
-Memoria 是 Aevum 里负责“记忆方向”的模块，现在已经不只是空骨架：`src/memoria/` 是 C++（LibTorch）实现，`src/memoria/include/` 是公共头文件目录，统一入口是 `src/memoria/include/aevum_core.h`。模块内外都写 `#include <include/aevum_core.h>`，构建提供 `-I src/memoria`；同目录内部依赖用 `"..."`。
+Memoria 是 Aevum 里负责“记忆方向”的模块，现在已经不只是空骨架：`src/architecture/memoria/` 是 C++（LibTorch）实现，`src/architecture/memoria/include/` 是公共头文件目录，统一入口是 `src/architecture/memoria/include/aevum_core.h`。模块内外都写 `#include <include/aevum_core.h>`，构建提供 `-I src/architecture/memoria`；同目录内部依赖用 `"..."`。
 
 ## 它是什么
 
@@ -23,24 +23,24 @@ embedding
 
 | 路径 | 内容 |
 | --- | --- |
-| `src/memoria/model.cpp` | 整条前向链的装配 |
-| `src/memoria/embedding_layer.cpp` | token 到向量 |
-| `src/memoria/gated_valve.cpp` | 门控写入 |
-| `src/memoria/chain_unit.cpp` | 循环单元 |
-| `src/memoria/tri_balancer.cpp` | 三层平衡 |
-| `src/memoria/strata_memory.cpp` | 分层记忆 |
-| `src/memoria/module_io.cpp` | 模块级保存/加载 |
-| `src/memoria/checkpoint.cpp` | 整模型与优化器检查点 |
-| `src/memoria/trainer.cpp` | 文本训练、AdamW、余弦退火、指标 |
-| `src/memoria/generator.cpp` | 采样生成 |
-| `src/memoria/main.cpp` | 训练入口 |
-| `src/memoria/chat_main.cpp` | 生成入口 |
-| `src/memoria/text_dataset.cpp` | UTF-8 文本/JSON 语料与词表 |
-| `src/memoria/cpu_cuda_stub.cpp` | CPU-only 目标用的 CUDA 符号桩 |
+| `src/architecture/memoria/model.cpp` | 整条前向链的装配 |
+| `src/architecture/memoria/embedding_layer.cpp` | token 到向量 |
+| `src/architecture/memoria/gated_valve.cpp` | 门控写入 |
+| `src/architecture/memoria/chain_unit.cpp` | 循环单元 |
+| `src/architecture/memoria/tri_balancer.cpp` | 三层平衡 |
+| `src/architecture/memoria/strata_memory.cpp` | 分层记忆 |
+| `src/architecture/memoria/module_io.cpp` | 模块级保存/加载 |
+| `src/architecture/memoria/checkpoint.cpp` | 整模型与优化器检查点 |
+| `src/architecture/memoria/trainer.cpp` | 文本训练、AdamW、余弦退火、指标 |
+| `src/architecture/memoria/generator.cpp` | 采样生成 |
+| `src/architecture/memoria/main.cpp` | 训练入口 |
+| `src/architecture/memoria/chat_main.cpp` | 生成入口 |
+| `src/architecture/memoria/text_dataset.cpp` | UTF-8 文本/JSON 语料与词表 |
+| `src/architecture/memoria/cpu_cuda_stub.cpp` | CPU-only 目标用的 CUDA 符号桩 |
 
 ## 与 Python 骨架的关系
 
-`src/memoria/` 下还保留着早期 Python 包的空目录（`core/`、`layers/`、`trainers/` 等），那是接口职责占位，当前不参与 C++ 构建。真正的可编译实现是 `src/memoria/*.cpp` 与 `src/memoria/include/*.h`。不要把空 Python 文件误当成已实现模块。
+`src/architecture/memoria/` 下还保留着早期 Python 包的空目录（`core/`、`layers/`、`trainers/` 等），那是接口职责占位，当前不参与 C++ 构建。真正的可编译实现是 `src/architecture/memoria/*.cpp` 与 `src/architecture/memoria/include/*.h`。不要把空 Python 文件误当成已实现模块。
 
 ## 权重边界
 

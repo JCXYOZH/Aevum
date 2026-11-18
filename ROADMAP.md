@@ -8,14 +8,14 @@
 - [x] 许可定为 MPL-2.0
 - [x] 行为准则归位到 `CODE_OF_CONDUCT.md`
 - [x] 入口文档：README / PROGRESS / ROADMAP / start_here / CONTRIBUTING / CHANGELOG
-- [x] 静态站首版 `apps/community/web/index.html`
+- [x] 静态站首版 `interface/web/index.html`
 
 ## P1 · 一个能打开的地址
 
 先有地址，再谈功能。
 
-- [ ] 二维码图入库 `apps/community/web/assets/qrcode.png`
-- [ ] 服务器侧：克隆仓库 → nginx 指向 `apps/community/web` → 解析域名 → 签证书
+- [ ] 二维码图入库 `interface/web/assets/qrcode.png`
+- [ ] 服务器侧：克隆仓库 → nginx 指向 `interface/web` → 解析域名 → 签证书
 - [ ] 安全基线：只开 80/443，关目录索引，`server_tokens off`
 - [ ] 更新方式：`git pull` 即生效，前端没有构建步骤
 

@@ -7,7 +7,7 @@
 1. [README.md](README.md) —— 项目是干什么的，代码在哪张表里
 2. [PROGRESS.md](PROGRESS.md) —— 真实进度，含"未完成"清单
 3. [ROADMAP.md](ROADMAP.md) —— 接下来打算做什么
-4. `apps/community/web/index.html` —— 页面本身，双击就能打开
+4. `interface/web/index.html` —— 页面本身，双击就能打开
 
 ## 我想提代码
 
@@ -18,7 +18,7 @@
 
 ## 我要把它挂到服务器
 
-1. [apps/community/README.md](apps/community/README.md) —— 静态站怎么起、怎么更新
+1. [interface/web/README.md](interface/web/README.md) —— 静态站怎么起、怎么更新
 2. `deployment/` —— **全是 0 字节占位**，不是能用的编排文件
 3. `docs/guides/deployment.md` —— 同样为空，别照着它做
 

@@ -1,6 +1,6 @@
 # Memoria 监控 API
 
-由 `apps/console/monitor/desktop_server.py` 提供，默认 `http://127.0.0.1:8781`。页面只调这些接口，不直接读权重或训练文件。
+由 `archive/backend-python/monitor/desktop_server.py` 提供，默认 `http://127.0.0.1:8781`。页面只调这些接口，不直接读权重或训练文件。
 
 ## 只读
 
@@ -32,7 +32,7 @@
 
 - `MEMORIA_BUILD_ROOT`：检查点与模型 exe 的根；默认 `build`。
 - `MEMORIA_DATA_ROOT`：语料根；默认 `data`。
-- `MEMORIA_WEB_ROOT`：页面根；冻结包默认 `resources/web`，源码默认 `apps/community/web`。
+- `MEMORIA_WEB_ROOT`：页面根；冻结包默认 `resources/web`，源码默认 `interface/web`。
 - 所有路径必须落在 `ROOT`、`BUILD_ROOT` 或 `DATA_ROOT` 内；越界返回 `path must stay inside the project, model root or data root`。
 
 ## 云端模型

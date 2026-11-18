@@ -1,0 +1,13 @@
+[Unit]
+Description=Aevum serial bridge (kernel serial -> WebSocket)
+After=aevum-kernel.service
+Requires=aevum-kernel.service
+
+[Service]
+Type=simple
+ExecStart=@PYTHON@ @APP_ROOT@/src/kernel/host/bridge/serial_bridge.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

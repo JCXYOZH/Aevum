@@ -8,7 +8,7 @@
 - **测试**：只服务自动测试。
 - **官方运行时**：第三方 Live2D Cubism Core，不属于自研代码。
 
-原先放在 `engine/` 的 UI 外壳、Orb 交互、皮肤业务、世界演示、对话枢纽已移到 `apps/console/ui/`，不再计入引擎模块。
+原先放在 `engine/` 的 UI 外壳、Orb 交互、皮肤业务、世界演示、对话枢纽已移到 `interface/console/`，不再计入引擎模块。
 
 ## 1. 总数
 
@@ -210,7 +210,7 @@
 
 ## 3. 非引擎应用代码（已移出 `engine/`）
 
-`apps/console/ui/` 下的 5 个单闭包应用文件不在引擎统计内：
+`interface/console/` 下的 5 个单闭包应用文件不在引擎统计内：
 
 | 文件 | 行数 | 业务逻辑 |
 |---|---:|---|
@@ -264,6 +264,6 @@ app/validate/validate.js
 - **验证工具**：`app/validate/validate.js`。
 - **测试**：`tests/` 2 个。
 - **官方运行时**：`vendor/live2dcubismcore.min.js`。
-- **非引擎应用**：`apps/console/ui/` 的 shell、orb、skin、world、dialogue、tools。
+- **非引擎应用**：`interface/console/` 的 shell、orb、skin、world、dialogue、tools。
 
 判定依据是模块职责与依赖链，不是 `validate.html` 是否加载。

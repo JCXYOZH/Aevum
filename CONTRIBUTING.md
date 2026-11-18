@@ -53,11 +53,11 @@ fix(libertas): 扫描结果为空时返回 204 而不是 500
 
 | 改动内容 | 放哪 |
 | --- | --- |
-| 社区平台（前端、桌面壳、页面） | `apps/community/` |
-| 内核方向 | `src/fortuna/` |
-| 安全方向 | `src/libertas/` |
-| 记忆方向 | `src/memoria/` |
-| 三模块共用的基础件 | `src/common/` |
+| 社区平台（前端、桌面壳、页面） | `interface/web/` |
+| 内核方向 | `src/kernel/fortuna/` |
+| 安全方向 | `src/architecture/libertas/` |
+| 记忆方向 | `src/architecture/memoria/` |
+| 三模块共用的基础件 | `src/shared/common/` |
 | 架构决策记录 | `docs/adr/`（编号递增，一篇一个决定） |
 | 未验证的试验 | `sandbox/` |
 

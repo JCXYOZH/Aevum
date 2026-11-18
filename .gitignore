@@ -12,12 +12,12 @@ __pycache__/
 
 # Build outputs and local tooling
 build/
-apps/desktop/node_modules/
-apps/desktop/dist-app/
-apps/desktop/dist/
-apps/desktop/dist-run*/
-apps/console/monitor/dist/
-apps/console/monitor/build/
+interface/desktop/node_modules/
+interface/desktop/dist-app/
+interface/desktop/dist/
+interface/desktop/dist-run*/
+archive/backend-python/monitor/dist/
+archive/backend-python/monitor/build/
 *.obj
 *.lib
 *.exp

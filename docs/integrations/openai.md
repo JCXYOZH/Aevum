@@ -1,6 +1,6 @@
 # OpenAI 适配
 
-`src/integrations/openai` 用于兼容 OpenAI 风格的聊天与嵌入接口。云端对话在监控服务里通过 `cloud_endpoint`、`cloud_model_name`、`cloud_api_key` 配置，不在前端保存密钥。
+`src/shared/integrations/openai` 用于兼容 OpenAI 风格的聊天与嵌入接口。云端对话在监控服务里通过 `cloud_endpoint`、`cloud_model_name`、`cloud_api_key` 配置，不在前端保存密钥。
 
 默认只在本机开放模型生成；云端模式必须显式开启，并对工具调用做作用域校验。
 ## 边界

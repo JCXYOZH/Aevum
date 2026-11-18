@@ -1,6 +1,6 @@
 # HuggingFace 适配
 
-`src/integrations/huggingface` 提供 model、pipeline、tokenizer 适配。它只做加载与调用转换，不把模型权重放进仓库。
+`src/shared/integrations/huggingface` 提供 model、pipeline、tokenizer 适配。它只做加载与调用转换，不把模型权重放进仓库。
 
 使用前确认本地缓存目录和离线模式；CI 使用 mock，不下载真实权重。新增模型族时先补 tokenizer 与输入形状测试。
 ## 边界

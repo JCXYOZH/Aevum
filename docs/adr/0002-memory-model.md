@@ -6,7 +6,7 @@
 
 ## 边界
 
-- `apps/relay` 的会话、分片和房间成员只在内存。
+- `command/relay` 的会话、分片和房间成员只在内存。
 - `loop.db` 保存订阅、来源、墙和审计，不和 `users.db` 混表。
 - `mail.json`、`loop.key`、`loop.pepper` 只在数据目录，不进 Git。
 

@@ -5,14 +5,14 @@
 可复算的静态审计：
 
 ```powershell
-D:\venv\Scripts\python.exe tools\analyze.py
+D:\venv\Scripts\python.exe ops\tools\analyze.py
 ```
 
 拆分回归至少做：
 
 ```powershell
-python -m compileall -q src\libertas apps\console\monitor
-python apps\console\monitor\desktop_server.py --help
+python -m compileall -q src\architecture\libertas archive\backend-python\monitor
+python archive\backend-python\monitor\desktop_server.py --help
 curl http://127.0.0.1:8781/
 ```
 

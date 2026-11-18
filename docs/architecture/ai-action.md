@@ -6,9 +6,9 @@
 
 | 部分 | 位置 | 状态 |
 | --- | --- | --- |
-| Memoria C++ | `src/memoria/*.cpp` | 可编译，训练/生成/检查点已接 |
-| Memoria 公共头文件 | `src/memoria/include/*.h` | 已从 `include/memoria/` 移到 `include/` 直属 |
-| Memoria 公共入口 | `src/memoria/include/aevum_core.h` | 唯一入口，文件名不带 `memoria` |
+| Memoria C++ | `src/architecture/memoria/*.cpp` | 可编译，训练/生成/检查点已接 |
+| Memoria 公共头文件 | `src/architecture/memoria/include/*.h` | 已从 `include/memoria/` 移到 `include/` 直属 |
+| Memoria 公共入口 | `src/architecture/memoria/include/aevum_core.h` | 唯一入口，文件名不带 `memoria` |
 | AI 动作桥原型 | `tools/ai-bridge/` | 未接入运行时，仍是独立原型 |
 | 动画运行时 | `engine/animation/` | 已有动画底座，尚未接标签向量 |
 
@@ -25,10 +25,10 @@
 Memoria 的编译根是：
 
 ```bash
--I<repo>/src/memoria
+-I<repo>/src/architecture/memoria
 ```
 
-因此所有 `src/memoria/*.cpp` 统一写：
+因此所有 `src/architecture/memoria/*.cpp` 统一写：
 
 ```cpp
 #include <include/aevum_core.h>

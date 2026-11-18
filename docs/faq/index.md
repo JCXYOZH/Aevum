@@ -2,7 +2,7 @@
 
 ## 根路径为什么是展示页？
 
-`desktop_server.py` 明确把 `/`、`/apps/community/web` 和带斜杠目录都指向 `index.html`；3D 桌面只保留 `/desktop` 和 `desktop.html` 两个显式入口。
+`desktop_server.py` 明确把 `/`、`/interface/web` 和带斜杠目录都指向 `index.html`；3D 桌面只保留 `/desktop` 和 `desktop.html` 两个显式入口。
 
 ## 部署检查为什么报“根页是展示页”失败？
 

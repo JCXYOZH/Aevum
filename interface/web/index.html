@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Aevum 是一个社区共建的社区平台：内核、模型、3D 桌面和内存中继收在同一块地方，代码以 MPL-2.0 开源。">
+<title>Aevum · 社区共建的社区平台</title>
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/essence.css">
+<link rel="stylesheet" href="styles/terminal.css">
+<link rel="stylesheet" href="styles/relay.css">
+<link rel="stylesheet" href="styles/progress.css">
+<link rel="stylesheet" href="styles/modules.css">
+<link rel="stylesheet" href="styles/join.css">
+<link rel="stylesheet" href="styles/layout.css">
+</head>
+<body data-page="showcase">
+
+<main class="page">
+
+  <section class="hero" id="hero">
+    <div class="hero__inner">
+      <h1 class="hero__word">AEVUM</h1>
+      <p class="hero__lead">一个社区共建的社区平台：内核、模型、3D 桌面和内存中继收在同一块地方。先把目录立住、把文档写实、让每一块真的跑起来，再谈功能。</p>
+      <p class="hero__links">
+        <a class="hero__jump" href="#about">先看这是什么</a>
+        <a class="hero__jump" href="desktop.html" target="_top">打开 3D 桌面</a>
+      </p>
+      <p class="hero__note">MPL-2.0 · 进度口径 2026-11-17</p>
+    </div>
+
+    <!-- 彩色灵体：挂在正文块下方那条锚线上左右游走；滚动时跟着版面走，不显示/隐藏 -->
+    <div class="essence" id="essence" data-state="offline" aria-hidden="true">
+      <span class="essence__halo"></span>
+      <span class="essence__halo essence__halo--alt"></span>
+      <span class="essence__core"></span>
+    </div>
+  </section>
+
+  <section class="about" id="about">
+    <header class="section-head">
+      <h2>这是什么</h2>
+      <p>社区共建的项目，代码以 MPL-2.0 开源。三个方向共用一个仓库，各自推进、互不阻塞；这个页面是它的显示层——内核只产生状态与错误码，桌面只做可操作的事，说明留在这里。</p>
+    </header>
+
+    <ul class="mods">
+      <li>
+        <span class="mods__name">fortuna <i class="mods__tag">内核</i></span>
+        <div>
+          <p class="mods__path">src/kernel/fortuna</p>
+          <p class="mods__desc">从实模式起步的 x86 引导、内核入口、内存、调度与文件系统，用 C 写；引导程序、链接脚本和串口帧都自己动手。内核在 QEMU 里跑通后，把 80×25 文本屏推到这块页面。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">libertas <i class="mods__tag">安全</i></span>
+        <div>
+          <p class="mods__path">src/architecture/libertas</p>
+          <p class="mods__desc">扫描、蜜罐、取证、响应；工具打成镜像按需运行。身份、子用户、会话与数据作用域也归在这里，先做本机隔离，再谈平台化调度。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">memoria <i class="mods__tag">记忆</i></span>
+        <div>
+          <p class="mods__path">src/architecture/memoria</p>
+          <p class="mods__desc">记忆层、知识与检索；把讨论、工具产出和训练记录沉淀成可检索的长期记忆。模型在仓库外重新训练：1,352,744 参数、3,000 词表，权重不进仓库。</p>
+        </div>
+      </li>
+    </ul>
+
+    <p class="motto">创造高于消费，心法高于功能，自由高于归属。</p>
+  </section>
+
+  <section class="about" id="desktop">
+    <header class="section-head">
+      <h2>桌面是程序，不是另一个展示页</h2>
+      <p>3D 桌面先渲染窗口、启动项和状态，再把角色模型交给引擎；MrHua、订阅、内核实况和中继都在桌面里打开，不用为同一个入口再做一个页面。下面这块只说明边界，操作留在桌面里。</p>
+    </header>
+
+    <ul class="mods">
+      <li>
+        <span class="mods__name">3D 桌面 <i class="mods__tag">入口</i></span>
+        <div>
+          <p class="mods__path">interface/web/desktop.html</p>
+          <p class="mods__desc">窗口、启动项、场景与角色分两段加载：功能先出来，模型随后进场，避免大文件把页面卡住。浏览器和以后的桌面外壳打开的是同一份页面。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">MrHua <i class="mods__tag">程序</i></span>
+        <div>
+          <p class="mods__path">interface/web/mrhua</p>
+          <p class="mods__desc">3D 桌面里的一个程序，不是独立页面。身份、治理、广域网和模型对话按角色权限接入；没有后端能力的启动项先不摆样式，避免点开是空的。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">订阅 <i class="mods__tag">原生窗口</i></span>
+        <div>
+          <p class="mods__path">js/desktop/panels/subscribe.js</p>
+          <p class="mods__desc">订阅走桌面原生窗口，不再嵌入一层网页。同一套样式只维护一份，避免“桌面里一个样、网页里另一个样”。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">角色模型 <i class="mods__tag">引擎</i></span>
+        <div>
+          <p class="mods__path">engine/assets/models</p>
+          <p class="mods__desc">VRM 主角色与 PMX 引导角色由引擎自己的解析器加载；模型路径从配置进，权重和人物资产不塞进仓库。低配时先只加载一个角色，另一个按需再进场。</p>
+        </div>
+      </li>
+    </ul>
+
+    <p class="motto">同一件事只留一个入口：桌面负责操作，展示页负责说清楚。</p>
+  </section>
+
+  <section class="about" id="model">
+    <header class="section-head">
+      <h2>模型一周期怎么走</h2>
+      <p>Memoria 的前向主链按代码里的真实顺序写，不套用现成架构的名字。训练、生成和检查点在外围，下面只列一个周期的主路径。</p>
+    </header>
+
+    <ol class="phases">
+      <li class="phase">
+        <span class="phase__id">01</span>
+        <div class="phase__body">
+          <h3>嵌入与位置</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>token embedding + 固定正弦位置编码</li>
+            <li>输入形状 [B, S]，3,000 词表</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <span class="phase__id">02</span>
+        <div class="phase__body">
+          <h3>门控阀</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>Q / K / V 三路门控混合，控制写入强度</li>
+            <li>旁路标记分支只出结果，不进入主路径</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <span class="phase__id">03</span>
+        <div class="phase__body">
+          <h3>链式单元 × 3</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>每个链式单元 3 个 SubNet、9 个 Processor，顺序更新</li>
+            <li>三路平衡器按 Q/K/V 配比收敛，再交给下一层</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <span class="phase__id">04</span>
+        <div class="phase__body">
+          <h3>分层记忆与融合</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>分层记忆写入与检索，多轮回写</li>
+            <li>融合后做 V 正则，再归一化到输出层</li>
+          </ul>
+        </div>
+      </li>
+      <li class="phase">
+        <span class="phase__id">05</span>
+        <div class="phase__body">
+          <h3>云端对话与工具</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分验收</p>
+          <ul class="phase__items">
+            <li>后端代理已接：登录用户可拿 web_search，配置齐全才发 generate_media</li>
+            <li>访客只走文本；媒体产物写入各自的 data_scope 目录</li>
+            <li>真实云端密钥仍未配置，返回“未配置密钥”是当前预期</li>
+          </ul>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="about" id="kernel">
+    <header class="section-head">
+      <h2>内核实况 · 实时</h2>
+      <p>当前内核是 32 位裸机的三自由度平面机械臂，把 80×25 VGA 的文本单元按差量帧经 COM1 送出，串口桥接再转成 WebSocket。这里画的是真实帧；没有帧时画布保持空白，不填演示数据。</p>
+    </header>
+
+    <section class="terminal" aria-label="VGA 文本屏幕">
+      <header class="terminal__bar">
+        <span class="terminal__link">
+          <i class="dot" id="dot" data-state="offline"></i>
+          <span id="link-text">连接中</span>
+        </span>
+        <span class="terminal__stats">
+          <span>帧 <b id="stat-frames">0</b></span>
+          <span>格 <b id="stat-cells">0</b></span>
+        </span>
+        <button class="terminal__reconnect" id="reconnect" type="button">重连</button>
+      </header>
+
+      <div class="terminal__screen">
+        <canvas id="vga" width="960" height="400"></canvas>
+      </div>
+
+      <footer class="terminal__meta">
+        <span id="source-hint">实时帧 · ws://127.0.0.1:8765</span>
+        <span>80×25 格 · 12×16 像素 · 16 色</span>
+      </footer>
+    </section>
+
+    <ul class="mods">
+      <li>
+        <span class="mods__name">proc1 <i class="mods__tag">控制</i></span>
+        <div>
+          <p class="mods__path">src/kernel/host/console/robot/kernel.c</p>
+          <p class="mods__desc">算三自由度平面臂的关节量：雅可比伪逆、阻尼、零空间投影和目标速度前馈。目标轨迹故意有一段超出可达半径，用来看最小范数解怎么避开奇异构型。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">proc2 <i class="mods__tag">渲染</i></span>
+        <div>
+          <p class="mods__path">src/kernel/host/console/robot/kernel.c</p>
+          <p class="mods__desc">每帧在影子显存里画 ASCII 机械臂、目标点、轨迹和右侧数值面板，再整块搬到 VGA 文本显存；两个进程按 1:1 协作切换。</p>
+        </div>
+      </li>
+      <li>
+        <span class="mods__name">COM1 <i class="mods__tag">帧</i></span>
+        <div>
+          <p class="mods__path">A5 5A 01 COUNT [row col ch attr] CRC</p>
+          <p class="mods__desc">只发变化过的 80×25 文本单元，不重发整屏。桌面窗口和展示页都通过同一个串口桥接读帧；没有桥接时不伪造画面。</p>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section class="relay" id="relay" data-base="http://127.0.0.1:8790">
+    <header class="section-head">
+      <h2>中继交流</h2>
+      <p>房间开在服务端内存里，关掉就没了。后端不在线时，这一块会切到当前标签页的前端内存演示：能发帖、能看见回复，但刷新即清空。</p>
+    </header>
+
+    <div class="relay__room">
+      <div class="relay__bar">
+        <span class="relay__room-id">房间 · <span id="relay-room">lobby</span></span>
+        <dl class="relay__meters">
+          <div><dt>在线</dt><dd id="relay-online">—</dd></div>
+          <div><dt>浏览</dt><dd id="relay-views">—</dd></div>
+          <div><dt>落盘</dt><dd>false</dd></div>
+        </dl>
+        <span class="relay__led" id="relay-state" data-state="idle">未连接</span>
+      </div>
+
+      <div id="pane-talk">
+        <ol class="relay__feed" id="relay-feed" aria-live="polite"></ol>
+        <p class="relay__empty" id="relay-empty">还没有人说话。发第一条——它会进服务端房间，也会随房间一起消失；连不上后端时，它只留在当前标签页的内存里。</p>
+        <div class="relay__compose">
+          <input id="relay-nick" placeholder="昵称" maxlength="16" autocomplete="off">
+          <textarea id="relay-text" rows="2" placeholder="说点什么。后端在线时写进房间会话；离线时只写进当前页面的内存。都不落盘。" maxlength="2000"></textarea>
+          <button class="relay__send" id="relay-send" type="button">发送</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="progress" id="progress">
+    <header class="section-head">
+      <h2>开源进度</h2>
+      <p>不凑数字，只按阶段写实际到了哪一步。没做的直接写没做，不用“本地完成，待部署”代替可复现的结果。</p>
+    </header>
+
+    <p class="motto">能不能跑，代码里见；写了多少文件不算进度。</p>
+
+    <ol class="phases">
+
+      <li class="phase">
+        <span class="phase__id">P0</span>
+        <div class="phase__body">
+          <h3>骨架与文档</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>完成</p>
+          <ul class="phase__items">
+            <li>三模块目录：fortuna / libertas / memoria</li>
+            <li>许可定为 MPL-2.0，行为准则单独成文</li>
+            <li>入口文档六份，静态站首版可打开</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P1</span>
+        <div class="phase__body">
+          <h3>一个能打开的地址</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分完成</p>
+          <ul class="phase__items">
+            <li>域名 https://www.mrhua.cn/ 已可访问，证书已生效</li>
+            <li>页面与中继的部署配置已随仓库提供</li>
+            <li>社区二维码已入库，页脚备案号已指向备案系统</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P2</span>
+        <div class="phase__body">
+          <h3>纯内存中继</h3>
+          <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
+          <ul class="phase__items">
+            <li>中继落在 command/relay：会话、上下文、分片传输、在线计数</li>
+            <li>没有数据库、没有账号；进程重启，房间与文件一起消失</li>
+            <li>端到端验证通过；部署配置在 command/relay/deploy</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P3</span>
+        <div class="phase__body">
+          <h3>桌面与平台化</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分完成</p>
+          <ul class="phase__items">
+            <li>3D 桌面、启动项、MrHua 和原生订阅窗口已接进同一套入口</li>
+            <li>窗口与功能先渲染，VRM / PMX 角色随后加载</li>
+            <li>主用户与子用户的身份、会话和 data_scope 已分开；历史目录仍在收口</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P4</span>
+        <div class="phase__body">
+          <h3>云端对话与工具</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分验收</p>
+          <ul class="phase__items">
+            <li><code>chat_api</code> 把 <code>data_scope</code> 传给生成函数；云端模式不再固定走本地模型</li>
+            <li>登录用户可获得 <code>web_search</code>；<code>video_generation</code> 配置齐全且密钥有效时才发 <code>generate_media</code></li>
+            <li>访客只走文本；媒体产物写入各自的 data_scope 目录</li>
+            <li>真实 DeepSeek 调用未跑：云端密钥为空，当前返回“未配置密钥”</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="phase">
+        <span class="phase__id">P5</span>
+        <div class="phase__body">
+          <h3>长期</h3>
+          <p class="phase__state"><i class="state-dot state-dot--doing"></i>部分启动</p>
+          <ul class="phase__items">
+            <li>fortuna 内核已在 QEMU 跑通</li>
+            <li>memoria 独立服务、社区数据落库与备份都未开始</li>
+          </ul>
+        </div>
+      </li>
+
+    </ol>
+
+    <h3 class="trace-head">几个节点</h3>
+    <ol class="trace">
+      <li>
+        <span class="trace__date">09-16</span>
+        <div>
+          <p class="trace__title">立项</p>
+          <p class="trace__desc">三个模块定名，主体用 C/C++，目录先按职责分开。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">09-17</span>
+        <div>
+          <p class="trace__title">fortuna 第一屏</p>
+          <p class="trace__desc">引导程序在 QEMU 里打出第一行字；实模式到保护模式再到分页的链路走通。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">11-08</span>
+        <div>
+          <p class="trace__title">骨架入库</p>
+          <p class="trace__desc">结构与文档占位进仓库，LICENSE 定为 MPL-2.0，行为准则归位。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">11-09</span>
+        <div>
+          <p class="trace__title">内核跑通</p>
+          <p class="trace__desc">引导程序在 QEMU 中启动，串口帧经桥接推到页面；没有登录与存储。</p>
+        </div>
+      </li>
+      <li>
+        <span class="trace__date">11-10</span>
+        <div>
+          <p class="trace__title">中继与页面入库</p>
+          <p class="trace__desc">纯内存中继落到 command/relay，页面归入 interface/web；旧页面移除，内核后端保留。</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="join" id="join">
+    <header class="section-head">
+      <h2>扫码进群，或者写信</h2>
+      <p>群里发的是进度、卡点和求助，不是公告板；代码、文档、路线图都在仓库里，进度以仓库为准。</p>
+    </header>
+
+    <div class="join__grid">
+      <figure class="qr">
+        <img src="assets/qrcode.png" alt="Aevum 社区 QQ 群二维码" width="176" height="165" loading="lazy">
+        <figcaption>扫码进 QQ 群；屏幕扫不动就放大这一块，或者直接写信。</figcaption>
+      </figure>
+
+      <div class="join__text">
+        <p>行为准则对仓库、讨论区、群聊和线下活动同样适用；举报渠道与处理流程写在 <span class="join__mono">CODE_OF_CONDUCT.md</span>。</p>
+        <p>想先看东西再说话：<span class="join__mono">PROGRESS.md</span> 是做到哪一步，<span class="join__mono">ROADMAP.md</span> 是接下来打算做什么，<span class="join__mono">CONTRIBUTING.md</span> 是一次提交该怎么交。</p>
+        <p class="join__mail">
+          <a href="mailto:open@mrhua.cn">open@mrhua.cn</a>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span><a href="https://gitcode.com/AevumArk/Aevum" rel="noopener">gitcode.com/AevumArk/Aevum</a></span>
+    <span>MPL-2.0</span>
+    <span><a href="desktop.html" target="_top">打开 3D 桌面</a></span>
+    <span>文档口径 2026-11-17</span>
+    <span><a href="https://beian.miit.gov.cn/" rel="noopener">鄂ICP备2026056886号-2</a></span>
+  </footer>
+
+</main>
+
+<script src="js/core/bus.js"></script>
+<script src="js/core/ws-connection.js"></script>
+<script src="js/core/wander.js"></script>
+<script src="js/components/essence.js"></script>
+<script src="js/components/screen.js"></script>
+<script src="js/components/hud.js"></script>
+<script src="js/components/relay.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>

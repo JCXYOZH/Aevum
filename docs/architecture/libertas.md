@@ -13,7 +13,7 @@ Libertas 是 Aevum 的领域与安全层，按变化原因分层：
 
 ## 依赖方向
 
-适配层（`apps/console/monitor`）可以依赖领域层；领域层不得反向导入 `apps/`。兼容入口只做 re-export，不复制实现。
+适配层（`archive/backend-python/monitor`，已归档）可以依赖领域层；领域层不得反向导入呈现层或归档层。兼容入口只做 re-export，不复制实现。
 
 ## 本轮拆分
 

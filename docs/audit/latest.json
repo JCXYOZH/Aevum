@@ -1,13 +1,13 @@
 {
   "code": {
-    "scope": "src/libertas",
+    "scope": "src/architecture/libertas",
     "modules": 1043,
-    "reachable_modules": 190,
-    "module_rate": 0.1822,
+    "reachable_modules": 114,
+    "module_rate": 0.1093,
     "loc": 157971,
-    "reachable_loc": 29241,
-    "loc_rate": 0.1851,
-    "unreachable_modules": 853
+    "reachable_loc": 18782,
+    "loc_rate": 0.1189,
+    "unreachable_modules": 929
   },
   "docs": {
     "docs_total": 45,
@@ -23,59 +23,59 @@
     "composite_rate": 0.7963
   },
   "split": {
-    "python_files": 1071,
+    "python_files": 1325,
     "files_over_500": 4,
     "files_over_800": 2,
     "files_over_1000": 1,
-    "compliance_rate": 0.9963,
+    "compliance_rate": 0.997,
     "max_lines": 2793,
     "top_files": [
       {
-        "path": "src\\libertas\\models\\legacy_models\\model_engine\\generation_stream.py",
+        "path": "src\\architecture\\libertas\\models\\legacy_models\\model_engine\\generation_stream.py",
         "lines": 2793
       },
       {
-        "path": "src\\libertas\\models\\legacy_models\\model_engine\\cloud_stream.py",
+        "path": "src\\architecture\\libertas\\models\\legacy_models\\model_engine\\cloud_stream.py",
         "lines": 848
       },
       {
-        "path": "src\\libertas\\identity\\user\\loop_storage.py",
+        "path": "src\\architecture\\libertas\\identity\\user\\loop_storage.py",
         "lines": 795
       },
       {
-        "path": "src\\libertas\\models\\legacy_models\\model_engine\\memory_retrieval.py",
+        "path": "src\\architecture\\libertas\\models\\legacy_models\\model_engine\\memory_retrieval.py",
         "lines": 688
       },
       {
-        "path": "src\\libertas\\tools\\plugin_system\\manager.py",
+        "path": "src\\architecture\\libertas\\tools\\plugin_system\\manager.py",
         "lines": 500
       },
       {
-        "path": "src\\libertas\\foundation\\timing.py",
+        "path": "src\\architecture\\libertas\\foundation\\timing.py",
         "lines": 496
       },
       {
-        "path": "src\\libertas\\network\\ssh_tunnel.py",
+        "path": "src\\architecture\\libertas\\network\\ssh_tunnel.py",
         "lines": 496
       },
       {
-        "path": "src\\libertas\\models\\model_render_tools\\motion.py",
+        "path": "src\\architecture\\libertas\\models\\model_render_tools\\motion.py",
         "lines": 496
       },
       {
-        "path": "src\\libertas\\observability\\alert_system.py",
+        "path": "src\\architecture\\libertas\\observability\\alert_system.py",
         "lines": 493
       },
       {
-        "path": "src\\libertas\\tools\\help_parser.py",
+        "path": "src\\architecture\\libertas\\tools\\help_parser.py",
         "lines": 491
       },
       {
-        "path": "src\\libertas\\tools\\batch_executor\\executor.py",
+        "path": "src\\architecture\\libertas\\tools\\batch_executor\\executor.py",
         "lines": 490
       },
       {
-        "path": "src\\libertas\\p2p\\protocol\\handler.py",
+        "path": "src\\architecture\\libertas\\p2p\\protocol\\handler.py",
         "lines": 490
       }
     ]

@@ -14,7 +14,7 @@ Aevum 是一个独立的 WebGL 角色渲染引擎，支持三类角色资产：
 
 三种格式共用数学、资源加载和渲染循环约定，但各自保留格式解析与 GPU 管线，不把一种格式强行转换成另一种。
 
-`engine/` 只保留引擎与验证入口。MrHua 的通用 UI 外壳、Orb 交互、皮肤业务、世界演示、对话枢纽已移到 `apps/console/ui/`，不再计入引擎模块。
+`engine/` 只保留引擎与验证入口。MrHua 的通用 UI 外壳、Orb 交互、皮肤业务、世界演示、对话枢纽已移到 `interface/console/`，不再计入引擎模块。
 
 ## 2. 本地运行
 
@@ -77,7 +77,7 @@ engine/
 应用业务代码不再放在 `engine/`：
 
 ```text
-apps/console/ui/
+interface/console/
 ├─ shell/                     MrHua 通用 UI 外壳、结果卡片、媒体预览
 ├─ orb/                       Orb 交互枢纽 UI
 ├─ skin/                      皮肤定制业务
@@ -256,7 +256,7 @@ apps/console/ui/
 
 `legacy/orb/core/orb-index.js` 是旧模块加载器，按分层顺序加载拆分后的文件；`BASE` 由脚本自身 URL 推导到 `legacy/orb/` 根目录，不再依赖页面路径。它只服务旧 Orb 链，不是 `validate.html` 的入口。
 
-### 5.10 `apps/console/ui/`：非引擎 UI
+### 5.10 `interface/console/`：非引擎 UI
 
 这些文件不属于渲染引擎，已移出 `engine/`：
 
@@ -337,7 +337,7 @@ models:
 2. **一个功能一个文件**：合集文件按功能段拆分，不按行号平均切；拆分后的目录用 `index.js` 或 `orb-index.js` 说明加载顺序。
 3. **拆分文件保持原顺序**：经典脚本依赖全局符号，加载顺序错会直接 `ReferenceError`；新增文件必须同时更新入口列表。
 4. **不留下双份实现**：原合集文件已移除；旧实现保留在 `legacy/`，新实现放在 engine 根目录对应的功能目录，文档要写清哪一份是当前运行链。
-5. **应用代码不回流引擎**：UI 外壳、业务页面、对话/皮肤/世界演示放 `apps/console/ui/`，不因“引擎也能用”就放回 `engine/`。
+5. **应用代码不回流引擎**：UI 外壳、业务页面、对话/皮肤/世界演示放 `interface/console/`，不因“引擎也能用”就放回 `engine/`。
 
 ## 9. 验证与贡献
 
@@ -364,4 +364,4 @@ models:
 - VRM 未接 SpringBone、MToon、表情 Morph。
 - Live2D 未接 physics3、PartOpacity 与完整 Cubism Framework 控制器。
 - `legacy/orb` 是并行旧实现，不与当前 `validate.html` 运行链合并。
-- `apps/console/ui/` 的单闭包应用文件尚未按功能拆分，属于应用层后续工作，不影响引擎运行。
+- `interface/console/` 的单闭包应用文件尚未按功能拆分，属于应用层后续工作，不影响引擎运行。

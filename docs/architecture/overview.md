@@ -1,52 +1,58 @@
 # 架构总览
 
-Aevum 由三个运行面和两套内核组成。Web 页面只负责呈现，后端只负责状态与动作，模型与安全能力按需加载。
+Aevum 现在只有三个指挥态核心，外加一个只做调度的指挥层。界面、运维、实验各自独立，不再把 Python 业务后端当成主链路。
 
 ```text
-浏览器
-  ├─ 展示页 / 3D 桌面 / 治理窗口
-  │    apps/community/web
-  ├─ 本地监控 API
-  │    apps/console/monitor/desktop_server.py
-  │      ├─ monitor_http.py      路由与静态资源
-  │      ├─ monitor_payloads.py  指标/检查点/健康投影
-  │      ├─ monitor_chat.py      本地与云端对话
-  │      └─ api/*                FastAPI 路由
-  ├─ 纯内存中继
-  │    apps/relay
-  ├─ 串口桥
-  │    apps/console/bridge
-  └─ Qt / Electron 壳
-       apps/desktop
+command/                  统一指挥态：登记、状态、多进程
+  ├─ kernel               指挥 src/kernel
+  ├─ architecture         指挥 src/architecture
+  └─ engine               指挥 engine
+
+src/kernel/
+  ├─ fortuna/             内核核心
+  └─ host/                串口桥、引导盘、机器人例程
+
+src/architecture/
+  ├─ libertas/            AI 架构核心：身份、工具、通知、治理、安全
+  └─ memoria/             AI 架构核心：训练、生成、检查点
+
+engine/                   第三个核心：数学、PMX/VMD、VRM、Live2D、WebGL2
 ```
 
 ## 运行边界
 
 | 面 | 入口 | 是否落盘 | 说明 |
 | --- | --- | --- | --- |
-| 展示面 | `apps/community/web/index.html` | 否 | 根路径 `/` 返回展示页；`/desktop` 才是 3D 桌面 |
-| 监控面 | `apps/console/monitor/desktop_server.py` | 读检查点/指标，写运行日志 | 默认 `127.0.0.1:8781` |
-| 中继面 | `apps/relay` | 否 | 会话、上下文、分片只在内存，重启即清空 |
-| 内核面 | `apps/console/kernel` + `src/memoria` | 取决于构建产物 | 只输出状态、错误码和 80×25 单元格 |
+| 呈现面 | `interface/web/index.html` | 否 | 根路径 `/` 返回展示页；`desktop.html` 是 3D 桌面 |
+| 指挥面 | `command/supervisor.py` | 否 | 只启动、停止、轮询，不导入核心实现 |
+| 中继面 | `command/relay` | 否 | 会话与分片只在内存，重启即清空 |
+| 内核面 | `src/kernel/fortuna` + `src/kernel/host` | 取决于构建产物 | 只输出状态、错误码与单元格 |
+| 架构面 | `src/architecture/libertas` + `memoria` | 取决于运行数据 | 身份、工具、训练、生成 |
+| 引擎面 | `engine/` | 否 | 纯渲染与数学，不承载业务 |
 
 ## 分层
 
-1. **呈现层**：`apps/community/web` 与 `apps/desktop`。不直接读数据库，不直接碰串口。
-2. **适配层**：`apps/console/monitor`。把 HTTP 请求转成身份、回路、治理、对话和模型动作。
-3. **领域层**：`src/libertas`。账号、订阅、通知、工具治理、发布、网络安全等。
-4. **内核层**：`src/memoria` 与 `apps/console/kernel`。训练/生成与串口状态机。
+1. **指挥层**：`command/`。只认 `CoreSpec` 和 `CoreStatus`，不 import 任何核心。
+2. **核心层**：`src/kernel`、`src/architecture`、`engine`。三个核心各自有 README 和柜子边界。
+3. **共享层**：`src/shared`。只放跨核心基础件，不放业务。
+4. **呈现层**：`interface/web`、`interface/desktop`、`interface/console`。不直接碰串口和数据库。
+5. **运维层**：`ops/`。部署、构建、脚本、工具。
+6. **归档层**：`archive/backend-python`。已放弃的 Python 业务后端，只读保留，不参与新主线。
 
 ## 关键原则
 
 - 页面只呈现，不推断后端状态。
-- 订阅只给站长发内部提醒，不自动联系订阅者。
-- 中继不落盘，不建账号，不做检索。
-- 本机模型生成默认只在本机开放；云端模式必须显式配置。
+- 目录按“柜子”分层：功能越底层，目录越深；同一层一个文件只承担一个变化原因。
+- `command/` 不是第四个核心，只是指挥层；它不写业务状态。
+- 新代码只进三个核心、共享层、呈现层、运维层或实验层；不再回填 `archive/backend-python`。
 - 旧安全模块保留兼容入口，但新代码按 `foundation / identity / observability / security` 分层引用。
 
 ## 相关文档
 
+- [目录总图](../../STRUCTURE.md)
 - [代码地图](code-map.md)
 - [Libertas 架构](libertas.md)
-- [监控服务](../../apps/console/monitor/README.md)
-- [中继说明](../../apps/relay/README.md)
+- [内核柜](../../src/kernel/README.md)
+- [架构柜](../../src/architecture/README.md)
+- [指挥层](../../command/README.md)
+- [归档说明](../../archive/backend-python/README.md)

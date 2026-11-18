@@ -2,7 +2,7 @@
 
 ## 决定
 
-Aevum 采用“静态呈现 + 本地监控 API + 纯内存中继 + 独立内核”的结构。展示页和多窗口看板放在 `apps/community/web`，由 `desktop_server.py` 在根路径提供；中继 `apps/relay` 不落盘；模型和安全能力放在 `src/libertas` 与 `src/memoria`，按需从入口加载。
+Aevum 采用“静态呈现 + 本地监控 API + 纯内存中继 + 独立内核”的结构。展示页和多窗口看板放在 `interface/web`，由 `desktop_server.py` 在根路径提供；中继 `command/relay` 不落盘；模型和安全能力放在 `src/architecture/libertas` 与 `src/architecture/memoria`，按需从入口加载。
 
 ## 原因
 

@@ -7,11 +7,11 @@
 ## 分层
 
 ```text
-apps/                     桌面壳、监控、页面、中继：只负责调用与呈现
-src/memoria/*.cpp         计算：嵌入、门控、链、平衡、记忆、训练、生成
-src/memoria/include/aevum_core.h  统一公共入口；源码写 <include/aevum_core.h>
-src/memoria/include/*.h       公共接口；每个模块一个头文件
-scripts/                  构建、训练、生成、打包
+engine/                   渲染引擎；不承载训练与业务
+src/architecture/memoria/*.cpp         计算：嵌入、门控、链、平衡、记忆、训练、生成
+src/architecture/memoria/include/aevum_core.h  统一公共入口；源码写 <include/aevum_core.h>
+src/architecture/memoria/include/*.h       公共接口；每个模块一个头文件
+ops/scripts/                  构建、训练、生成、打包
 data/                     公开小语料；权重不在这里
 ```
 
