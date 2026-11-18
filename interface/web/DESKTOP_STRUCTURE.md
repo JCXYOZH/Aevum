@@ -41,6 +41,9 @@ template. Styles and behavior live in their own files.
 | `SCENE3D.md` | Scene architecture, camera, ground shader, character slots and movement |
 | `js/scene/scene-desktop.js` | desktop app-to-node layout; nodes are visual-only, character slots reuse `MD.bus` |
 | `js/scene/scene-showcase.js` | `index.html` `#world` layout; node clicks scroll to sections or open the 3D desktop |
+| `js/scene/world/*.js` | split world-scene source; runtime bundle and engine coverage are documented in `WORLD_SCENE.md` |
+| `world.html` | standalone live world page; `?embed=1` hides the capture HUD |
+| `WORLD_SCENE.md` | world module map, build order and honest engine coverage |
 
 ## Extension API
 
@@ -53,3 +56,7 @@ MemoriaDesk.apps();
 Custom windows are persisted in `localStorage` under
 `memoria.desktop.windows`. The relay bridge address can be overridden with
 `?relay=http://host:8790` and `?bridge=ws://host:8765`.
+
+`?world=1` switches the desk background to the live world page
+(`world.html?embed=1`). The world iframe is loaded only in that mode; the
+normal grid background and character layer remain the default.

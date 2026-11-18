@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aevum / World Capture</title>
+  <link rel="stylesheet" href="styles/scene-world.css">
+  <script>if(new URLSearchParams(location.search||"").get("embed")==="1")document.documentElement.classList.add("embed");</script>
+</head>
+<body class="scene-world-body">
+  <div class="world">
+    <canvas id="worldCanvas" width="1600" height="900"></canvas>
+    <div class="vignette"></div>
+    <div class="haze"></div>
+    <div class="grain"></div>
+  </div>
+
+  <canvas id="model" width="1600" height="900"></canvas>
+
+  <div class="plate">
+    <span class="corner-br"></span><span class="corner-tl"></span>
+  </div>
+  <div class="topline">
+    <span class="dot"></span>
+    <span>AEVUM / WORLD CAPTURE</span>
+    <span class="spacer"></span>
+    <span class="mark">FRAME 01</span>
+    <span class="live" id="liveState">BOOTING</span>
+  </div>
+  <div class="caption">
+    <b>RUN / TERRAIN / WATER / VEGETATION</b>
+    <span>engine world · real-time WebGL2 · terrain and water from World3DEngine</span>
+  </div>
+  <div class="meta">
+    <strong id="metaStat">LOADING</strong>
+    1600 × 900 / WEBGL2<br>
+    <span id="metaSystems">WORLD 0</span>
+  </div>
+  <div class="bottomline">
+    <span>MPL-2.0</span><span class="rule"></span><span class="key">REAL MODEL</span><span>/</span><span>REAL WORLD</span>
+  </div>
+  <div class="loading" id="loading"><div>LOADING TERRAIN / WATER / VEGETATION / MODEL</div><div class="bar"></div></div>
+
+<script src="/engine/math/math.js"></script>
+<script src="/engine/formats/gltf/glb.js"></script>
+<script src="/engine/formats/gltf/gltf-accessor.js"></script>
+<script src="/engine/formats/gltf/gltf-animation.js"></script>
+<script src="/engine/formats/vrm/vrm.js"></script>
+<script src="/engine/render/vrm/vrm-renderer.js"></script>
+<script src="/engine/render/retarget/animation-retarget.js"></script>
+<script src="/engine/world/pipeline/world-pipeline.js"></script>
+<script src="/engine/world/advanced/world-advanced.js"></script>
+<script src="js/scene/world/world-scene.bundle.js"></script>
+</body>
+</html>
