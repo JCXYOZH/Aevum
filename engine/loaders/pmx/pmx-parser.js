@@ -85,14 +85,20 @@ const PMXParser = (function () {
         throw new Error(`Invalid PMX magic: ${magic}`);
       }
       this.model.version = this._readFloat32();
-      const globalsCount = this._readUint8();
+      const headerSize = this._readUint8();
       const encodingByte = this._readUint8();
       this.encoding = encodingByte === 0 ? 'utf-16le' : 'utf-8';
       this.additionalVec4 = this._readUint8();
-      this._readUint8();
-      this._readUint8();
-      this._readUint8();
-      this._readUint8();
+      // PMX 头部剩下的 6 个字节是各索引宽度，必须记录；
+      // 固定按 int32 读会在顶点/材质/骨骼段整体错位。
+      this.indexSizes = {
+        vertex: this._readUint8(),
+        texture: this._readUint8(),
+        material: this._readUint8(),
+        bone: this._readUint8(),
+        morph: this._readUint8(),
+        rigidBody: this._readUint8()
+      };
     }
 
     _parseModelInfo() {
@@ -120,20 +126,20 @@ const PMXParser = (function () {
         vertex.weightType = weightType;
         switch (weightType) {
           case 0:
-            vertex.boneIndices = [this._readInt32()];
+            vertex.boneIndices = [this._readBoneIndex()];
             vertex.boneWeights = [1];
             break;
           case 1:
-            vertex.boneIndices = [this._readInt32(), this._readInt32()];
+            vertex.boneIndices = [this._readBoneIndex(), this._readBoneIndex()];
             vertex.boneWeights = [this._readFloat32(), 0];
             vertex.boneWeights[1] = 1 - vertex.boneWeights[0];
             break;
           case 2:
-            vertex.boneIndices = [this._readInt32(), this._readInt32(), this._readInt32(), this._readInt32()];
+            vertex.boneIndices = [this._readBoneIndex(), this._readBoneIndex(), this._readBoneIndex(), this._readBoneIndex()];
             vertex.boneWeights = [this._readFloat32(), this._readFloat32(), this._readFloat32(), this._readFloat32()];
             break;
           case 3:
-            vertex.boneIndices = [this._readInt32(), this._readInt32(), this._readInt32(), this._readInt32()];
+            vertex.boneIndices = [this._readBoneIndex(), this._readBoneIndex(), this._readBoneIndex(), this._readBoneIndex()];
             vertex.boneWeights = [this._readFloat32(), this._readFloat32(), this._readFloat32(), this._readFloat32()];
             vertex.sdef = {
               c: [this._readFloat32(), this._readFloat32(), this._readFloat32()],
@@ -146,7 +152,7 @@ const PMXParser = (function () {
             vertex.boneIndices = [];
             vertex.boneWeights = [];
             for (let j = 0; j < qcount; j++) {
-              vertex.boneIndices.push(this._readInt32());
+              vertex.boneIndices.push(this._readBoneIndex());
               vertex.boneWeights.push(this._readFloat32());
             }
             break;
@@ -161,7 +167,7 @@ const PMXParser = (function () {
       this.model.indexCount = this.indexCount;
       this.model.indices = [];
       for (let i = 0; i < this.indexCount; i++) {
-        this.model.indices.push(this._readInt32());
+        this.model.indices.push(this._readVertexIndex());
       }
     }
 
@@ -189,11 +195,11 @@ const PMXParser = (function () {
           flags: this._readUint8(),
           edgeColor: [this._readFloat32(), this._readFloat32(), this._readFloat32(), this._readFloat32()],
           edgeSize: this._readFloat32(),
-          textureIndex: this._readInt32(),
-          sphereTextureIndex: this._readInt32(),
+          textureIndex: this._readTextureIndex(),
+          sphereTextureIndex: this._readTextureIndex(),
           sphereMode: this._readUint8(),
           sharedToon: this._readUint8() === 1,
-          toonTextureIndex: this._readInt32(),
+          toonTextureIndex: this._readTextureIndex(),
           comment: this._readText(),
           surfaceCount: this._readInt32()
         };
@@ -210,7 +216,7 @@ const PMXParser = (function () {
           name: this._readText(),
           nameEn: this._readText(),
           position: [this._readFloat32(), this._readFloat32(), this._readFloat32()],
-          parentIndex: this._readInt32(),
+          parentIndex: this._readBoneIndex(),
           transformOrder: this._readInt32(),
           flags: this._readUint16(),
           tailPosition: [0, 0, 0],
@@ -219,12 +225,12 @@ const PMXParser = (function () {
           localTransform: null
         };
         if (bone.flags & 0x0001) {
-          bone.tailIndex = this._readInt32();
+          bone.tailIndex = this._readBoneIndex();
         } else {
           bone.tailPosition = [this._readFloat32(), this._readFloat32(), this._readFloat32()];
         }
         if (bone.flags & 0x0100) {
-          bone.inheritParentIndex = this._readInt32();
+          bone.inheritParentIndex = this._readBoneIndex();
           bone.inheritWeight = this._readFloat32();
         }
         if (bone.flags & 0x0400) {
@@ -239,7 +245,7 @@ const PMXParser = (function () {
         }
         if (bone.flags & 0x0020) {
           bone.inverseKinematics = {
-            targetIndex: this._readInt32(),
+            targetIndex: this._readBoneIndex(),
             loopCount: this._readInt32(),
             rotationLimit: this._readFloat32(),
             links: []
@@ -247,7 +253,7 @@ const PMXParser = (function () {
           const linkCount = this._readInt32();
           for (let j = 0; j < linkCount; j++) {
             const link = {
-              boneIndex: this._readInt32(),
+              boneIndex: this._readBoneIndex(),
               hasLimit: this._readUint8() === 1,
               minAngle: [0, 0, 0],
               maxAngle: [0, 0, 0]
@@ -280,37 +286,37 @@ const PMXParser = (function () {
           const element = {};
           switch (morph.type) {
             case 0:
-              element.materialIndex = this._readInt32();
+              element.materialIndex = this._readMaterialIndex();
               element.offset = [this._readFloat32(), this._readFloat32(), this._readFloat32(), this._readFloat32()];
               break;
             case 1:
-              element.vertexIndex = this._readInt32();
+              element.vertexIndex = this._readVertexIndex();
               element.position = [this._readFloat32(), this._readFloat32(), this._readFloat32()];
               break;
             case 2:
-              element.boneIndex = this._readInt32();
+              element.boneIndex = this._readBoneIndex();
               element.translation = [this._readFloat32(), this._readFloat32(), this._readFloat32()];
               element.rotation = [this._readFloat32(), this._readFloat32(), this._readFloat32(), this._readFloat32()];
               break;
             case 3:
-              element.morphIndex = this._readInt32();
+              element.morphIndex = this._readMorphIndex();
               element.morphWeight = this._readFloat32();
               break;
             case 4:
-              element.materialIndex = this._readInt32();
+              element.materialIndex = this._readMaterialIndex();
               element.offset = [this._readFloat32(), this._readFloat32(), this._readFloat32(), this._readFloat32()];
               break;
             case 5:
-              element.uvIndex = this._readInt32();
-              element.vertexIndex = this._readInt32();
+              element.uvIndex = this._readVertexIndex();
+              element.vertexIndex = this._readVertexIndex();
               element.uv = [this._readFloat32(), this._readFloat32(), this._readFloat32(), this._readFloat32()];
               break;
             case 6:
-              element.vertexIndex = this._readInt32();
+              element.vertexIndex = this._readVertexIndex();
               element.position = [this._readFloat32(), this._readFloat32(), this._readFloat32()];
               break;
             case 7:
-              element.impulseRigidBodyIndex = this._readInt32();
+              element.impulseRigidBodyIndex = this._readRigidBodyIndex();
               element.localVelocity = [this._readFloat32(), this._readFloat32(), this._readFloat32()];
               element.localTorque = [this._readFloat32(), this._readFloat32(), this._readFloat32()];
               break;
@@ -338,9 +344,11 @@ const PMXParser = (function () {
         };
         const elementCount = this._readInt32();
         for (let j = 0; j < elementCount; j++) {
+          const frameType = this._readUint8();
+          const targetIndex = frameType === 0 ? this._readBoneIndex() : this._readMorphIndex();
           frame.elements.push({
-            targetIndex: this._readInt32(),
-            isBone: this._readUint8() === 0
+            targetIndex: targetIndex,
+            isBone: frameType === 0
           });
         }
         this.model.frames.push(frame);
@@ -355,7 +363,7 @@ const PMXParser = (function () {
         const rigidBody = {
           name: this._readText(),
           nameEn: this._readText(),
-          boneIndex: this._readInt32(),
+          boneIndex: this._readBoneIndex(),
           groupIndex: this._readUint8(),
           groupTarget: this._readUint16(),
           shapeType: this._readUint8(),
@@ -382,8 +390,8 @@ const PMXParser = (function () {
           name: this._readText(),
           nameEn: this._readText(),
           type: this._readUint8(),
-          rigidBodyA: this._readInt32(),
-          rigidBodyB: this._readInt32(),
+          rigidBodyA: this._readRigidBodyIndex(),
+          rigidBodyB: this._readRigidBodyIndex(),
           position: [this._readFloat32(), this._readFloat32(), this._readFloat32()],
           rotation: [this._readFloat32(), this._readFloat32(), this._readFloat32()],
           positionLowerLimit: [this._readFloat32(), this._readFloat32(), this._readFloat32()],
@@ -406,7 +414,7 @@ const PMXParser = (function () {
           name: this._readText(),
           nameEn: this._readText(),
           shapeType: this._readUint8(),
-          materialIndex: this._readInt32(),
+          materialIndex: this._readMaterialIndex(),
           groupIndex: this._readUint8(),
           groupTarget: this._readUint16(),
           mode: this._readUint8(),
@@ -442,7 +450,7 @@ const PMXParser = (function () {
         const clusterCount = this._readInt32();
         for (let j = 0; j < clusterCount; j++) {
           softBody.clusters.push({
-            vertexIndex: this._readInt32(),
+            vertexIndex: this._readVertexIndex(),
             deformation: this._readFloat32(),
             shortLinks: this._readUint8() === 1
           });
@@ -450,10 +458,10 @@ const PMXParser = (function () {
         const pinCount = this._readInt32();
         for (let j = 0; j < pinCount; j++) {
           softBody.pins.push({
-            vertexIndex: this._readInt32(),
+            vertexIndex: this._readVertexIndex(),
             type: this._readUint8(),
-            rigidBodyIndex: this._readInt32(),
-            vertexNear: this._readInt32()
+            rigidBodyIndex: this._readRigidBodyIndex(),
+            vertexNear: this._readVertexIndex()
           });
         }
         this.model.softBodies.push(softBody);
@@ -532,6 +540,27 @@ const PMXParser = (function () {
       this.offset += 4;
       return value;
     }
+
+    _readIndex(size, signed) {
+      if (size === 1) {
+        const value = signed ? this.dataView.getInt8(this.offset) : this.dataView.getUint8(this.offset);
+        this.offset += 1;
+        return value;
+      }
+      if (size === 2) {
+        const value = signed ? this.dataView.getInt16(this.offset, true) : this.dataView.getUint16(this.offset, true);
+        this.offset += 2;
+        return value;
+      }
+      return this._readInt32();
+    }
+
+    _readVertexIndex() { return this._readIndex(this.indexSizes.vertex, false); }
+    _readBoneIndex() { return this._readIndex(this.indexSizes.bone, true); }
+    _readTextureIndex() { return this._readIndex(this.indexSizes.texture, true); }
+    _readMaterialIndex() { return this._readIndex(this.indexSizes.material, true); }
+    _readMorphIndex() { return this._readIndex(this.indexSizes.morph, true); }
+    _readRigidBodyIndex() { return this._readIndex(this.indexSizes.rigidBody, true); }
 
     _readFloat32() {
       const value = this.dataView.getFloat32(this.offset, true);
