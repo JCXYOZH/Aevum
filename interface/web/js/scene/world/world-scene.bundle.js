@@ -40,13 +40,15 @@
 
   var W = renderOnly ? Math.max(1, canvasWorld.width) : 1600;
   var H = renderOnly ? Math.max(1, canvasWorld.height) : 900;
-  var FOV = 42 * Math.PI / 180;
+  var FOV = 56 * Math.PI / 180;
   var TERRAIN_SIZE = 200;
   var WATER_LEVEL = -3.2;
   var WEATHER_MODE = new URLSearchParams((window.location && window.location.search) || '').get('weather') || (((window.location && window.location.search) || '').indexOf('rain') >= 0 ? 'rain' : 'clear');
   var SUN_DIR = normalize3([-0.35, 0.44, -0.83]);
   var SPAWN = [0, 0];
   var LAKE = [0, -52];
+  var weatherClock = 0;
+  var weatherNext = 180 + Math.random() * 120;
 
   function setReady(text) {
     if (!stateEl) return;
@@ -102,6 +104,11 @@
   }
 
   function createMesh(positions, normals, colors, indices, flex) {
+    positions = positions instanceof Float32Array ? positions : new Float32Array(positions);
+    normals = normals ? (normals instanceof Float32Array ? normals : new Float32Array(normals)) : null;
+    colors = colors ? (colors instanceof Float32Array ? colors : new Float32Array(colors)) : null;
+    indices = indices instanceof Uint32Array ? indices : new Uint32Array(indices);
+    flex = flex ? (flex instanceof Float32Array ? flex : new Float32Array(flex)) : null;
     var vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     var posBuffer = buffer(positions, gl.ARRAY_BUFFER);
@@ -184,13 +191,17 @@
     '  vec3 ground=mix(uSkyHorizon,uGroundColor,smoothstep(0.0,-0.35,d.y));\n' +
     '  sky=mix(sky,ground,smoothstep(0.02,-0.18,d.y));\n' +
     '  float sd=max(dot(d,normalize(uSunDir)),0.0);\n' +
-    '  sky+=uSunColor*pow(sd,700.0)*4.2;\n' +
-    '  sky+=uSunColor*pow(sd,16.0)*0.28;\n' +
+    '  sky+=uSunColor*pow(sd,9000.0)*1.15;\n' +
+    '  sky+=uSunColor*pow(sd,90.0)*0.11;\n' +
     '  vec2 uv=d.xz/(max(d.y,0.05)+0.22)*0.72;\n' +
     '  float n=fbm(uv*2.4+vec2(uTime*0.006,0.0));\n' +
     '  float cloud=smoothstep(0.54-uCloud*0.12,0.82,n)*smoothstep(0.0,0.22,d.y);\n' +
     '  sky=mix(sky,uCloudColor,cloud*0.30);\n' +
-    '  float star=step(0.9975,hash(floor(d.xz*720.0)))*uStar;\n' +
+    '  float star=0.0;\n' +
+    '  if(uStar>0.01){\n' +
+    '    vec2 sp=d.xz*1100.0; vec2 cell=floor(sp); float r=length(fract(sp)-0.5);\n' +
+    '    star=step(0.9992,hash(cell))*pow(max(0.0,1.0-r*2.0),12.0)*uStar*smoothstep(0.02,0.24,d.y);\n' +
+    '  }\n' +
     '  sky+=vec3(star)*0.85;\n' +
     '  outColor=vec4(sky,1.0);\n' +
     '}'
@@ -327,7 +338,7 @@
     '    vec2 o=vec2(cos(a),sin(a))*0.006;\n' +
     '    bloom+=max(texture(uScene,vUv+o).rgb-0.62,0.0);\n' +
     '  }\n' +
-    '  scene+=bloom*0.125*uBloom;\n  float sunDist=length((vUv-uSunScreen)*vec2(1.55,1.0));\n  scene+=vec3(1.0,0.70,0.40)*(exp(-sunDist*11.0)*0.26+exp(-sunDist*26.0)*0.9);\n' +
+    '  scene+=bloom*0.125*uBloom;\n  float sunDist=length((vUv-uSunScreen)*vec2(1.55,1.0));\n  scene+=vec3(1.0,0.70,0.40)*(exp(-sunDist*180.0)*0.03+exp(-sunDist*420.0)*0.10);\n' +
     '  scene*=uExposure;\n' +
     '  scene=(scene*(2.51*scene+0.03))/(scene*(2.43*scene+0.59)+0.14);\n' +
     '  float lum=dot(scene,vec3(0.299,0.587,0.114));\n' +
@@ -447,8 +458,8 @@
     gl.enable(gl.DEPTH_TEST);
     gl.useProgram(depthProgram);
     gl.uniformMatrix4fv(uniformLocation(depthProgram, 'uLightVP'), false, lightVP);
-    var depthLoc = uniformLocation(depthProgram, 'aPos');
-    var meshes = [terrainMesh].concat(treeGroups.map(function(g){return g.mesh;}), grassGroups.map(function(g){return g.mesh;}));
+    var depthLoc = attrib(depthProgram, 'aPos');
+    var meshes = [terrainMesh];
     for (var i = 0; i < meshes.length; i++) {
       if (!meshes[i]) continue;
       if (!meshes[i].shadowVAO) {
@@ -466,6 +477,19 @@
     }
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO);
+  }
+
+  function sunScreenUV() {
+    if (!world || !world.sky) return [2.0, 2.0];
+    var sun = normalize3(world.sky.getSunDirection());
+    // The sun is a point far along its sky direction, not a screen-space decal.
+    var p = [eye[0] + sun[0] * 500, eye[1] + sun[1] * 500, eye[2] + sun[2] * 500];
+    var m = viewProj;
+    var w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (w <= 0.001 || sun[1] <= 0.02) return [2.0, 2.0];
+    var x = (m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12]) / w;
+    var y = (m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13]) / w;
+    return [x * 0.5 + 0.5, y * 0.5 + 0.5];
   }
 
   function drawPost(now) {
@@ -493,7 +517,8 @@
     gl.uniform1f(uniformLocation(postProgram, 'uBloom'), pp && pp.bloom ? pp.bloom.intensity : 0.35);
     gl.uniform1f(uniformLocation(postProgram, 'uVignette'), pp && pp.vignette ? pp.vignette.intensity : 0.28);
     gl.uniform1f(uniformLocation(postProgram, 'uGrain'), pp && pp.filmGrain ? pp.filmGrain.intensity : 0.035);
-    gl.uniform2f(uniformLocation(postProgram, 'uSunScreen'), 0.44, 0.94);
+    var sunScreen = sunScreenUV();
+    gl.uniform2f(uniformLocation(postProgram, 'uSunScreen'), sunScreen[0], sunScreen[1]);
     gl.uniform1f(uniformLocation(postProgram, 'uTime'), now * 0.001);
     gl.uniform1f(uniformLocation(postProgram, 'uNear'), 0.1);
     gl.uniform1f(uniformLocation(postProgram, 'uFar'), 400);
@@ -844,6 +869,14 @@
     world.sky.fogColor = [0.54 + 0.16 * h + 0.10 * dusk, 0.59 + 0.14 * h + 0.04 * dusk, 0.64 + 0.14 * h];
   }
 
+  function sunDirectionFor(time) {
+    var angle = time * Math.PI * 2 - Math.PI / 2;
+    // Keep the sun in front of the default desktop camera and let its height
+    // change across the day. The narrow X arc keeps it inside the wide-but-
+    // portrait desktop viewport instead of sliding off the side.
+    return normalize3([Math.cos(angle) * 0.22, Math.sin(angle) * 0.55, -1.0]);
+  }
+
   function setupWorldCamera() {    var ground = world ? world.terrain.getHeight(SPAWN[0], SPAWN[1]) : 0;
     charPos = [SPAWN[0], ground, SPAWN[1]];
     eye = [0.75, ground + 2.55, 6.8];
@@ -898,7 +931,10 @@
     gl.uniform3fv(uniformLocation(skyProgram, 'uSunColor'), new Float32Array(sunColor));
     gl.uniform3fv(uniformLocation(skyProgram, 'uCloudColor'), new Float32Array([0.88, 0.91, 0.93]));
     gl.uniform1f(uniformLocation(skyProgram, 'uCloud'), cloud);
-    gl.uniform1f(uniformLocation(skyProgram, 'uStar'), sky.getStarVisibility());
+    var sunNormal = normalize3(sun);
+    var starVisibility = Math.max(0, -sunNormal[1] * 7.0);
+    starVisibility = Math.min(1, starVisibility);
+    gl.uniform1f(uniformLocation(skyProgram, 'uStar'), starVisibility);
     gl.uniform1f(uniformLocation(skyProgram, 'uTime'), world.time || 0);
     gl.bindVertexArray(skyMesh.vao);
     gl.drawElements(gl.TRIANGLES, skyMesh.count, gl.UNSIGNED_INT, 0);
@@ -950,10 +986,6 @@
       if (world.frustumCulling && !world.frustumCulling.isVisible(g.center, g.radius)) continue;
       gl.bindVertexArray(g.mesh.vao);
       gl.drawElements(gl.TRIANGLES, g.mesh.count, gl.UNSIGNED_INT, 0);
-    }
-    if (flowerMesh) {
-      gl.bindVertexArray(flowerMesh.vao);
-      gl.drawElements(gl.TRIANGLES, flowerMesh.count, gl.UNSIGNED_INT, 0);
     }
     gl.bindVertexArray(null);
   }
@@ -1103,7 +1135,7 @@
     });
     shapeTerrain(world.terrain);
     world.vegetation = new window.World3DEngine.VegetationSystem(world.terrain);
-    world.vegetation.generate({ treeCount: 760, grassCount: 38000 });
+    world.vegetation.generate({ treeCount: 560, grassCount: 24000 });
     trees = world.vegetation.trees.filter(function (t) {
       var ds = Math.sqrt(t.x * t.x + t.z * t.z);
       var dl = Math.sqrt(t.x * t.x + (t.z - LAKE[1]) * (t.z - LAKE[1]));
@@ -1162,6 +1194,7 @@
     world.water.setWaterLevel(WATER_LEVEL);
     world.water.setWaveHeight(0.16);
     world.weather.setWeather(WEATHER_MODE, false);
+    if (WEATHER_MODE !== 'rain') world.weather.particles.length = 0;
     world.weather.cloudCoverage = WEATHER_MODE === 'rain' ? 0.46 : 0.06;
     world.postProcessing.colorGrading.exposure = 1.06;
     world.postProcessing.colorGrading.contrast = 1.12;
@@ -1173,14 +1206,16 @@
     world.sky.setTime(0.285);
     world.sky.update(0);
     styleSky();
-    world.dayNight.time = 0.285;
-    world.dayNight.dayLength = 900;
+    world.dayNight.time = 0.30;
+    world.dayNight.dayLength = 1800;
     world.dayNight.update(0);
+    SUN_DIR = sunDirectionFor(world.dayNight.time);
+    world.dayNight.sunPosition = SUN_DIR;
     world.sky.sunDirection = SUN_DIR;
-    world.lights.setDirectional(SUN_DIR, [1.0, 0.84, 0.63], 1.20);
+    world.lights.setDirectional(SUN_DIR, world.dayNight.getSunColor(), 1.20);
     world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
     sunColor = [1.0, 0.84, 0.63];
-    world.shadows.setQuality('high');
+    world.shadows.setQuality('medium');
     world.shadows.setShadowDistance(110);
     if (window.World3DExt) {
       fog = new window.World3DExt.VolumetricFog({ getContext: function () { return gl; } }, null);
@@ -1219,7 +1254,6 @@
         resize: function (w, h) {
           w = Math.max(1, Math.round(w));
           h = Math.max(1, Math.round(h));
-          if (canvasWorld.width === w && canvasWorld.height === h) return;
           W = w;
           H = h;
           canvasWorld.width = w;
@@ -1284,13 +1318,24 @@
       last = now;
       if (world) {
         world.update(dt);
+        if (world.weather.getCurrentWeather() === 'clear') world.weather.particles.length = 0;
+        weatherClock += dt;
+        if (weatherClock >= weatherNext) {
+          weatherClock = 0;
+          weatherNext = 180 + Math.random() * 120;
+          var roll = Math.random();
+          var nextWeather = roll < 0.64 ? 'clear' : (roll < 0.86 ? 'cloud' : 'rain');
+          world.weather.setWeather(nextWeather, true);
+        }
         world.sky.setTime(world.dayNight.time);
         world.sky.update(0);
-        styleSky();
+        SUN_DIR = sunDirectionFor(world.dayNight.time);
+        world.dayNight.sunPosition = SUN_DIR;
         world.sky.sunDirection = SUN_DIR;
-    world.lights.setDirectional(SUN_DIR, [1.0, 0.84, 0.63], 1.20);
+        styleSky();
+        world.lights.setDirectional(SUN_DIR, world.dayNight.getSunColor(), world.dayNight.isDay ? 1.2 : 0.05);
         world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
-        sunColor = [1.0, 0.84, 0.63];
+        sunColor = world.dayNight.getSunColor();
         if (fog) fog.setSunDirection(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
       }
       if (player) player.update(dt);

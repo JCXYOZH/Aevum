@@ -65,13 +65,17 @@
     '  vec3 ground=mix(uSkyHorizon,uGroundColor,smoothstep(0.0,-0.35,d.y));\n' +
     '  sky=mix(sky,ground,smoothstep(0.02,-0.18,d.y));\n' +
     '  float sd=max(dot(d,normalize(uSunDir)),0.0);\n' +
-    '  sky+=uSunColor*pow(sd,700.0)*4.2;\n' +
-    '  sky+=uSunColor*pow(sd,16.0)*0.28;\n' +
+    '  sky+=uSunColor*pow(sd,9000.0)*1.15;\n' +
+    '  sky+=uSunColor*pow(sd,90.0)*0.11;\n' +
     '  vec2 uv=d.xz/(max(d.y,0.05)+0.22)*0.72;\n' +
     '  float n=fbm(uv*2.4+vec2(uTime*0.006,0.0));\n' +
     '  float cloud=smoothstep(0.54-uCloud*0.12,0.82,n)*smoothstep(0.0,0.22,d.y);\n' +
     '  sky=mix(sky,uCloudColor,cloud*0.30);\n' +
-    '  float star=step(0.9975,hash(floor(d.xz*720.0)))*uStar;\n' +
+    '  float star=0.0;\n' +
+    '  if(uStar>0.01){\n' +
+    '    vec2 sp=d.xz*1100.0; vec2 cell=floor(sp); float r=length(fract(sp)-0.5);\n' +
+    '    star=step(0.9992,hash(cell))*pow(max(0.0,1.0-r*2.0),12.0)*uStar*smoothstep(0.02,0.24,d.y);\n' +
+    '  }\n' +
     '  sky+=vec3(star)*0.85;\n' +
     '  outColor=vec4(sky,1.0);\n' +
     '}'
@@ -208,7 +212,7 @@
     '    vec2 o=vec2(cos(a),sin(a))*0.006;\n' +
     '    bloom+=max(texture(uScene,vUv+o).rgb-0.62,0.0);\n' +
     '  }\n' +
-    '  scene+=bloom*0.125*uBloom;\n  float sunDist=length((vUv-uSunScreen)*vec2(1.55,1.0));\n  scene+=vec3(1.0,0.70,0.40)*(exp(-sunDist*11.0)*0.26+exp(-sunDist*26.0)*0.9);\n' +
+    '  scene+=bloom*0.125*uBloom;\n  float sunDist=length((vUv-uSunScreen)*vec2(1.55,1.0));\n  scene+=vec3(1.0,0.70,0.40)*(exp(-sunDist*180.0)*0.03+exp(-sunDist*420.0)*0.10);\n' +
     '  scene*=uExposure;\n' +
     '  scene=(scene*(2.51*scene+0.03))/(scene*(2.43*scene+0.59)+0.14);\n' +
     '  float lum=dot(scene,vec3(0.299,0.587,0.114));\n' +
@@ -328,8 +332,8 @@
     gl.enable(gl.DEPTH_TEST);
     gl.useProgram(depthProgram);
     gl.uniformMatrix4fv(uniformLocation(depthProgram, 'uLightVP'), false, lightVP);
-    var depthLoc = uniformLocation(depthProgram, 'aPos');
-    var meshes = [terrainMesh].concat(treeGroups.map(function(g){return g.mesh;}), grassGroups.map(function(g){return g.mesh;}));
+    var depthLoc = attrib(depthProgram, 'aPos');
+    var meshes = [terrainMesh];
     for (var i = 0; i < meshes.length; i++) {
       if (!meshes[i]) continue;
       if (!meshes[i].shadowVAO) {
@@ -347,6 +351,19 @@
     }
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO);
+  }
+
+  function sunScreenUV() {
+    if (!world || !world.sky) return [2.0, 2.0];
+    var sun = normalize3(world.sky.getSunDirection());
+    // The sun is a point far along its sky direction, not a screen-space decal.
+    var p = [eye[0] + sun[0] * 500, eye[1] + sun[1] * 500, eye[2] + sun[2] * 500];
+    var m = viewProj;
+    var w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (w <= 0.001 || sun[1] <= 0.02) return [2.0, 2.0];
+    var x = (m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12]) / w;
+    var y = (m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13]) / w;
+    return [x * 0.5 + 0.5, y * 0.5 + 0.5];
   }
 
   function drawPost(now) {
@@ -374,7 +391,8 @@
     gl.uniform1f(uniformLocation(postProgram, 'uBloom'), pp && pp.bloom ? pp.bloom.intensity : 0.35);
     gl.uniform1f(uniformLocation(postProgram, 'uVignette'), pp && pp.vignette ? pp.vignette.intensity : 0.28);
     gl.uniform1f(uniformLocation(postProgram, 'uGrain'), pp && pp.filmGrain ? pp.filmGrain.intensity : 0.035);
-    gl.uniform2f(uniformLocation(postProgram, 'uSunScreen'), 0.44, 0.94);
+    var sunScreen = sunScreenUV();
+    gl.uniform2f(uniformLocation(postProgram, 'uSunScreen'), sunScreen[0], sunScreen[1]);
     gl.uniform1f(uniformLocation(postProgram, 'uTime'), now * 0.001);
     gl.uniform1f(uniformLocation(postProgram, 'uNear'), 0.1);
     gl.uniform1f(uniformLocation(postProgram, 'uFar'), 400);

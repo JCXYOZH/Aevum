@@ -37,10 +37,11 @@
   sizeWorld();
   scene.setGroundVisible(false);
   if (scene.camera) {
-    scene.camera.target = [0, 1.4, 0];
-    scene.camera.distance = 24;
-    scene.camera.rotationX = 0.36;
+    scene.camera.target = [0, 1.2, 0];
+    scene.camera.distance = 21;
+    scene.camera.rotationX = 0.16;
     scene.camera.rotationY = 0.28;
+    scene.camera.fov = 64;
     scene.camera.update(0);
   }
 
@@ -71,7 +72,7 @@
   else global.addEventListener("resize", onResize);
 
   var script = document.createElement("script");
-  script.src = "js/scene/world/world-scene.bundle.js";
+  script.src = "js/scene/world/world-scene.bundle.js?v=20261118u";
   script.async = true;
   script.onerror = function () { fail("世界渲染器装载失败"); };
   script.onload = function () {

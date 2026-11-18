@@ -38,13 +38,15 @@
 
   var W = renderOnly ? Math.max(1, canvasWorld.width) : 1600;
   var H = renderOnly ? Math.max(1, canvasWorld.height) : 900;
-  var FOV = 42 * Math.PI / 180;
+  var FOV = 56 * Math.PI / 180;
   var TERRAIN_SIZE = 200;
   var WATER_LEVEL = -3.2;
   var WEATHER_MODE = new URLSearchParams((window.location && window.location.search) || '').get('weather') || (((window.location && window.location.search) || '').indexOf('rain') >= 0 ? 'rain' : 'clear');
   var SUN_DIR = normalize3([-0.35, 0.44, -0.83]);
   var SPAWN = [0, 0];
   var LAKE = [0, -52];
+  var weatherClock = 0;
+  var weatherNext = 180 + Math.random() * 120;
 
   function setReady(text) {
     if (!stateEl) return;
@@ -100,6 +102,11 @@
   }
 
   function createMesh(positions, normals, colors, indices, flex) {
+    positions = positions instanceof Float32Array ? positions : new Float32Array(positions);
+    normals = normals ? (normals instanceof Float32Array ? normals : new Float32Array(normals)) : null;
+    colors = colors ? (colors instanceof Float32Array ? colors : new Float32Array(colors)) : null;
+    indices = indices instanceof Uint32Array ? indices : new Uint32Array(indices);
+    flex = flex ? (flex instanceof Float32Array ? flex : new Float32Array(flex)) : null;
     var vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     var posBuffer = buffer(positions, gl.ARRAY_BUFFER);

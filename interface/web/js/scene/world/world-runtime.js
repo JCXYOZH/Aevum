@@ -57,6 +57,14 @@
     world.sky.fogColor = [0.54 + 0.16 * h + 0.10 * dusk, 0.59 + 0.14 * h + 0.04 * dusk, 0.64 + 0.14 * h];
   }
 
+  function sunDirectionFor(time) {
+    var angle = time * Math.PI * 2 - Math.PI / 2;
+    // Keep the sun in front of the default desktop camera and let its height
+    // change across the day. The narrow X arc keeps it inside the wide-but-
+    // portrait desktop viewport instead of sliding off the side.
+    return normalize3([Math.cos(angle) * 0.22, Math.sin(angle) * 0.55, -1.0]);
+  }
+
   function setupWorldCamera() {    var ground = world ? world.terrain.getHeight(SPAWN[0], SPAWN[1]) : 0;
     charPos = [SPAWN[0], ground, SPAWN[1]];
     eye = [0.75, ground + 2.55, 6.8];
@@ -111,7 +119,10 @@
     gl.uniform3fv(uniformLocation(skyProgram, 'uSunColor'), new Float32Array(sunColor));
     gl.uniform3fv(uniformLocation(skyProgram, 'uCloudColor'), new Float32Array([0.88, 0.91, 0.93]));
     gl.uniform1f(uniformLocation(skyProgram, 'uCloud'), cloud);
-    gl.uniform1f(uniformLocation(skyProgram, 'uStar'), sky.getStarVisibility());
+    var sunNormal = normalize3(sun);
+    var starVisibility = Math.max(0, -sunNormal[1] * 7.0);
+    starVisibility = Math.min(1, starVisibility);
+    gl.uniform1f(uniformLocation(skyProgram, 'uStar'), starVisibility);
     gl.uniform1f(uniformLocation(skyProgram, 'uTime'), world.time || 0);
     gl.bindVertexArray(skyMesh.vao);
     gl.drawElements(gl.TRIANGLES, skyMesh.count, gl.UNSIGNED_INT, 0);
@@ -163,10 +174,6 @@
       if (world.frustumCulling && !world.frustumCulling.isVisible(g.center, g.radius)) continue;
       gl.bindVertexArray(g.mesh.vao);
       gl.drawElements(gl.TRIANGLES, g.mesh.count, gl.UNSIGNED_INT, 0);
-    }
-    if (flowerMesh) {
-      gl.bindVertexArray(flowerMesh.vao);
-      gl.drawElements(gl.TRIANGLES, flowerMesh.count, gl.UNSIGNED_INT, 0);
     }
     gl.bindVertexArray(null);
   }
@@ -316,7 +323,7 @@
     });
     shapeTerrain(world.terrain);
     world.vegetation = new window.World3DEngine.VegetationSystem(world.terrain);
-    world.vegetation.generate({ treeCount: 760, grassCount: 38000 });
+    world.vegetation.generate({ treeCount: 560, grassCount: 24000 });
     trees = world.vegetation.trees.filter(function (t) {
       var ds = Math.sqrt(t.x * t.x + t.z * t.z);
       var dl = Math.sqrt(t.x * t.x + (t.z - LAKE[1]) * (t.z - LAKE[1]));
@@ -375,6 +382,7 @@
     world.water.setWaterLevel(WATER_LEVEL);
     world.water.setWaveHeight(0.16);
     world.weather.setWeather(WEATHER_MODE, false);
+    if (WEATHER_MODE !== 'rain') world.weather.particles.length = 0;
     world.weather.cloudCoverage = WEATHER_MODE === 'rain' ? 0.46 : 0.06;
     world.postProcessing.colorGrading.exposure = 1.06;
     world.postProcessing.colorGrading.contrast = 1.12;
@@ -386,14 +394,16 @@
     world.sky.setTime(0.285);
     world.sky.update(0);
     styleSky();
-    world.dayNight.time = 0.285;
-    world.dayNight.dayLength = 900;
+    world.dayNight.time = 0.30;
+    world.dayNight.dayLength = 1800;
     world.dayNight.update(0);
+    SUN_DIR = sunDirectionFor(world.dayNight.time);
+    world.dayNight.sunPosition = SUN_DIR;
     world.sky.sunDirection = SUN_DIR;
-    world.lights.setDirectional(SUN_DIR, [1.0, 0.84, 0.63], 1.20);
+    world.lights.setDirectional(SUN_DIR, world.dayNight.getSunColor(), 1.20);
     world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
     sunColor = [1.0, 0.84, 0.63];
-    world.shadows.setQuality('high');
+    world.shadows.setQuality('medium');
     world.shadows.setShadowDistance(110);
     if (window.World3DExt) {
       fog = new window.World3DExt.VolumetricFog({ getContext: function () { return gl; } }, null);
@@ -432,7 +442,6 @@
         resize: function (w, h) {
           w = Math.max(1, Math.round(w));
           h = Math.max(1, Math.round(h));
-          if (canvasWorld.width === w && canvasWorld.height === h) return;
           W = w;
           H = h;
           canvasWorld.width = w;
@@ -497,13 +506,24 @@
       last = now;
       if (world) {
         world.update(dt);
+        if (world.weather.getCurrentWeather() === 'clear') world.weather.particles.length = 0;
+        weatherClock += dt;
+        if (weatherClock >= weatherNext) {
+          weatherClock = 0;
+          weatherNext = 180 + Math.random() * 120;
+          var roll = Math.random();
+          var nextWeather = roll < 0.64 ? 'clear' : (roll < 0.86 ? 'cloud' : 'rain');
+          world.weather.setWeather(nextWeather, true);
+        }
         world.sky.setTime(world.dayNight.time);
         world.sky.update(0);
-        styleSky();
+        SUN_DIR = sunDirectionFor(world.dayNight.time);
+        world.dayNight.sunPosition = SUN_DIR;
         world.sky.sunDirection = SUN_DIR;
-    world.lights.setDirectional(SUN_DIR, [1.0, 0.84, 0.63], 1.20);
+        styleSky();
+        world.lights.setDirectional(SUN_DIR, world.dayNight.getSunColor(), world.dayNight.isDay ? 1.2 : 0.05);
         world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
-        sunColor = [1.0, 0.84, 0.63];
+        sunColor = world.dayNight.getSunColor();
         if (fog) fog.setSunDirection(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
       }
       if (player) player.update(dt);
