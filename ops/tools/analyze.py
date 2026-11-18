@@ -187,7 +187,7 @@ def split_metrics() -> dict:
     paths = list(_iter_py(LIBERTAS_ROOT))
     paths += list(_iter_py(ROOT / "src" / "kernel"))
     paths += list(_iter_py(ROOT / "src" / "shared"))
-    paths += list(_iter_py(ROOT / "command"))
+    paths += list(_iter_py(ROOT / "control"))
     paths += list(_iter_py(ROOT / "interface"))
     paths += list(_iter_py(ROOT / "ops"))
     paths += list(_iter_py(ROOT / "labs"))

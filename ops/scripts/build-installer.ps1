@@ -49,7 +49,7 @@ if (-not $ElectronDist) { $ElectronDist = Join-Path $app "node_modules\electron\
 if (-not $MonitorExe) { $MonitorExe = $env:MEMORIA_MONITOR_EXE }
 if (-not $MonitorExe) { $MonitorExe = Join-Path $root "archive\backend-python\monitor\dist\memoria-monitor.exe" }
 if (-not $RelayExe) { $RelayExe = $env:MEMORIA_RELAY_EXE }
-if (-not $RelayExe) { $RelayExe = Join-Path $root "command\relay\dist\memoria-relay.exe" }
+if (-not $RelayExe) { $RelayExe = Join-Path $root "control\relay\dist\memoria-relay.exe" }
 if (-not $BridgeExe) { $BridgeExe = $env:MEMORIA_BRIDGE_EXE }
 if (-not $BridgeExe) { $BridgeExe = Join-Path $root "src\kernel\host\bridge\dist\memoria-bridge.exe" }
 if (-not $ModelExe) { $ModelExe = $env:MEMORIA_MODEL_EXE }
@@ -133,7 +133,7 @@ Copy-Tree (Join-Path $root "interface\web") (Join-Path $resources "web")
 Copy-Item -LiteralPath $MonitorExe -Destination (Join-Path $resources "monitor\memoria-monitor.exe") -Force
 Copy-Item -LiteralPath $RelayExe -Destination (Join-Path $resources "relay\memoria-relay.exe") -Force
 Copy-Item -LiteralPath $BridgeExe -Destination (Join-Path $resources "bridge\memoria-bridge.exe") -Force
-Copy-Item -LiteralPath (Join-Path $root "command\relay\contracts\errors.json") -Destination (Join-Path $resources "contracts") -Force
+Copy-Item -LiteralPath (Join-Path $root "control\relay\contracts\errors.json") -Destination (Join-Path $resources "contracts") -Force
 Copy-Item -LiteralPath (Join-Path $root "data\tinyshakespeare_3000.txt") -Destination (Join-Path $resources "data") -Force
 
 # The kernel disk image is part of the product, not an external checkout.

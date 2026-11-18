@@ -54,7 +54,7 @@ if (-not $SkipMonitor) {
     $monitorExe = Invoke-PyInstaller "memoria-monitor" (Join-Path $monitorDir "desktop_server.py") $monitorDist $monitorWork
 }
 
-$relayDir = Join-Path $repo "command\relay"
+$relayDir = Join-Path $repo "control\relay"
 $relayDist = Join-Path $relayDir "dist"
 $relayWork = Join-Path $repo "build\pyinstaller\relay"
 $relayExe = Join-Path $relayDist "memoria-relay.exe"

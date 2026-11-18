@@ -4,18 +4,18 @@
 
 ```text
 src/kernel/
-  fortuna            内核核心
+  fortuna            内核
   host/bridge        串口 -> WebSocket
   host/console       引导、状态机、错误码、80×25
 src/architecture/
-  libertas           AI 架构：身份、工具、通知、治理、安全
+  libertas           AI 运行时：身份、工具、通知、治理、安全
   memoria            C++ 训练/生成核心；include 为公共头文件
 src/shared/
   common             跨核心基础件
   integrations       外部系统适配
 engine/              数学、PMX/VMD、VRM、Live2D、WebGL2
-command/             指挥层：contract / registry / supervisor
-command/relay        纯内存中继
+control/             控制平面：contract / registry / supervisor
+control/relay        纯内存中继
 interface/web        展示页与 3D 桌面
 interface/desktop    Electron 壳与安装包
 archive/backend-python/monitor   已放弃的 Python 业务后端，只读
@@ -64,7 +64,7 @@ export MEMORIA_ROOT=/opt/Aevum
 export MEMORIA_BUILD_ROOT=/opt/Aevum/build/linux
 export MEMORIA_DATA_ROOT=/opt/Aevum/data
 export MEMORIA_TORCH_LIB="$(python -c 'import pathlib, torch; print(pathlib.Path(torch.__file__).resolve().parent / "lib")')"
-export PYTHONPATH=/opt/Aevum/command/relay
+export PYTHONPATH=/opt/Aevum/control/relay
 
 nohup python -m relay --port 8790 > build/relay.log 2>&1 &
 nohup python archive/backend-python/monitor/desktop_server.py \
@@ -90,7 +90,7 @@ curl -fsS http://127.0.0.1:8790/v1/health
 ssh -L 8781:127.0.0.1:8781 -L 8790:127.0.0.1:8790 user@your-server
 ```
 
-公开站点和 `/v1/` 走 nginx 时，用 `command/relay/deploy/install.sh`，不要把 relay 和手工启动的重复起一份。
+公开站点和 `/v1/` 走 nginx 时，用 `control/relay/deploy/install.sh`，不要把 relay 和手工启动的重复起一份。
 
 ## 编译 Memoria
 

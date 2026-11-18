@@ -14,7 +14,7 @@
 | 模块 docstring | 85.7% | 85.7% | `src/architecture/libertas` 有模块 docstring 的文件比例 |
 | 符号 docstring | 53.2% | 53.2% | 函数/类中有 docstring 的比例 |
 | 文档综合分 | 52.5% | 79.6% | 页面/模块/符号三项等权 |
-| 拆分规范性 | 99.3% 文件 ≤500 行 | 99.6% 文件 ≤500 行 | `src/architecture/libertas` + `archive/backend-python/monitor` + `command/relay` |
+| 拆分规范性 | 99.3% 文件 ≤500 行 | 99.6% 文件 ≤500 行 | `src/architecture/libertas` + `archive/backend-python/monitor` + `control/relay` |
 | 超 500 行文件 | 7 个 | 4 个 | 同上 |
 | 最大文件 | 2793 行 | 2793 行 | `legacy_models/model_engine/generation_stream.py` |
 
@@ -82,7 +82,7 @@ name 'datetime' is not defined
 
 ## 文档完善性判断
 
-- 45/45 个 `docs/*.md` 已有实质正文，空占位清零。
+- 当前 46/46 个 `docs/*.md` 已有实质正文，空占位清零。
 - 页面口径 100.0%，但模块 docstring 只有 85.7%、符号 docstring 只有 53.2%；三项等权综合为 **79.6%**。
 - 新增 `architecture/overview.md`、`architecture/code-map.md`、`docs/audit/2026-11-18-code-audit.md`。
 - 35 个原有空占位已补：架构、API、部署、运维、安全、发布、教程、FAQ、ADR。

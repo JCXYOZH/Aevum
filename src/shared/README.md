@@ -6,5 +6,5 @@ src/shared/
 └─ integrations/  # redis / postgres / kafka / openai / huggingface 等适配
 ```
 
-`shared` 不依赖三个核心；核心可以依赖 `shared`。新增基础件先确认至少两个核心
+`shared` 不依赖三个核心运行时；核心可以依赖 `shared`。新增基础件先确认至少两个核心
 会用到，否则放回使用它的核心目录。

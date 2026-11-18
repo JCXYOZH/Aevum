@@ -2,6 +2,8 @@
 
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+> 历史记录中的路径按当时结构保留，不代表当前目录。当前结构见 [STRUCTURE.md](STRUCTURE.md)。
+
 ## [Unreleased]
 
 ### Added

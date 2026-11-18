@@ -1,14 +1,15 @@
 # Deployment
 
-> This is the standalone **relay-only** installer. For the current Aevum desktop
-> (MrHua, kernel VGA, exhibit page, auth/chat APIs and relay), use
-> `ops/deploy/systemd/install.sh` instead. It installs all four services and
-> the nginx routes those pages need.
+> This is the standalone **relay-only** installer. For the current Aevum deployment
+> (MrHua, kernel VGA, exhibit page and relay), use `ops/deploy/systemd/install.sh`
+> instead. It installs three services (`aevum-kernel`, `aevum-bridge`, `aevum-relay`)
+> and the nginx routes those pages need. The old monitor and auth/chat APIs are archived under
+> `archive/backend-python/monitor` and are not part of the current deployment.
 
 One command brings up the static site and the in-memory relay on one host:
 
 ```bash
-sudo bash command/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
+sudo bash control/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
 ```
 
 Run it from the repository root, after cloning. The script is idempotent; re-run it
@@ -37,9 +38,9 @@ filesystem access at all.
 ## Options
 
 ```bash
-sudo bash command/relay/deploy/install.sh --domain example.com --email admin@example.com
-sudo bash command/relay/deploy/install.sh --domain example.com --no-cert      # HTTP only, for a first smoke test
-sudo bash command/relay/deploy/install.sh --domain example.com --with-qemu    # also install qemu-kvm + iproute
+sudo bash control/relay/deploy/install.sh --domain example.com --email admin@example.com
+sudo bash control/relay/deploy/install.sh --domain example.com --no-cert      # HTTP only, for a first smoke test
+sudo bash control/relay/deploy/install.sh --domain example.com --with-qemu    # also install qemu-kvm + iproute
 ```
 
 `--with-qemu` installs the RHEL-family package names on purpose: `qemu-kvm` (not
@@ -69,7 +70,7 @@ systemctl reload nginx
 | `401 0x060101` | nginx config lost the `X-Relay-Token` line, or `/etc/aevum/relay.env` was regenerated without reloading nginx |
 | certificate not issued | DNS not resolved yet, or port 80 blocked; re-run with `--email` after fixing DNS |
 | site shows 403 | static tree not readable by the `nginx` user; `chmod -R a+rX` the web root |
-| `nginx -t` fails after certbot | certbot edited a vhost with a missing certificate path; restore `command/relay/deploy/nginx-aevum.conf` and re-run the installer |
+| `nginx -t` fails after certbot | certbot edited a vhost with a missing certificate path; restore `control/relay/deploy/nginx-aevum.conf` and re-run the installer |
 
 ## Why not serve the static site from the relay
 

@@ -109,7 +109,7 @@ handle.detach();
 - 看交流区：
 
 ```bash
-cd command/relay && python -m relay
+cd control/relay && python -m relay
 cd interface/web && python -m http.server 8080
 ```
 
@@ -118,6 +118,6 @@ cd interface/web && python -m http.server 8080
 ## 跟着服务器常驻
 
 1. **nginx 托管页面**：指向 `interface/web`，`git pull` 即生效。
-2. **中继常驻**：`command/relay` 由 systemd 托管，只监听 `127.0.0.1:8790`。
+2. **中继常驻**：`control/relay` 由 systemd 托管，只监听 `127.0.0.1:8790`。
 3. **对外接口**：nginx 把 `/v1/` 反代到中继并注入 `X-Relay-Token`，浏览器拿不到令牌。
-4. 一键部署：`sudo bash command/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn`。
+4. 一键部署：`sudo bash control/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn`。

@@ -1,4 +1,4 @@
-"""三核心登记表。"""
+"""三个核心运行时的登记表。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-# architecture：AI 架构核心
+# architecture：AI 运行时
 
 ```text
 src/architecture/

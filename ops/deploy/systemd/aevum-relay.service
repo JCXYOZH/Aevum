@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=PYTHONUNBUFFERED=1
-WorkingDirectory=@APP_ROOT@/command/relay
+WorkingDirectory=@APP_ROOT@/control/relay
 ExecStart=@PYTHON@ -m relay --port 8790
 Restart=always
 RestartSec=2

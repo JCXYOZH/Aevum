@@ -139,7 +139,7 @@ if (-not $NoKernel -and -not $Qemu) {
 }
 if (-not $NoKernel -and -not (Test-Path -LiteralPath $Qemu)) { throw "QEMU 不存在：$Qemu" }
 
-$RelayDir = Join-Path $Root "command\relay"
+$RelayDir = Join-Path $Root "control\relay"
 $WebDir = Join-Path $Root "interface\web"
 $MonitorDir = Join-Path $Root "archive\backend-python\monitor"
 $KernelDir = Join-Path $Root "src\kernel\host\console"

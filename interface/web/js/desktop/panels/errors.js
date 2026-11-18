@@ -11,7 +11,7 @@
     root.innerHTML =
       '<div class="eyebrow">ERROR DESK / 0xRRFFTT</div>' +
       '<h1 class="h1" style="font-size:19px">错误看板</h1>' +
-      '<p class="lead">左列是日志里真实出现的错误行；下面是从 command/relay/contracts/errors.json 读出的码表。没有错误时保持空，不塞示例。</p>' +
+      '<p class="lead">左列是日志里真实出现的错误行；下面是从 control/relay/contracts/errors.json 读出的码表。没有错误时保持空，不塞示例。</p>' +
       '<div class="toolbar" style="margin-top:12px"><span class="tag tag--red" data-field="e-count">0 条</span><span class="small">trainer logs + relay contract</span><button class="tbtn" type="button" data-field="e-refresh">刷新</button></div>' +
       '<ul class="errors-list" data-field="e-list"></ul>' +
       '<div class="code-table"><div class="code-table__head"><span>错误码表</span><span data-field="e-table-count">—</span></div><div class="code-table__body" data-field="e-table"></div></div>';
@@ -65,7 +65,7 @@
         row.innerHTML = "<code>" + MD.escapeText(item.code || code) + "</code><span>" + MD.escapeText((item.name || "") + " · " + (item.message || "")) + "</span>";
         table.appendChild(row);
       });
-      if (!keys.length) table.innerHTML = '<div class="empty">错误码表没有读到：command/relay/contracts/errors.json。</div>';
+      if (!keys.length) table.innerHTML = '<div class="empty">错误码表没有读到：control/relay/contracts/errors.json。</div>';
       MD.bus.emit("errors", { errors: errors, known: known });
     }
 

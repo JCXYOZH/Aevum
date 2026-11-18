@@ -11,22 +11,22 @@
 
 ## 这是什么
 
-Aevum 现在按三个指挥态核心组织：**内核、AI 架构、引擎**。界面只负责呈现，`command/` 只负责指挥，后端 Python 业务已归档。
+Aevum 由三个核心运行时组成：**内核（Kernel）、AI 运行时（AI Runtime）、渲染引擎（Render Engine）**。界面是独立的呈现层，`control/` 是控制平面（Control Plane），负责启动、停止和状态汇总。Python 业务后端已归档，不再参与主线。
 
-目录规则、柜子边界和迁移对照统一写在 [STRUCTURE.md](STRUCTURE.md)。先读它，再读各柜的 README。
+目录规则、模块边界和迁移对照统一写在 [STRUCTURE.md](STRUCTURE.md)，专有名称与通用架构术语写在 [docs/glossary.md](docs/glossary.md)。先读这两份，再读各目录的 README。
 
 ## 代码在哪里
 
 | 路径 | 是什么 | 状态 |
 | --- | --- | --- |
-| `src/kernel/fortuna/` | 内核核心：引导、内存、调度、文件系统、网络、沙箱 | 维护中 |
-| `src/kernel/host/` | 内核宿主：串口桥、引导盘、机器人例程 | 维护中 |
-| `src/architecture/libertas/` | AI 架构核心：身份、工具、通知、治理、安全 | 已迁入 |
-| `src/architecture/memoria/` | AI 架构核心：训练、生成、检查点 | 可编译 |
-| `src/shared/common/` | 跨核心基础件 | 可用 |
+| `src/kernel/fortuna/` | 内核：引导、内存、调度、文件系统、网络、沙箱 | 维护中 |
+| `src/kernel/host/` | 内核宿主适配：串口桥、引导盘、机器人例程 | 维护中 |
+| `src/architecture/libertas/` | AI 运行时：身份、工具、通知、治理、安全 | 已迁入 |
+| `src/architecture/memoria/` | AI 运行时：训练、生成、检查点 | 可编译 |
+| `src/shared/common/` | 跨核心共用代码 | 可用 |
 | `src/shared/integrations/` | 外部系统适配 | 骨架 |
-| `engine/` | 第三个核心：数学、PMX/VMD、VRM、Live2D、WebGL2 | 可用 |
-| `command/` | 统一指挥态：登记、状态契约、多进程骨架、中继 | 骨架 + 中继可用 |
+| `engine/` | 渲染引擎：数学、PMX/VMD、VRM、Live2D、WebGL2 | 可用 |
+| `control/` | 控制平面：核心登记、状态契约、多进程管理、中继 | 骨架 + 中继可用 |
 | `interface/web/` | 展示页、3D 桌面、MrHua 页面 | 已实现 |
 | `interface/desktop/` | Electron 壳与安装包 | 已出包 |
 | `interface/console/` | 旧 QML / Web UI | 归档界面 |
@@ -66,11 +66,11 @@ python -m http.server 8080
 起纯内存中继：
 
 ```powershell
-cd command\relay
+cd control\relay
 python -m relay --port 8790
 ```
 
-旧的 `ops\scripts\desktop.ps1` 仍然拉起监控与串口链路；那属于归档后的后端方向，不再作为新主线。新的主线只围绕内核、架构、引擎三个核心。
+旧的 `ops\scripts\desktop.ps1` 仍然拉起监控与串口链路；那属于归档后的后端方向，不再作为新主线。新的主线只围绕内核、AI 运行时、渲染引擎三个核心运行时。
 
 内核是独立进程，不是网页的一部分：QEMU 只提供串口，桥接把串口帧转成 WebSocket；页面只连中继与桥接，不直接碰内核。任何一段挂掉，其余仍能启动。
 
@@ -182,10 +182,10 @@ npm run dist:dir        # 免安装目录
 一台 Alibaba Cloud Linux 3 主机，克隆仓库后一条命令：
 
 ```bash
-sudo bash command/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
+sudo bash control/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
 ```
 
-脚本做四件事：装 nginx 与 Python、起 `aevum-relay`（只监听 `127.0.0.1:8790`）、写 nginx vhost（静态站 + `/v1/` 反代，关闭缓冲）、用 certbot 申请证书并跳转 HTTPS。令牌由 nginx 注入，浏览器拿不到；中继进程 `MemoryMax=256M`，因为它本来就不需要磁盘。细节与排障见 [command/relay/deploy/README.md](command/relay/deploy/README.md)。
+脚本做四件事：装 nginx 与 Python、起 `aevum-relay`（只监听 `127.0.0.1:8790`）、写 nginx vhost（静态站 + `/v1/` 反代，关闭缓冲）、用 certbot 申请证书并跳转 HTTPS。令牌由 nginx 注入，浏览器拿不到；中继进程 `MemoryMax=256M`，因为它本来就不需要磁盘。细节与排障见 [control/relay/deploy/README.md](control/relay/deploy/README.md)。
 
 ## 怎么开始
 
@@ -194,7 +194,7 @@ sudo bash command/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrh
 | 三分钟内弄清这是什么 | [start_here.md](start_here.md) |
 | 提代码 | [CONTRIBUTING.md](CONTRIBUTING.md)（一次更新一次提交），或下面的合并规则 |
 | 把站点跑起来 | [interface/web/README.md](interface/web/README.md) |
-| 部署整站与中继 | [command/relay/deploy/README.md](command/relay/deploy/README.md) |
+| 部署整站与中继 | [control/relay/deploy/README.md](control/relay/deploy/README.md) |
 | 了解行为边界与举报流程 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
 | 看文档索引 | [docs/index.md](docs/index.md) |
 
@@ -223,4 +223,4 @@ sudo bash command/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrh
 
 ---
 
-In English: Aevum is a community-built platform for its own community — a static site plus a memory-only relay that keeps sessions, context and transfers in RAM and writes nothing to disk. The relay lives in `command/relay/` and is being merged; it has no accounts, no database and no history. Code is licensed under MPL 2.0, and participation is governed by `CODE_OF_CONDUCT.md` (report to `open@mrhua.cn`).
+In English: Aevum is a community-built platform for its own community — a static site plus a memory-only relay that keeps sessions, context and transfers in RAM and writes nothing to disk. The relay lives in `control/relay/` and is being merged; it has no accounts, no database and no history. Code is licensed under MPL 2.0, and participation is governed by `CODE_OF_CONDUCT.md` (report to `open@mrhua.cn`).

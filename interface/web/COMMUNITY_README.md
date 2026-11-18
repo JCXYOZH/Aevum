@@ -46,7 +46,7 @@ ops\scripts\desktop.ps1 -NoKernel
 页面没有构建步骤，`web/` 目录本身就是发布产物。整站与中继一起部署：
 
 ```bash
-sudo bash command/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
+sudo bash control/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
 ```
 
 桌面壳通过 `interface/desktop` 打包；安装包和 nginx 静态站是两条分发通道，不是二选一。

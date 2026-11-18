@@ -57,7 +57,7 @@ function serviceDir(name) {
       }
     : {
         monitor: path.join(repoRoot(), "archive", "backend-python", "monitor"),
-        relay: path.join(repoRoot(), "command", "relay"),
+        relay: path.join(repoRoot(), "control", "relay"),
         bridge: path.join(repoRoot(), "src", "kernel", "host", "bridge"),
         kernel: path.join(repoRoot(), "src", "kernel", "host", "console"),
         qemu: "",

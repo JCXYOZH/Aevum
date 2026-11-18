@@ -154,7 +154,7 @@ if (-not $NoKernel -and -not (Test-Path -LiteralPath $Qemu)) {
     throw "QEMU 不存在：$Qemu"
 }
 
-$RelayDir = Join-Path $Root "command\relay"
+$RelayDir = Join-Path $Root "control\relay"
 $WebDir = Join-Path $Root "interface\web"
 $KernelDir = Join-Path $Root "src\kernel\host\console"
 $BridgeDir = Join-Path $Root "src\kernel\host\bridge"

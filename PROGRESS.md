@@ -13,7 +13,7 @@
 | 顶层文档 | 根目录 | 已更新 | README / PROGRESS / start_here / CONTRIBUTING / CHANGELOG |
 | 展示页 | `interface/web/index.html` | 可打开 | 左侧 rail 灵体 + 连续内容；P0–P8 为原节点，P2 / P3 / P6–P8 已按当前状态补充，另加 11-17 账号与桌面节点 |
 | 看板 | `interface/web/desktop.html` | 可打开 | 多窗口、启动台、展示页窗口保留 |
-| 纯内存中继 | `command/relay/` | 已实现 | 会话、上下文、分片、在线计数；无落盘 |
+| 纯内存中继 | `control/relay/` | 已实现 | 会话、上下文、分片、在线计数；无落盘 |
 | 监控服务 | `archive/backend-python/monitor/desktop_server.py` | 已实现 | 读检查点、训练指标、错误码；起模型子进程 |
 | 串口桥接 | `src/kernel/host/bridge/serial_bridge.py` | 已实现 | 串口帧转 WebSocket |
 | 内核 | `src/kernel/host/console/` | 维护中 | 引导、状态机、错误码、80×25 单元格 |
@@ -29,7 +29,7 @@
 | 账号 | `archive/backend-python/monitor/auth_api.py`、`src/architecture/libertas/identity/` | 已接入 | 主账号 / 子用户账号、会话、身份档案隔离；本机验证码登录 |
 | 访客入口 | `archive/backend-python/monitor/api/visitor.py` | 已接入 | `/api/visitor/bootstrap`、`/api/community/overview`；访客 Cookie、每日额度、隔离数据作用域 |
 | 访客 AI 与数据目录 | `archive/backend-python/monitor/chat_api.py` | 已接入 | 未登录可对话；按 `data_scope` 落盘到 `user_data/users` 或 `user_data/guests`；WAN 只传作用域 |
-| 部署编排 | `deployment/` | 空骨架 | 占位文件，不可直接照做 |
+| 部署编排 | `ops/deploy/` | 可用 | systemd 与平台部署脚本分开存放 |
 | 配置样例 | `configs/` | 空骨架 | 占位文件 |
 | CI | `.github/workflows/` | 空骨架 | 占位文件 |
 
@@ -52,7 +52,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - 展示页改成连续工作台结构：左侧 rail 常驻灵体、状态与锚点，右侧用 `.chain` 和行式清单代替卡片展台。
 - 看板与展示页共用 `styles/presence.css`，灵体在 rail 和 dock 各有位置。
 - 配色回到纸黄系（展示页与看板 token 已替换），保留深色终端块作为局部面板。
-- 中继、监控、串口桥接、内核入口都收在 `apps/` 下。
+- 中继、串口桥接、内核入口分别收在 `control/relay/`、`src/kernel/host/bridge/`、`src/kernel/host/console/`。
 - Memoria C++ 内核迁入 `src/architecture/memoria/`，公共头文件在 `src/architecture/memoria/include/`；统一入口为 `src/architecture/memoria/include/aevum_core.h`，源码用 `#include <include/aevum_core.h>`，构建提供 `-I src/architecture/memoria`。
 - Electron 桌面壳接入 `interface/desktop/`；`npm run dist:installer` 出 Inno Setup 安装包，`npm run dist:dir` 为免安装目录；安装包约 95 MB，产物不进 Git。
 - 3000 行公开语料入库；模型权重、构建产物、`node_modules` 明确忽略。

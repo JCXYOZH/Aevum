@@ -1,6 +1,6 @@
-"""指挥态的公共契约。
+"""控制平面的公共契约。
 
-这里只定义核心身份与运行状态，不导入任何核心实现。
+这里只定义核心运行时身份与运行状态，不导入任何核心实现。
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ class CoreKind(str, Enum):
 
 @dataclass(frozen=True)
 class CoreSpec:
-    """一个指挥态核心的静态描述。"""
+    """一个核心运行时的静态描述。"""
 
     name: str
     root: str

@@ -1,6 +1,6 @@
-"""多进程指挥骨架。
+"""多进程管理骨架。
 
-只负责“拉起 / 停止 / 收状态”，不承载任何业务逻辑。核心的具体入口由调用方
+只负责“启动 / 停止 / 状态轮询”，不承载任何业务逻辑。核心的具体入口由调用方
 传入一个可在 spawn 子进程中导入的模块级函数；不要在这里 import 内核或架构。
 """
 
@@ -13,7 +13,7 @@ from .contract import CoreSpec, CoreStatus
 
 
 class Supervisor:
-    """三核心的进程表。"""
+    """三个核心运行时的进程表。"""
 
     def __init__(self, specs: tuple[CoreSpec, ...]) -> None:
         self._specs = {spec.name: spec for spec in specs}

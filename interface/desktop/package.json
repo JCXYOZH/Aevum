@@ -37,7 +37,7 @@
         "to": "monitor/memoria-monitor.exe"
       },
       {
-        "from": "../../command/relay/dist/memoria-relay.exe",
+        "from": "../../control/relay/dist/memoria-relay.exe",
         "to": "relay/memoria-relay.exe"
       },
       {
@@ -61,7 +61,7 @@
         "to": "kernel/disk.img"
       },
       {
-        "from": "../../command/relay/contracts/errors.json",
+        "from": "../../control/relay/contracts/errors.json",
         "to": "contracts/errors.json"
       },
       {

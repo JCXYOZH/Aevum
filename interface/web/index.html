@@ -305,9 +305,9 @@
           <h3>纯内存中继</h3>
           <p class="phase__state"><i class="state-dot state-dot--done"></i>已实现</p>
           <ul class="phase__items">
-            <li>中继落在 command/relay：会话、上下文、分片传输、在线计数</li>
+            <li>中继落在 control/relay：会话、上下文、分片传输、在线计数</li>
             <li>没有数据库、没有账号；进程重启，房间与文件一起消失</li>
-            <li>端到端验证通过；部署配置在 command/relay/deploy</li>
+            <li>端到端验证通过；部署配置在 control/relay/deploy</li>
           </ul>
         </div>
       </li>
@@ -387,7 +387,7 @@
         <span class="trace__date">11-10</span>
         <div>
           <p class="trace__title">中继与页面入库</p>
-          <p class="trace__desc">纯内存中继落到 command/relay，页面归入 interface/web；旧页面移除，内核后端保留。</p>
+          <p class="trace__desc">纯内存中继落到 control/relay，页面归入 interface/web；旧页面移除，内核后端保留。</p>
         </div>
       </li>
     </ol>

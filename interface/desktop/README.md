@@ -13,7 +13,7 @@ ops\scripts\desktop.ps1
 端口：
 
 - `8781` 看板与监控 API（`archive/backend-python/monitor/desktop_server.py`）
-- `8790` 中继 API（`command/relay`）
+- `8790` 中继 API（`control/relay`）
 - `8765` 内核串口桥接 WebSocket
 - `5555` QEMU 串口
 

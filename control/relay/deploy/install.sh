@@ -5,7 +5,7 @@
 # Target: Alibaba Cloud Linux 3 / RHEL 8-9 compatible, nginx, systemd.
 # Run from the repository root after cloning:
 #
-#   sudo bash command/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
+#   sudo bash control/relay/deploy/install.sh --domain www.mrhua.cn --email open@mrhua.cn
 #
 # In a standalone checkout (relay/ at the top level) the same script also works.
 #
@@ -39,19 +39,19 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "run as root: sudo bash command/relay/deploy/install.sh ..." >&2
+  echo "run as root: sudo bash control/relay/deploy/install.sh ..." >&2
   exit 1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT=""
 
-# The script may live at <repo>/command/relay/deploy/install.sh (monorepo) or
+# The script may live at <repo>/control/relay/deploy/install.sh (monorepo) or
 # <repo>/deploy/install.sh (standalone). Try three levels up (monorepo root),
 # then two and one (standalone root), then the script directory itself, and
 # take the first directory that actually holds a relay package.
 for cand in "$SCRIPT_DIR/../../.." "$SCRIPT_DIR/../.." "$SCRIPT_DIR/.." "$SCRIPT_DIR"; do
-  if [ -d "$cand/command/relay/relay" ] || [ -d "$cand/relay" ]; then
+  if [ -d "$cand/control/relay/relay" ] || [ -d "$cand/relay" ]; then
     REPO_ROOT="$(cd "$cand" && pwd)"
     break
   fi
@@ -62,9 +62,9 @@ if [ -z "$REPO_ROOT" ]; then
   exit 1
 fi
 
-# The relay lives at command/relay/ in the monorepo; standalone checkouts keep it at the root.
-if [ -d "$REPO_ROOT/command/relay/relay" ]; then
-  APP_DIR="$REPO_ROOT/command/relay"
+# The relay lives at control/relay/ in the monorepo; standalone checkouts keep it at the root.
+if [ -d "$REPO_ROOT/control/relay/relay" ]; then
+  APP_DIR="$REPO_ROOT/control/relay"
 else
   APP_DIR="$REPO_ROOT"
 fi
