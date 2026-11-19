@@ -389,7 +389,9 @@
     '  // Depth of field: far field softens around the chosen focus distance.\n' +
     '  if(uDof>0.001 && depth<0.9999){\n' +
     '    float center=linearDepth(depth);\n' +
-    '    float coc=smoothstep(uDofFocus-uDofRange,uDofFocus+uDofRange,center);\n' +
+    '    float nearCoc=smoothstep(uDofFocus-uDofRange,uDofFocus+uDofRange,center);\n' +
+    '    float farCut=1.0-smoothstep(uDofFocus+uDofRange,uDofFocus+uDofRange*2.0,center);\n' +
+    '    float coc=nearCoc*farCut;\n' +
     '    if(coc>0.01){\n' +
     '      vec3 blurred=vec3(0.0);\n' +
     '      for(int i=0;i<8;i++){\n' +
@@ -477,7 +479,8 @@
     '  float amount=clamp(max(edge.r,max(edge.g,edge.b))*1.7,0.0,0.30);\n' +
     '  vec3 finalColor=mix(c,m,amount);\n' +
     '  if(uChroma>0.00001){\n' +
-    '    vec2 ca=(vUv-0.5)*uChroma*8.0;\n' +
+    '    float edge=smoothstep(0.55,0.95,length(vUv-0.5));\n' +
+    '    vec2 ca=(vUv-0.5)*uChroma*8.0*edge;\n' +
     '    finalColor.r=texture(uTex,clamp(vUv+ca,vec2(0.001),vec2(0.999))).r;\n' +
     '    finalColor.b=texture(uTex,clamp(vUv-ca,vec2(0.001),vec2(0.999))).b;\n' +
     '  }\n' +
@@ -1195,7 +1198,6 @@
   var grassGroups = [];
   var terrainChunks = [];
   var advancedWater = null;
-  var advancedVegetation = null;
   var extShaderCompiler = null;
   var birdMesh = null;
   var fireflyMesh = null;
@@ -1682,9 +1684,6 @@
     drawSky();
     drawTerrain();
     drawTrees();
-    if (advancedVegetation) {
-      advancedVegetation.render(world.camera, world.lights, { trees: false, grass: false });
-    }
     drawGrass(now / 1000);
     drawWater();
     drawObjects();
@@ -1766,6 +1765,27 @@
         color: [0.12 + Math.random() * 0.04, 0.40 + Math.random() * 0.08, 0.07]
       });
     }
+    // 远景草并入同一套草 mesh/shader：只放在低处缓坡，避开山脊线，
+    // 不再使用另一套不透明 instanced quad。
+    for (var fgi = 0; fgi < 1600; fgi += 1) {
+      var fga = Math.random() * Math.PI * 2;
+      var fgr = 62 + Math.random() * 34;
+      var fgx = Math.cos(fga) * fgr;
+      var fgz = Math.sin(fga) * fgr - 16;
+      var fgy = world.terrain.getHeight(fgx, fgz);
+      if (fgy < WATER_LEVEL + 0.6 || fgy > 7.0) continue;
+      var fgdx = world.terrain.getHeight(fgx + 1, fgz) - fgy;
+      var fgdz = world.terrain.getHeight(fgx, fgz + 1) - fgy;
+      if (Math.abs(fgdx) + Math.abs(fgdz) > 0.8) continue;
+      grass.push({
+        x: fgx, z: fgz, y: fgy,
+        height: 0.20 + Math.random() * 0.30,
+        width: 0.030 + Math.random() * 0.025,
+        rotation: Math.random() * Math.PI * 2,
+        swayOffset: Math.random() * Math.PI * 2,
+        color: [0.12 + Math.random() * 0.04, 0.40 + Math.random() * 0.08, 0.07]
+      });
+    }
 
     world.water.setWaterLevel(WATER_LEVEL);
     world.water.setWaveHeight(0.16);
@@ -1789,13 +1809,13 @@
     world.postProcessing.ssao.intensity = 0.55;
     world.postProcessing.ssao.range = 8;
     world.postProcessing.ssao.samples = 10;
-    world.postProcessing.dof.enabled = false;
+    world.postProcessing.dof.enabled = true;
     world.postProcessing.dof.focusDistance = 18;
     world.postProcessing.dof.focusRange = 12;
-    world.postProcessing.dof.blurAmount = 4;
+    world.postProcessing.dof.blurAmount = 3;
     world.postProcessing.dof.strength = 1;
-    world.postProcessing.chromaticAberration.enabled = false;
-    world.postProcessing.chromaticAberration.amount = 0.0006;
+    world.postProcessing.chromaticAberration.enabled = true;
+    world.postProcessing.chromaticAberration.amount = 0.0004;
     world.sky.setTime(0.285);
     world.sky.update(0);
     styleSky();
@@ -1867,26 +1887,9 @@
     treeGroups = buildVegetationGroups(nearTrees, makeTreeMesh, 58);
     var nearGrass = grass.filter(function (g) { return Math.sqrt(g.x * g.x + g.z * g.z) < 58; });
     grassGroups = buildVegetationGroups(nearGrass, makeGrassMesh, 58);
-
-    if (window.World3DExt && extShaderCompiler) {
-      advancedVegetation = new window.World3DExt.VegetationSystem(
-        { getContext: function () { return gl; } }, extShaderCompiler
-      );
-      advancedVegetation.init();
-      advancedVegetation.setLodDistance(180);
-      advancedVegetation.setWindStrength(0.28);
-      advancedVegetation.setWindDirection(1, 0, 0.35);
-      // Far trees are drawn by the base tree groups with the terrain shader
-      // (fog + shadows). The extension's instanced canopy/grass quads produced
-      // bright strips over the ridge, so its render layer stays off in this pass.
-      for (var fg = 0; fg < 1600; fg++) {
-        var fa = Math.random() * Math.PI * 2;
-        var fr = 62 + Math.random() * 34;
-        var fx = Math.cos(fa) * fr;
-        var fz = Math.sin(fa) * fr - 16;
-        var fy = world.terrain.getHeight(fx, fz);
-        if (fy > WATER_LEVEL + 0.6) advancedVegetation.addGrass([fx, fy, fz], 0.7 + Math.random() * 0.5);
-      }
+    var farGrass = grass.filter(function (g) { return Math.sqrt(g.x * g.x + g.z * g.z) >= 58; });
+    if (farGrass.length) {
+      grassGroups = grassGroups.concat(buildVegetationGroups(farGrass, makeGrassMesh, 110));
     }
     var flowerSpots = [];
     for (var fi = 0; fi < 1100; fi++) {
@@ -2061,12 +2064,8 @@
           fog.setFogDensity(0.0008 + world.weather.getFogIntensity() * 0.025 +
             (world.weather.getCurrentWeather() === 'storm' ? 0.012 : 0));
         }
-        if (advancedVegetation) {
-          advancedVegetation.setWindStrength(0.16 + world.weather.getWindSpeed() * 0.045);
-        }
       }
       if (player) player.update(dt);
-      if (advancedVegetation) advancedVegetation.update(dt, world.camera);
 
       var pose = null;
       if (player && vrm && retarget) {
@@ -2096,7 +2095,7 @@
         cloud: world.weather.getCloudCoverage(),
         objects: world.objects.length,
         chunks: terrainChunks.length,
-        farTrees: advancedVegetation ? advancedVegetation.trees.length : 0
+        farTrees: 0
       };
       if (modelRenderer && pose) {
         modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
@@ -2123,6 +2122,7 @@
     window.__AEVUM_SHOT_ERROR = String(error && error.stack || error);
     fail(error);
   });
+
 
 
 

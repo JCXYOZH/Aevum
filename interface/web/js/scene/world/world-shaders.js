@@ -259,7 +259,9 @@
     '  // Depth of field: far field softens around the chosen focus distance.\n' +
     '  if(uDof>0.001 && depth<0.9999){\n' +
     '    float center=linearDepth(depth);\n' +
-    '    float coc=smoothstep(uDofFocus-uDofRange,uDofFocus+uDofRange,center);\n' +
+    '    float nearCoc=smoothstep(uDofFocus-uDofRange,uDofFocus+uDofRange,center);\n' +
+    '    float farCut=1.0-smoothstep(uDofFocus+uDofRange,uDofFocus+uDofRange*2.0,center);\n' +
+    '    float coc=nearCoc*farCut;\n' +
     '    if(coc>0.01){\n' +
     '      vec3 blurred=vec3(0.0);\n' +
     '      for(int i=0;i<8;i++){\n' +
@@ -347,7 +349,8 @@
     '  float amount=clamp(max(edge.r,max(edge.g,edge.b))*1.7,0.0,0.30);\n' +
     '  vec3 finalColor=mix(c,m,amount);\n' +
     '  if(uChroma>0.00001){\n' +
-    '    vec2 ca=(vUv-0.5)*uChroma*8.0;\n' +
+    '    float edge=smoothstep(0.55,0.95,length(vUv-0.5));\n' +
+    '    vec2 ca=(vUv-0.5)*uChroma*8.0*edge;\n' +
     '    finalColor.r=texture(uTex,clamp(vUv+ca,vec2(0.001),vec2(0.999))).r;\n' +
     '    finalColor.b=texture(uTex,clamp(vUv-ca,vec2(0.001),vec2(0.999))).b;\n' +
     '  }\n' +
