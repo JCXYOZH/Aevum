@@ -68,6 +68,7 @@
       }
     }, 200);
   }
+  window.AevumMarkGraphics = markGraphics;
 
   function setReady(text) {
     if (!stateEl) return;
@@ -1301,6 +1302,13 @@
   var clip = 'run';
   var retarget = null;
   var modelMatrix = M4.create();
+  var modelBaseY = 0;
+  var proceduralSkeleton = null;
+  var proceduralMotion = null;
+  var proceduralChestBone = null;
+  var birdPicker = null;
+  var birdPickables = [];
+  var pickerCamera = null;
   var charPos = [0, 0, 0];
   var charScale = 1;
   var eye = [0, 5, 12];
@@ -1679,26 +1687,90 @@
         boundingRadius: 3,
         yaw: 0,
         update: function (dt) {
-          this.angle += dt * 0.45;
-          this.position[0] = this.baseX + Math.sin(this.angle + this.phase) * 7;
-          this.position[2] = this.baseZ + Math.cos(this.angle * 0.8 + this.phase) * 4;
-          this.position[1] = this.height + Math.sin(this.angle * 2 + this.phase) * 1.2;
-          this.yaw = -0.22 + Math.sin(this.angle * 0.5 + this.phase) * 0.12;
-          this.boundingCenter = this.position;
+          this.behavior.context.bird = this;
+          this.behavior.tick(dt);
+          if (window.AevumMarkGraphics) window.AevumMarkGraphics('OrbBehavior');
         }
       };
+      if (!window.OrbBehavior || !window.OrbBehavior.BehaviorTree || !window.OrbBehavior.Action) {
+        throw new Error('OrbBehavior BehaviorTree/Action is required; inline bird patrol is removed');
+      }
+      bird.behavior = new window.OrbBehavior.BehaviorTree();
+      bird.behavior.setRoot(new window.OrbBehavior.Action('bird-orbit-patrol', function (context, dt) {
+        var b = context.bird;
+        b.angle += dt * 0.45;
+        b.position[0] = b.baseX + Math.sin(b.angle + b.phase) * 7;
+        b.position[2] = b.baseZ + Math.cos(b.angle * 0.8 + b.phase) * 4;
+        b.position[1] = b.height + Math.sin(b.angle * 2 + b.phase) * 1.2;
+        b.yaw = -0.22 + Math.sin(b.angle * 0.5 + b.phase) * 0.12;
+        b.boundingCenter = b.position;
+        return window.OrbBehavior.NodeStatus.SUCCESS;
+      }));
       birdObjects.push(bird);
       world.addObject(bird);
     }
+  }
+
+  function initBirdPicker() {
+    if (!window.OrbInteraction || !window.OrbInteraction.Picker || !window.OrbInteraction.Pickable || !window.OrbMath) {
+      throw new Error('OrbInteraction Picker/Pickable is required; inline bird picking is removed');
+    }
+    var Vec3 = window.OrbMath.Vec3;
+    pickerCamera = {
+      isPerspective: true,
+      position: new Vec3(),
+      projectionMatrixInverse: new window.OrbMath.Mat4()
+    };
+    birdPicker = new window.OrbInteraction.Picker(pickerCamera, canvasWorld);
+    for (var i = 0; i < birdObjects.length; i++) {
+      var bird = birdObjects[i];
+      var pickable = new window.OrbInteraction.Pickable('bird-' + i, { bird: bird });
+      pickable.enabled = true;
+      birdPickables.push(pickable);
+      birdPicker.addObject(pickable);
+    }
+    function onPointerPick(event) {
+      if (!world || !world.camera || !world.camera.projectionMatrix) return;
+      pickerCamera.position.set(eye[0], eye[1], eye[2]);
+      var inverseProjection = M4.invert(M4.create(), world.camera.projectionMatrix);
+      pickerCamera.projectionMatrixInverse.elements.set(inverseProjection);
+      for (var p = 0; p < birdPickables.length; p++) {
+        var b = birdObjects[p];
+        var r = b.boundingRadius || 3;
+        var v = [
+          new Vec3(b.position[0] - r, b.position[1] - r, b.position[2] - r),
+          new Vec3(b.position[0] + r, b.position[1] - r, b.position[2] - r),
+          new Vec3(b.position[0] - r, b.position[1] + r, b.position[2] - r),
+          new Vec3(b.position[0] + r, b.position[1] + r, b.position[2] - r),
+          new Vec3(b.position[0] - r, b.position[1] - r, b.position[2] + r),
+          new Vec3(b.position[0] + r, b.position[1] - r, b.position[2] + r),
+          new Vec3(b.position[0] - r, b.position[1] + r, b.position[2] + r),
+          new Vec3(b.position[0] + r, b.position[1] + r, b.position[2] + r)
+        ];
+        birdPickables[p].setBoundingFromVertices(v);
+      }
+      var hit = birdPicker.pickFirst(event.clientX, event.clientY);
+      for (var b2 = 0; b2 < birdObjects.length; b2++) birdObjects[b2].glow = 0;
+      if (hit && hit.object && hit.object.data && hit.object.data.bird) hit.object.data.bird.glow = 0.35;
+      if (window.AevumMarkGraphics) window.AevumMarkGraphics('OrbInteraction');
+    }
+    canvasWorld.addEventListener('pointermove', onPointerPick, { passive: true });
+    canvasWorld.addEventListener('pointerdown', onPointerPick, { passive: true });
   }
 
   function syncFireflies() {
     if (!fireflyMesh || !world) return;
     var night = world.dayNight && world.dayNight.isNight;
     if (night && fireflyObjects.length === 0) {
+      if (!window.OrbPhysics || !window.OrbPhysics.Particle || !window.OrbMath) {
+        throw new Error('OrbPhysics Particle/OrbMath is required; inline firefly motion is removed');
+      }
+      var Vec3 = window.OrbMath.Vec3;
       for (var i = 0; i < 14; i++) {
         var angle = Math.random() * Math.PI * 2;
         var radius = 4 + Math.random() * 18;
+        var baseY = world.terrain.getHeight(Math.cos(angle) * radius, Math.sin(angle) * radius) + 0.4 + Math.random() * 2.0;
+        var particle = new window.OrbPhysics.Particle(new Vec3(Math.cos(angle) * radius, baseY, Math.sin(angle) * radius), 1);
         var firefly = {
           mesh: fireflyMesh,
           scale: 0.055 + Math.random() * 0.035,
@@ -1706,16 +1778,27 @@
           glow: 0.95,
           angle: angle,
           radius: radius,
-          height: 0.4 + Math.random() * 2.0,
-          position: [Math.cos(angle) * radius, world.terrain.getHeight(Math.cos(angle) * radius, Math.sin(angle) * radius), Math.sin(angle) * radius],
+          height: baseY,
+          particle: particle,
+          position: [particle.position.x, particle.position.y, particle.position.z],
           boundingCenter: [0, 0, 0],
           boundingRadius: 0.4,
           update: function (dt) {
             this.angle += dt * (0.25 + this.scale);
-            this.position[0] = Math.cos(this.angle) * this.radius;
-            this.position[2] = Math.sin(this.angle) * this.radius;
-            this.position[1] = this.height + Math.sin(this.angle * 3.0) * 0.18;
+            var targetX = Math.cos(this.angle) * this.radius;
+            var targetY = this.height + Math.sin(this.angle * 3.0) * 0.18;
+            var targetZ = Math.sin(this.angle) * this.radius;
+            this.particle.applyForce(new Vec3(
+              (targetX - this.particle.position.x) * 14,
+              (targetY - this.particle.position.y) * 10,
+              (targetZ - this.particle.position.z) * 14
+            ));
+            this.particle.updateVerlet(dt, 0.82);
+            this.position[0] = this.particle.position.x;
+            this.position[1] = this.particle.position.y;
+            this.position[2] = this.particle.position.z;
             this.boundingCenter = this.position;
+            if (window.AevumMarkGraphics) window.AevumMarkGraphics('OrbPhysics');
           }
         };
         fireflyObjects.push(firefly);
@@ -2019,6 +2102,7 @@
     birdMesh = makeBirdMesh();
     fireflyMesh = makeFireflyMesh();
     spawnBirds();
+    initBirdPicker();
     shadowMesh = makeShadowMesh();
     createShadowTarget();
     createSceneTarget();
@@ -2141,6 +2225,15 @@
     charScale = 2.55 / Math.max(0.001, modelHeight);
     var ground = world.terrain.getHeight(SPAWN[0], SPAWN[1]);
     M4.fromTRS(modelMatrix, [SPAWN[0], ground - bounds.min[1] * charScale, SPAWN[1]], math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], Math.PI), [charScale, charScale, charScale]);
+    modelBaseY = modelMatrix[13];
+    if (!window.OrbSkeleton || !window.OrbAnimation || !window.OrbAnimation.ProceduralMotion || !window.OrbAnimation.BreathingMotion) {
+      throw new Error('OrbSkeleton/OrbAnimation is required; inline character breathing is removed');
+    }
+    proceduralSkeleton = new window.OrbSkeleton.Skeleton();
+    proceduralChestBone = proceduralSkeleton.addBone('UpperBody', -1);
+    proceduralMotion = new window.OrbAnimation.ProceduralMotion(proceduralSkeleton);
+    proceduralMotion.register('breathing', window.OrbAnimation.BreathingMotion);
+    proceduralMotion.play('breathing', { loop: true, weight: 1, fadeIn: 0.4 });
 
     statEl.textContent = clip.toUpperCase() + ' / ' + (vrm.humanBones || []).length + ' BONES';
     systemsEl.textContent = 'TERRAIN ' + TERRAIN_SIZE + '×' + TERRAIN_SIZE + ' · TREES ' + trees.length + ' · GRASS ' + grass.length + ' · WATER 8 · ' + world.weather.getCurrentWeather().toUpperCase() + ' · SHADOW ' + world.shadows.shadowMapSize + ' · POST FX';
@@ -2189,6 +2282,16 @@
         }
       }
       if (player) player.update(dt);
+
+      if (proceduralMotion) {
+        proceduralChestBone.position.y = 0;
+        proceduralMotion.update(dt);
+        modelMatrix[13] = modelBaseY + proceduralChestBone.position.y * 2.0;
+        if (window.AevumMarkGraphics) {
+          window.AevumMarkGraphics('OrbSkeleton');
+          window.AevumMarkGraphics('OrbAnimation');
+        }
+      }
 
       var pose = null;
       if (player && vrm && retarget) {

@@ -66,8 +66,13 @@ world/desktop 通过 `world.html` / `desktop.html` 加载以下模块；模块�
 | `shaders/shader-geometry.js` | V2 `GeometryProcessor` / `PipelineState` | 天空球 geometry |
 | `textures/texture-buffer-pipeline.js` | V5 Buffer/FBO/Texture/RenderPipeline | 全部 buffer、scene/shadow FBO、depth 纹理、FXAA |
 | `extensions/gl-extensions.js` | `GeometryGenerator` 等 | 天空球球体生成 |
+| `core/gl-core/pbr.js` | `PBRMaterial` / `DirectionalLight` / `Light` | `world-pipeline.js` `LightSystem` |
+| `core/gl-core/behavior.js` | `BehaviorTree` / `Action` | `world-runtime.js` 鸟群巡航 |
+| `core/gl-core/skeleton.js` | `Skeleton` / `Bone` | 角色呼吸骨架 |
+| `core/gl-core/animation.js` | `ProceduralMotion` / `BreathingMotion` | 角色呼吸层 |
+| `core/gl-core/physics.js` | `Particle` / Verlet | 萤火虫运动 |
+| `core/gl-core/interaction.js` | `Picker` / `Pickable` | 鼠标拾取鸟群 |
 | `post/gl-compute-post.js` | `ComputeSimulator` | 待接入 |
-| `core/gl-core/{skeleton,animation,physics,interaction,behavior,pbr}.js` | 角色/动画/物理/交互/行为/PBR | 待接入 |
 | `core/gl-core/index.js` | `OrbWebGLCore` 入口 | 页面加载 |
 
 world 源码已无 `gl.createBuffer()`、`gl.createFramebuffer()`、`gl.createProgram()`；bundle 由 `world-context.js`、`world-shaders.js`、`world-terrain.js`、`world-vegetation.js`、`world-runtime.js` 顺序拼接。

@@ -65,6 +65,7 @@
       }
     }, 200);
   }
+  window.AevumMarkGraphics = markGraphics;
 
   function setReady(text) {
     if (!stateEl) return;

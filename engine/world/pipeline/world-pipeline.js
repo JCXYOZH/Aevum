@@ -744,63 +744,44 @@ const World3DEngine = (function () {
   // ============================================================
   class LightSystem {
     constructor() {
-      this.ambientLight = { color: [0.3, 0.35, 0.4], intensity: 0.5 };
-      this.directionalLight = { direction: [0.5, 0.8, 0.3], color: [1, 0.95, 0.85], intensity: 1.0, castShadow: true };
-      this.pointLights = [];
-      this.spotLights = [];
-      this.maxPointLights = 32;
-      this.maxSpotLights = 16;
-      this.hemisphereLight = { skyColor: [0.6, 0.7, 1.0], groundColor: [0.4, 0.35, 0.3], intensity: 0.3 };
-    }
-
-    addPointLight(position, color, intensity, distance) {
-      if (this.pointLights.length >= this.maxPointLights) return null;
-      const light = { position: [...position], color: [...color], intensity, distance, castShadow: false };
-      this.pointLights.push(light);
-      return light;
-    }
-
-    addSpotLight(position, direction, color, intensity, angle, distance) {
-      if (this.spotLights.length >= this.maxSpotLights) return null;
-      const light = { position: [...position], direction: [...direction], color: [...color], intensity, angle, distance, castShadow: false, penumbra: 0.5 };
-      this.spotLights.push(light);
-      return light;
-    }
-
-    removePointLight(light) {
-      const idx = this.pointLights.indexOf(light);
-      if (idx !== -1) this.pointLights.splice(idx, 1);
-    }
-
-    removeSpotLight(light) {
-      const idx = this.spotLights.indexOf(light);
-      if (idx !== -1) this.spotLights.splice(idx, 1);
+      if (!window.OrbPBR || !window.OrbMath) {
+        throw new Error('OrbPBR/OrbMath are required; inline light objects are removed');
+      }
+      const Vec3 = window.OrbMath.Vec3;
+      this._directional = new window.OrbPBR.DirectionalLight(new Vec3(1, 0.95, 0.85), 1.0);
+      this._directional.direction.set(0.5, 0.8, 0.3).normalize();
+      this._directional.castShadow = true;
+      this._ambient = new window.OrbPBR.Light(new Vec3(0.3, 0.35, 0.4), 0.5);
+      const self = this;
+      this.directionalLight = {
+        get direction() { return [self._directional.direction.x, self._directional.direction.y, self._directional.direction.z]; },
+        get color() { return [self._directional.color.x, self._directional.color.y, self._directional.color.z]; },
+        get intensity() { return self._directional.intensity; },
+        set intensity(v) { self._directional.intensity = v; },
+        get castShadow() { return self._directional.castShadow; },
+        set castShadow(v) { self._directional.castShadow = v; }
+      };
+      this.ambientLight = {
+        get color() { return [self._ambient.color.x, self._ambient.color.y, self._ambient.color.z]; },
+        get intensity() { return self._ambient.intensity; },
+        set intensity(v) { self._ambient.intensity = v; }
+      };
     }
 
     update(dt) {
-      for (const light of this.pointLights) {
-        if (light._flicker) light.intensity = light._baseIntensity * (0.9 + Math.random() * 0.2);
-      }
+      if (window.AevumMarkGraphics) window.AevumMarkGraphics('OrbPBR');
     }
 
-    setAmbient(color, intensity) { this.ambientLight.color = [...color]; this.ambientLight.intensity = intensity; }
+    setAmbient(color, intensity) {
+      this._ambient.color.set(color[0], color[1], color[2]);
+      this._ambient.intensity = intensity;
+    }
+
     setDirectional(direction, color, intensity) {
-      this.directionalLight.direction = [...direction];
-      this.directionalLight.color = [...color];
-      this.directionalLight.intensity = intensity;
+      this._directional.direction.set(direction[0], direction[1], direction[2]).normalize();
+      this._directional.color.set(color[0], color[1], color[2]);
+      this._directional.intensity = intensity;
     }
-    getLightData() {
-      return {
-        ambient: { ...this.ambientLight },
-        directional: { ...this.directionalLight },
-        hemisphere: { ...this.hemisphereLight },
-        pointLights: this.pointLights.map(l => ({ ...l })),
-        spotLights: this.spotLights.map(l => ({ ...l }))
-      };
-    }
-    getPointLightCount() { return this.pointLights.length; }
-    getSpotLightCount() { return this.spotLights.length; }
-    clear() { this.pointLights = []; this.spotLights = []; }
   }
 
   // ============================================================
