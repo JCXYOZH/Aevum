@@ -54,7 +54,7 @@
 | `diagnostics/performance-monitor.js` | 732 | 帧时间、历史采样、性能统计 |
 | `toolkit/core-toolkit.js` | 1,235 | 数学、字符串、数组、对象、颜色、时间工具 |
 
-### 2.4 `graphics/`（17 个）
+### 2.4 `graphics/`（14 个）
 
 | 文件 | 行数 | 职责 |
 |---|---:|---|
@@ -69,12 +69,11 @@
 | `core/gl-core/post.js` | 565 | 后处理链图形侧封装 |
 | `core/gl-core/shader.js` | 644 | 着色器源码、uniform/attribute 装配 |
 | `extensions/gl-extensions.js` | 1,182 | WebGL 扩展检测与能力封装 |
-| `shaders/shader-pipeline.js` | 681 | 着色器管线 |
-| `shaders/shader-geometry.js` | 688 | 几何装配/网格生成 |
-| `shaders/shader-geometry-gpu.js` | 681 | GPU 几何生成/处理 |
-| `textures/texture-buffer-pipeline.js` | 649 | 纹理与顶点/索引缓冲上传 |
-| `targets/render-targets.js` | 630 | FBO、多渲染目标、纹理附件 |
+| `shaders/shader-geometry.js` | 688 | 几何装配/网格生成（唯一几何 owner） |
+| `textures/texture-buffer-pipeline.js` | 649 | 纹理、顶点/索引缓冲与 FBO（唯一 render pipeline owner） |
 | `post/gl-compute-post.js` | 574 | 计算式后处理与后处理链 |
+
+职责归并说明：`shader-pipeline.js`（V4）与 `shader-geometry-gpu.js`（V6）的类/方法集与 `shader-geometry.js`（V2）一致，已删除；`targets/render-targets.js`（V3）的 `RenderPipeline / TextureManager / BufferManager` 与 `textures/texture-buffer-pipeline.js`（V5）同职责，V5 额外提供 `FramebufferManager`，因此保留 V5 作为唯一 render pipeline owner。
 
 `core/gl-core/` 由原 5,884 行 `gl-core.js` 按功能拆分而来，共 10 个文件（9 个实现文件 + `index.js` 出口），拼接后与原文一致，全部通过 `node --check`。
 
