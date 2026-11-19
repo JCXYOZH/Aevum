@@ -1683,7 +1683,7 @@
     drawTerrain();
     drawTrees();
     if (advancedVegetation) {
-      advancedVegetation.render(world.camera, world.lights, { trees: false, grass: true });
+      advancedVegetation.render(world.camera, world.lights, { trees: false, grass: false });
     }
     drawGrass(now / 1000);
     drawWater();
@@ -1789,12 +1789,12 @@
     world.postProcessing.ssao.intensity = 0.55;
     world.postProcessing.ssao.range = 8;
     world.postProcessing.ssao.samples = 10;
-    world.postProcessing.dof.enabled = true;
+    world.postProcessing.dof.enabled = false;
     world.postProcessing.dof.focusDistance = 18;
     world.postProcessing.dof.focusRange = 12;
     world.postProcessing.dof.blurAmount = 4;
     world.postProcessing.dof.strength = 1;
-    world.postProcessing.chromaticAberration.enabled = true;
+    world.postProcessing.chromaticAberration.enabled = false;
     world.postProcessing.chromaticAberration.amount = 0.0006;
     world.sky.setTime(0.285);
     world.sky.update(0);
@@ -2123,6 +2123,9 @@
     window.__AEVUM_SHOT_ERROR = String(error && error.stack || error);
     fail(error);
   });
+
+
+
 
 })();
 
