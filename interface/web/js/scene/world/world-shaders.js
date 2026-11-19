@@ -336,7 +336,7 @@
     'void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.0,1.0); }',
     '#version 300 es\n' +
     'precision highp float;\n' +
-    'in vec2 vUv; uniform sampler2D uTex; uniform vec2 uTexel;\n' +
+    'in vec2 vUv; uniform sampler2D uTex; uniform vec2 uTexel; uniform float uChroma;\n' +
     'out vec4 outColor;\n' +
     'void main(){ vec3 c=texture(uTex,vUv).rgb;\n' +
     '  vec3 n=texture(uTex,vUv+vec2(0.0,-uTexel.y)).rgb;\n' +
@@ -345,7 +345,13 @@
     '  vec3 w=texture(uTex,vUv+vec2(-uTexel.x,0.0)).rgb;\n' +
     '  vec3 m=(n+s+e+w)*0.25; vec3 edge=abs(c-m);\n' +
     '  float amount=clamp(max(edge.r,max(edge.g,edge.b))*1.7,0.0,0.30);\n' +
-    '  outColor=vec4(mix(c,m,amount),1.0); }'
+    '  vec3 finalColor=mix(c,m,amount);\n' +
+    '  if(uChroma>0.00001){\n' +
+    '    vec2 ca=(vUv-0.5)*uChroma*8.0;\n' +
+    '    finalColor.r=texture(uTex,clamp(vUv+ca,vec2(0.001),vec2(0.999))).r;\n' +
+    '    finalColor.b=texture(uTex,clamp(vUv-ca,vec2(0.001),vec2(0.999))).b;\n' +
+    '  }\n' +
+    '  outColor=vec4(finalColor,1.0); }'
   );
 
   var rainProgram = program(
@@ -621,6 +627,8 @@
     gl.bindTexture(gl.TEXTURE_2D, inputTexture);
     gl.uniform1i(uniformLocation(fxaaProgram, 'uTex'), 0);
     gl.uniform2f(uniformLocation(fxaaProgram, 'uTexel'), 1.0 / Math.max(1, W), 1.0 / Math.max(1, H));
+    var chromatic = world && world.postProcessing ? world.postProcessing.chromaticAberration : null;
+    gl.uniform1f(uniformLocation(fxaaProgram, 'uChroma'), chromatic && chromatic.enabled ? chromatic.amount : 0);
     gl.bindVertexArray(fxaaQuadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);

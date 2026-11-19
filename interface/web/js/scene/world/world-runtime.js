@@ -610,6 +610,8 @@
     world.postProcessing.dof.focusRange = 12;
     world.postProcessing.dof.blurAmount = 4;
     world.postProcessing.dof.strength = 1;
+    world.postProcessing.chromaticAberration.enabled = true;
+    world.postProcessing.chromaticAberration.amount = 0.0006;
     world.sky.setTime(0.285);
     world.sky.update(0);
     styleSky();
