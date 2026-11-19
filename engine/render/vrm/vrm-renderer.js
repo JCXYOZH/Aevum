@@ -232,7 +232,12 @@
         ambient: this.gl.getUniformLocation(this.program, 'uAmbientColor'),
         rimColor: this.gl.getUniformLocation(this.program, 'uRimColor'),
         rimStrength: this.gl.getUniformLocation(this.program, 'uRimStrength'),
-        specular: this.gl.getUniformLocation(this.program, 'uSpecular')
+        specular: this.gl.getUniformLocation(this.program, 'uSpecular'),
+        sssColor: this.gl.getUniformLocation(this.program, 'uSssColor'),
+        sssIntensity: this.gl.getUniformLocation(this.program, 'uSssIntensity'),
+        sheenColor: this.gl.getUniformLocation(this.program, 'uSheenColor'),
+        sheenIntensity: this.gl.getUniformLocation(this.program, 'uSheenIntensity'),
+        clearcoat: this.gl.getUniformLocation(this.program, 'uClearcoat')
       };
       this.options = {
         texture: true,
@@ -249,6 +254,10 @@
         specular: 0.08
       };
       this.lighting = Object.assign(defaultLighting, (options && options.lighting) || {});
+      this.skinMaterial = (options && options.skinMaterial) || null;
+      if (this.skinMaterial && typeof this.skinMaterial.getUniforms !== 'function') {
+        throw new Error('VRMRenderer skinMaterial must provide getUniforms()');
+      }
       this.modelMatrix = this.math.M4.identity(this.math.M4.create());
       this.textures = [];
       this.primitives = [];
@@ -474,6 +483,14 @@
       gl.uniform3fv(this.locations.rimColor, lighting.rim || [0.58, 0.82, 1]);
       gl.uniform1f(this.locations.rimStrength, lighting.rimStrength == null ? 0.22 : lighting.rimStrength);
       gl.uniform1f(this.locations.specular, lighting.specular == null ? 0.1 : lighting.specular);
+      if (this.skinMaterial) {
+        const skin = this.skinMaterial.getUniforms();
+        gl.uniform3fv(this.locations.sssColor, skin.sssColor);
+        gl.uniform1f(this.locations.sssIntensity, skin.sssIntensity);
+        gl.uniform3fv(this.locations.sheenColor, skin.sheenColor);
+        gl.uniform1f(this.locations.sheenIntensity, skin.sheenIntensity);
+        gl.uniform1f(this.locations.clearcoat, skin.clearcoatIntensity);
+      }
       gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(this.locations.texture, 0);
 
@@ -556,6 +573,11 @@ uniform vec3 uAmbientColor;
 uniform vec3 uRimColor;
 uniform float uRimStrength;
 uniform float uSpecular;
+uniform vec3 uSssColor;
+uniform float uSssIntensity;
+uniform vec3 uSheenColor;
+uniform float uSheenIntensity;
+uniform float uClearcoat;
 out vec4 outColor;
 void main() {
   vec4 base = uBaseColor;
@@ -572,7 +594,12 @@ void main() {
     vec3 H = normalize(L + V);
     float spec = pow(max(dot(N, H), 0.0), 32.0) * uSpecular * uLightOn;
     float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
-    color = lit + uLightColor * spec + uRimColor * fresnel * uRimStrength;
+    float sssBack = pow(max(dot(-N, L), 0.0), 2.0) * uSssIntensity;
+    vec3 sss = uSssColor * sssBack * 0.12;
+    float sheen = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.0) * uSheenIntensity;
+    float coat = pow(max(dot(N, H), 0.0), 64.0) * uClearcoat;
+    color = lit + uLightColor * spec + uRimColor * fresnel * uRimStrength
+      + sss + uSheenColor * sheen * 0.15 + uLightColor * coat * 0.6;
   }
   outColor = vec4(clamp(color, 0.0, 1.0), base.a);
 }`;

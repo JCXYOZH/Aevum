@@ -48,7 +48,7 @@
 | 能力 | 现状 | 能补什么 | 限制 |
 | --- | --- | --- | --- |
 | `engine/render/pmx/webgl-renderer.js` 的 toon ramp / 描边 | PMX 已用，VRM 没接 | 把 VRM 也做成 MMD 式色阶 + 反向外扩描边 | 它的 vertex/skin 和 PMX 材质槽绑定，不能直接套到 VRM；需要把色阶采样和描边 pass 移植到 `VRMRenderer` |
-| `engine/character/skin/skin-material.js` | 未接 | 皮肤 SSS、sheen、clearcoat、fresnel | 当前 VRM 渲染器没有材质槽，也不区分皮肤/服装；需要先解析 `VRM/MToon` 或材质名映射 |
+| `engine/character/skin/skin-system.js` | 已接 `SkinMaterial` | 皮肤 SSS、sheen、clearcoat、fresnel | `world-runtime.js` `initCharacterSkin()` 创建材质，`VRMRenderer` 读取 `getUniforms()` 并注入片元着色器；其余 skin 版本仍待按唯一 owner 清理 |
 | `engine/graphics/core/gl-core/pbr.js` | 未接 | PBR、多光源、高光、Fresnel | 是另一套 WebGL 核心，和现有 `VRMRenderer` 的资源/循环重复；整包接会和场景两套渲染循环冲突 |
 | `engine/world/pipeline/world-pipeline.js` 光照/阴影/后处理 | 只用了 `CameraController` | 真实方向光阴影、昼夜、后处理 | 需要完整 render graph 和 shadow map，当前角色是每个角色一个透明 canvas，不是同一 G-Buffer |
 | `engine/render/vmd/vmd-pose.js` + `vmd-player.js` | 未接 | VMD 动作 | 仓库没有 `.vmd` 资产；PMX 仍用程序化步态 |

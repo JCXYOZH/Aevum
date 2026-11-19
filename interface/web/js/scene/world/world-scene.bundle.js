@@ -1315,6 +1315,7 @@
   var grassWindUBO = null;
   var grassWindVAO = null;
   var grassWindBlock = -1;
+  var skinMaterial = null;
   var charPos = [0, 0, 0];
   var charScale = 1;
   var eye = [0, 5, 12];
@@ -1498,6 +1499,30 @@
       gl.drawElements(gl.TRIANGLES, g.mesh.count, gl.UNSIGNED_INT, 0);
     }
     gl.bindVertexArray(null);
+  }
+
+  function initCharacterSkin() {
+    if (!window.SpiritSkin || !window.SpiritSkin.SkinMaterial) {
+      throw new Error('SpiritSkin.SkinMaterial is required for character skin');
+    }
+    skinMaterial = new window.SpiritSkin.SkinMaterial();
+    skinMaterial.setSSS({
+      enabled: true,
+      intensity: 0.8,
+      radius: [0.002, 0.010, 0.030],
+      color: [1.0, 0.60, 0.40],
+      distortion: 0.4,
+      power: 2.0,
+      scale: 1.0
+    });
+    skinMaterial.setSheen({
+      enabled: true,
+      color: [1.0, 0.80, 0.70],
+      roughness: 0.5,
+      intensity: 0.30
+    });
+    skinMaterial.setClearcoat({ enabled: true, intensity: 0.08, roughness: 0.10 });
+    markGraphics('SpiritSkin');
   }
 
   function initGraphicsEntry() {
@@ -2251,8 +2276,11 @@
       return;
     }
 
+    initCharacterSkin();
+
     var modelRenderer = new window.AEVUM.render.VRMRenderer(canvasModel, {
       clearColor: [0, 0, 0, 0],
+      skinMaterial: skinMaterial,
       lighting: {
         direction: world.lights.directionalLight.direction,
         color: world.lights.directionalLight.color,
@@ -2384,6 +2412,7 @@
         farTrees: 0
       };
       if (modelRenderer && pose) {
+        if (window.AevumMarkGraphics) window.AevumMarkGraphics('SpiritSkin');
         modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
           viewProjection: viewProj,
           modelMatrix: modelMatrix,
