@@ -496,7 +496,7 @@
     drawTerrain();
     drawTrees();
     if (advancedVegetation) {
-      advancedVegetation.render(world.camera, world.lights, { trees: false, grass: false });
+      advancedVegetation.render(world.camera, world.lights, { trees: false, grass: true });
     }
     drawGrass(now / 1000);
     drawWater();
