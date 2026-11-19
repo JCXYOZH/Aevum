@@ -146,11 +146,13 @@
   var grassProgram = program(
     '#version 300 es\n' +
     'in vec3 aPos; in vec3 aNormal; in vec3 aColor; in float aFlex;\n' +
+    'layout(std140) uniform GrassWind { vec4 uWindOffsets[64]; };\n' +
     'uniform mat4 uViewProj; uniform float uTime; uniform vec3 uSunDir;\n' +
     'out vec3 vNormal; out vec3 vColor; out vec3 vWorld;\n' +
     'void main(){\n' +
-    '  vec3 p=aPos; float sway=sin(uTime*1.8+p.x*0.55+p.z*0.44)*0.11*aFlex;\n' +
-    '  p.x+=sway; p.z+=sway*0.35; vNormal=aNormal; vColor=aColor; vWorld=p;\n' +
+    '  int wi=int(mod(float(int(floor(aPos.x*0.55))+int(floor(aPos.z*0.44))),64.0));\n' +
+    '  vec4 wind=uWindOffsets[wi]; float sway=(wind.x+wind.z)*aFlex;\n' +
+    '  vec3 p=aPos; p.x+=sway; p.z+=wind.z*aFlex*0.35; vNormal=aNormal; vColor=aColor; vWorld=p;\n' +
     '  gl_Position=uViewProj*vec4(p,1.0);\n' +
     '}',
     '#version 300 es\n' +

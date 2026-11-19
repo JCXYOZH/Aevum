@@ -72,10 +72,10 @@ world/desktop 通过 `world.html` / `desktop.html` 加载以下模块；模块�
 | `core/gl-core/animation.js` | `ProceduralMotion` / `BreathingMotion` | 角色呼吸层 |
 | `core/gl-core/physics.js` | `Particle` / Verlet | 萤火虫运动 |
 | `core/gl-core/interaction.js` | `Picker` / `Pickable` | 鼠标拾取鸟群 |
-| `post/gl-compute-post.js` | `ComputeSimulator` | 待接入 |
+| `post/gl-compute-post.js` | `ComputeSimulator` | 草浪 GPU 风场（transform feedback + `GrassWind` UBO） |
 | `core/gl-core/index.js` | `OrbWebGLCore` 入口 | 页面加载 |
 
-world 源码已无 `gl.createBuffer()`、`gl.createFramebuffer()`、`gl.createProgram()`；bundle 由 `world-context.js`、`world-shaders.js`、`world-terrain.js`、`world-vegetation.js`、`world-runtime.js` 顺序拼接。
+world 源码已无 `gl.createBuffer()`、`gl.createFramebuffer()`、`gl.createProgram()`；bundle 由 `world-context.js`、`world-shaders.js`、`world-terrain.js`、`world-vegetation.js`、`world-runtime.js` 顺序拼接。`ComputeSimulator` 只在 `initGrassWindCompute()` 中创建，`updateGrassWind()` 每帧 dispatch 64 个 transform-feedback 风场向量；草顶点着色器从 `GrassWind` UBO 读取，已删除 inline 正弦摆动。
 
 ### 2.5 `formats/`（8 个，纯解析）
 

@@ -52,6 +52,10 @@
   var birdPicker = null;
   var birdPickables = [];
   var pickerCamera = null;
+  var grassWindCompute = null;
+  var grassWindUBO = null;
+  var grassWindVAO = null;
+  var grassWindBlock = -1;
   var charPos = [0, 0, 0];
   var charScale = 1;
   var eye = [0, 5, 12];
@@ -237,8 +241,54 @@
     gl.bindVertexArray(null);
   }
 
+  function initGrassWindCompute() {
+    if (!window.WebGLCoreExt || !window.WebGLCoreExt.ComputeSimulator) {
+      throw new Error('WebGLCoreExt.ComputeSimulator is required; inline grass wind is removed');
+    }
+    grassWindCompute = new window.WebGLCoreExt.ComputeSimulator({ getContext: function () { return gl; } });
+    if (!grassWindCompute.isSupported()) throw new Error('GPU transform feedback is required for grass wind');
+    var phases = new Float32Array(64);
+    for (var p = 0; p < 64; p++) phases[p] = p * 0.73;
+    var phaseBuffer = grassWindCompute.createBuffer('grass-wind-phase', phases, gl.STATIC_DRAW);
+    var computeVertex = '#version 300 es\n' +
+      'layout(location = 0) in float aPhase;\n' +
+      'uniform float uTime;\n' +
+      'out vec4 vOffset;\n' +
+      'void main(){\n' +
+      '  float s = sin(uTime * 1.25 + aPhase);\n' +
+      '  vOffset = vec4(s * 0.11, 0.0, cos(uTime * 0.85 + aPhase) * 0.05, 1.0);\n' +
+      '  gl_Position = vec4(0.0, 0.0, 0.0, 1.0);\n' +
+      '}';
+    grassWindCompute.createComputeProgram('grass-wind', computeVertex, ['vOffset']);
+    grassWindUBO = grassWindCompute.createBuffer('grass-wind-output', new Float32Array(64 * 4), gl.DYNAMIC_DRAW);
+    grassWindCompute.createTransformFeedback('grass-wind-feedback', [grassWindUBO]);
+    grassWindVAO = gl.createVertexArray();
+    gl.bindVertexArray(grassWindVAO);
+    gl.bindBuffer(gl.ARRAY_BUFFER, phaseBuffer);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 1, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    grassWindBlock = gl.getUniformBlockIndex(grassProgram, 'GrassWind');
+    if (grassWindBlock === 0xFFFFFFFF) throw new Error('GrassWind UBO block is missing');
+    gl.uniformBlockBinding(grassProgram, grassWindBlock, 1);
+    markGraphics('gl-compute-post');
+  }
+
+  function updateGrassWind(time) {
+    if (!grassWindCompute) return;
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, null);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindVertexArray(grassWindVAO);
+    grassWindCompute.dispatch('grass-wind', 'grass-wind-feedback', 64, { uTime: time });
+    gl.bindVertexArray(null);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, grassWindUBO);
+    markGraphics('gl-compute-post');
+  }
+
   function drawGrass(time) {
     if (!grassGroups.length) return;
+    updateGrassWind(time);
     gl.useProgram(grassProgram);
     var light = world.lights.directionalLight;
     var ambient = world.lights.ambientLight;
@@ -846,6 +896,7 @@
     fireflyMesh = makeFireflyMesh();
     spawnBirds();
     initBirdPicker();
+    initGrassWindCompute();
     shadowMesh = makeShadowMesh();
     createShadowTarget();
     createSceneTarget();

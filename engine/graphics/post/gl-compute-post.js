@@ -25,10 +25,10 @@ const WebGLCoreExt = (function () {
 
     _checkSupport() {
       const gl = this.gl;
-      const ext = gl.getExtension('WEBGL_transform_feedback');
-      if (!ext) {
+      this.supported = !!(gl.createTransformFeedback && gl.beginTransformFeedback &&
+        gl.endTransformFeedback && gl.transformFeedbackVaryings);
+      if (!this.supported) {
         console.warn('Transform feedback not supported, compute simulation will be limited');
-        this.supported = false;
       }
     }
 
@@ -144,3 +144,7 @@ const WebGLCoreExt = (function () {
     ComputeSimulator
   };
 })();
+
+if (typeof window !== 'undefined') {
+  window.WebGLCoreExt = WebGLCoreExt;
+}
