@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="styles/desktop/camera.css">
 <link rel="stylesheet" href="styles/desktop/dialog.css">
 <link rel="stylesheet" href="styles/scene3d.css">
+<link rel="stylesheet" href="styles/world-controls.css?v=20261119x">
 <link rel="stylesheet" href="styles/desktop/responsive.css">
 
 </head>
@@ -43,6 +44,37 @@
       <button class="tbtn tbtn--solid" type="button" id="open-add">新增窗口</button>
     </div>
   </header>
+
+  <div class="world-controls world-controls--desktop" id="worldControls" aria-label="World time and weather controls">
+    <div class="control-head">
+      <span>世界环境</span>
+      <div class="control-actions">
+        <span id="controlState">BOOTING</span>
+        <button class="control-toggle" type="button" id="controlToggle" aria-expanded="true">隐藏</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <div class="control-label"><span>时间</span><b id="timeLabel">--:--</b></div>
+      <input id="timeSlider" type="range" min="0" max="1439" step="1" value="1036">
+      <div class="control-chips" id="timeChips">
+        <button type="button" data-time="432">黎明</button>
+        <button type="button" data-time="720">正午</button>
+        <button type="button" data-time="1032">黄昏</button>
+        <button type="button" data-time="1296">夜晚</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <div class="control-label"><span>天气</span><b id="weatherLabel">--</b></div>
+      <div class="control-chips" id="weatherChips">
+        <button type="button" data-weather="clear">晴</button>
+        <button type="button" data-weather="cloudy">多云</button>
+        <button type="button" data-weather="rain">雨</button>
+        <button type="button" data-weather="storm">暴风雨</button>
+        <button type="button" data-weather="snow">雪</button>
+        <button type="button" data-weather="fog">雾</button>
+      </div>
+    </div>
+  </div>
 
   <aside class="dock" aria-label="启动项">
     <div class="dock__presence" aria-hidden="true">
@@ -169,14 +201,16 @@
       "/engine/render/pmx/webgl-renderer.js",
       "/engine/vendor/live2dcubismcore.min.js",
       "/engine/render/live2d/live2d-renderer.js",
-      "/engine/world/pipeline/world-pipeline.js",
+      "/engine/world/pipeline/world-pipeline.js?v=20261119h",
+      "/engine/world/advanced/world-advanced.js?v=20261119c",
       "js/scene/scene-core.js",
       "js/scene/models.config.js",
       "js/scene/scene-vrm.js",
       "js/scene/scene-pmx.js",
       "js/scene/scene-live2d.js",
       "js/scene/scene-desktop.js",
-      "js/scene/scene-world.js?v=20261118v"
+      "js/scene/scene-world.js?v=20261119ad",
+      "js/scene/world-controls.js?v=20261119x"
     ];
 
     function loadSceneScripts() {

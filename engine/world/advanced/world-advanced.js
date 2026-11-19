@@ -250,6 +250,9 @@ void main() {
     setTransparency(v) { this.transparency = Math.max(0, Math.min(1, v)); }
     setReflectivity(v) { this.reflectivity = Math.max(0, Math.min(1, v)); }
     setFoamIntensity(v) { this.foamIntensity = v; }
+    setFoamThreshold(v) { this.foamThreshold = v; }
+    setCausticIntensity(v) { this.causticIntensity = v; }
+    setNormalStrength(v) { this.normalStrength = v; }
     getWaveCount() { return this.waves.length; }
     getWaterHeight(x, z) {
       let height = 0;
@@ -413,7 +416,7 @@ void main() {
       this.instancesRendered = 0;
     }
 
-    render(camera, lights) {
+    render(camera, lights, options = {}) {
       if (!this.initialized) return;
       const gl = this.gl;
       const allInstances = [...this.trees, ...this.grass];
@@ -426,7 +429,9 @@ void main() {
       this.shaderCompiler.use(this.program);
       const treeGeometry = this._createTreeGeometry();
       const grassGeometry = this._createGrassGeometry();
-      for (let type = 0; type < 2; type++) {
+      const firstType = options.trees === false ? 1 : 0;
+      for (let type = firstType; type < 2; type++) {
+        if (options.grass === false && type === 1) continue;
         const typeInstances = visibleInstances.filter(inst => inst.type === type);
         if (typeInstances.length === 0) continue;
         const geo = type === 0 ? treeGeometry : grassGeometry;

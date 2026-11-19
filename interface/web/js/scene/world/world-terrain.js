@@ -49,4 +49,78 @@
     t.built = true;
   }
 
+  // Split the terrain into chunks so TerrainSystem's LOD levels can actually
+  // be selected per visible region instead of being generated and ignored.
+  function makeTerrainChunkMeshes(terrain, chunkCount) {
+    var chunks = [];
+    var seg = terrain.segments;
+    var srcSeg = seg + 1;
+    var cellsPerChunk = seg / chunkCount;
+    var chunkWorld = TERRAIN_SIZE / chunkCount;
+    var lodDefs = terrain.lodLevels && terrain.lodLevels.length
+      ? terrain.lodLevels
+      : [{ factor: 1 }, { factor: 2 }, { factor: 4 }, { factor: 8 }];
+
+    for (var cz = 0; cz < chunkCount; cz++) {
+      for (var cx = 0; cx < chunkCount; cx++) {
+        var x0 = cx * cellsPerChunk;
+        var z0 = cz * cellsPerChunk;
+        var midX = -TERRAIN_SIZE * 0.5 + (x0 + cellsPerChunk * 0.5) / seg * TERRAIN_SIZE;
+        var midZ = -TERRAIN_SIZE * 0.5 + (z0 + cellsPerChunk * 0.5) / seg * TERRAIN_SIZE;
+        var center = [midX, terrain.getHeight(midX, midZ), midZ];
+        var radius = Math.sqrt(2) * chunkWorld * 0.5 + 18;
+        var levels = [];
+
+        for (var li = 0; li < lodDefs.length; li++) {
+          var step = lodDefs[li].factor || (1 << li);
+          var nx = Math.ceil(cellsPerChunk / step);
+          var vertCount = (nx + 1) * (nx + 1);
+          var positions = new Float32Array(vertCount * 3);
+          var normals = new Float32Array(vertCount * 3);
+          var colors = new Float32Array(vertCount * 3);
+          var indices = new Uint32Array(nx * nx * 6);
+          var vi = 0;
+
+          for (var j = 0; j <= nx; j++) {
+            var srcZ = z0 + Math.min(j * step, cellsPerChunk);
+            for (var i = 0; i <= nx; i++) {
+              var srcX = x0 + Math.min(i * step, cellsPerChunk);
+              var src = srcZ * srcSeg + srcX;
+              positions[vi * 3] = terrain.vertices[src * 3];
+              positions[vi * 3 + 1] = terrain.vertices[src * 3 + 1];
+              positions[vi * 3 + 2] = terrain.vertices[src * 3 + 2];
+              normals[vi * 3] = terrain.normals[src * 3];
+              normals[vi * 3 + 1] = terrain.normals[src * 3 + 1];
+              normals[vi * 3 + 2] = terrain.normals[src * 3 + 2];
+              colors[vi * 3] = terrain.colors[src * 3];
+              colors[vi * 3 + 1] = terrain.colors[src * 3 + 1];
+              colors[vi * 3 + 2] = terrain.colors[src * 3 + 2];
+              vi++;
+            }
+          }
+
+          var ii = 0;
+          for (var z = 0; z < nx; z++) {
+            for (var x = 0; x < nx; x++) {
+              var a = z * (nx + 1) + x;
+              var b = a + nx + 1;
+              indices[ii++] = a; indices[ii++] = b; indices[ii++] = a + 1;
+              indices[ii++] = a + 1; indices[ii++] = b; indices[ii++] = b + 1;
+            }
+          }
+
+          programRef = terrainProgram;
+          levels.push({
+            mesh: createMesh(positions, normals, colors, indices),
+            factor: step,
+            distance: lodDefs[li].distance || step * 50
+          });
+        }
+
+        chunks.push({ center: center, radius: radius, levels: levels });
+      }
+    }
+    return chunks;
+  }
+
   

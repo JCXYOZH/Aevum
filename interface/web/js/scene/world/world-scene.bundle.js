@@ -180,7 +180,7 @@
     'in vec3 vDir;\n' +
     'uniform vec3 uSkyTop; uniform vec3 uSkyHorizon; uniform vec3 uGroundColor;\n' +
     'uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uCloudColor;\n' +
-    'uniform float uCloud; uniform float uStar; uniform float uTime;\n' +
+    'uniform float uCloud; uniform float uStar; uniform float uTime; uniform float uFlash;\n' +
     'out vec4 outColor;\n' +
     'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }\n' +
     'float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);\n' +
@@ -206,6 +206,7 @@
     '    star=step(0.9992,hash(cell))*pow(max(0.0,1.0-r*2.0),12.0)*uStar*smoothstep(0.02,0.24,d.y);\n' +
     '  }\n' +
     '  sky+=vec3(star)*0.85;\n' +
+    '  sky+=vec3(0.62,0.70,0.82)*uFlash;\n' +
     '  outColor=vec4(sky,1.0);\n' +
     '}'
   );
@@ -213,30 +214,47 @@
     '#version 300 es\n' +
     'in vec2 aPos;\n' +
     'uniform mat4 uViewProj; uniform vec4 uWaves[8]; uniform float uPhases[8];\n' +
+    'uniform vec4 uGerstner[4]; uniform float uGerstnerSpeed[4]; uniform float uGerstnerTime;\n' +
     'uniform float uWaterLevel;\n' +
-    'out vec3 vWorld; out vec3 vNormal;\n' +
+    'out vec3 vWorld; out vec3 vNormal; out float vCrest;\n' +
     'void main(){\n' +
     '  vec2 p=aPos; float y=0.0, dx=0.0, dz=0.0;\n' +
     '  for(int i=0;i<8;i++){ vec4 w=uWaves[i]; float ph=dot(p,w.xy)*w.z+uPhases[i];\n' +
     '    y+=sin(ph)*w.w; dx+=cos(ph)*w.w*w.x*w.z; dz+=cos(ph)*w.w*w.y*w.z; }\n' +
+    '  for(int g=0;g<4;g++){ vec4 gw=uGerstner[g]; float k=6.28318/max(gw.w,0.001);\n' +
+    '    float c=sqrt(9.8/k); vec2 dir=normalize(gw.xy+vec2(0.0001));\n' +
+    '    float f=k*(dot(dir,p)-c*uGerstnerTime*uGerstnerSpeed[g]); float a=gw.z/k;\n' +
+    '    y+=a*cos(f); dx+=-dir.x*gw.z*sin(f); dz+=-dir.y*gw.z*sin(f); }\n' +
+    '  vCrest=y;\n' +
     '  vWorld=vec3(p.x,uWaterLevel+y,p.y);\n' +
     '  vNormal=normalize(vec3(-dx,1.0,-dz));\n' +
     '  gl_Position=uViewProj*vec4(vWorld,1.0);\n' +
     '}',
     '#version 300 es\n' +
     'precision highp float;\n' +
-    'in vec3 vWorld; in vec3 vNormal;\n' +
+    'in vec3 vWorld; in vec3 vNormal; in float vCrest;\n' +
     'uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSkyTop; uniform vec3 uSkyHorizon;\n' +
-    'uniform vec3 uCameraPos; uniform vec3 uWaterColor; uniform float uAlpha;\n' +
+    'uniform vec3 uCameraPos; uniform vec3 uWaterColor; uniform vec3 uDeepColor; uniform vec3 uShallowColor;\n' +
+    'uniform float uAlpha; uniform float uFoam; uniform float uCaustic;\n' +
+    'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }\n' +
+    'float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);\n' +
+    '  float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));\n' +
+    '  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y); }\n' +
     'out vec4 outColor;\n' +
     'void main(){\n' +
     '  vec3 n=normalize(vNormal); vec3 V=normalize(uCameraPos-vWorld);\n' +
     '  float fres=pow(1.0-max(dot(n,V),0.0),3.0);\n' +
     '  vec3 refl=mix(uSkyHorizon,uSkyTop,0.55);\n' +
-    '  vec3 col=mix(uWaterColor,refl,0.18+fres*0.78);\n' +
+    '  vec3 body=mix(uShallowColor,uDeepColor,clamp((vCrest+0.22)/0.44,0.0,1.0));\n' +
+    '  vec3 col=mix(body,refl,0.18+fres*0.78);\n' +
     '  vec3 R=reflect(-normalize(uSunDir),n);\n' +
     '  float spec=pow(max(dot(R,V),0.0),180.0);\n' +
     '  col+=uSunColor*spec*1.6;\n' +
+    '  float foam=smoothstep(0.16,0.30,vCrest)*uFoam;\n' +
+    '  foam*=0.55+0.45*noise(vWorld.xz*7.0);\n' +
+    '  col=mix(col,vec3(0.86,0.91,0.92),clamp(foam,0.0,0.38));\n' +
+    '  float caustic=noise(vWorld.xz*4.0)*noise(vWorld.xz*7.0+1.7);\n' +
+    '  col+=vec3(0.90,0.96,0.82)*caustic*uCaustic;\n' +
     '  float alpha=clamp(uAlpha+fres*0.22,0.38,0.94);\n' +
     '  outColor=vec4(col,alpha);\n' +
     '}'
@@ -265,7 +283,7 @@
     '  float shadow=1.0;\n' +
     '  if(sc.x>0.0 && sc.x<1.0 && sc.y>0.0 && sc.y<1.0 && sc.z<1.0){\n' +
     '    float d=texture(uShadowMap,sc.xy).r;\n' +
-    '    shadow=(d < sc.z-uShadowBias) ? 1.0 : 1.0;\n' +
+    '    shadow=(d < sc.z-uShadowBias) ? 0.62 : 1.0;\n' +
     '  }\n' +
     '  vec3 lit=vColor*(uAmbient+uSunColor*(0.32+0.75*ndl)*shadow);\n' +
     '  float dist=length(vWorld-uCameraPos);\n' +
@@ -356,6 +374,47 @@
     '}'
   );
 
+  var objectProgram = program(
+    '#version 300 es\n' +
+    'in vec3 aPos; in vec3 aNormal; uniform mat4 uViewProj; uniform mat4 uModel;\n' +
+    'out vec3 vNormal; out vec3 vWorld;\n' +
+    'void main(){ vec4 w=uModel*vec4(aPos,1.0); vWorld=w.xyz; vNormal=normalize(mat3(uModel)*aNormal); gl_Position=uViewProj*w; }',
+    '#version 300 es\n' +
+    'precision highp float;\n' +
+    'in vec3 vNormal; in vec3 vWorld;\n' +
+    'uniform vec3 uColor; uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uAmbient; uniform float uGlow;\n' +
+    'out vec4 outColor;\n' +
+    'void main(){ vec3 n=normalize(vNormal); float ndl=max(dot(n,normalize(uSunDir)),0.0);\n' +
+    '  vec3 lit=uColor*(uAmbient+uSunColor*(0.25+0.75*ndl))+uColor*uGlow;\n' +
+    '  lit=lit/(lit+vec3(1.0)); outColor=vec4(lit,1.0); }'
+  );
+  var snowProgram = program(
+    '#version 300 es\n' +
+    'in vec3 aPos; uniform mat4 uViewProj;\n' +
+    'void main(){ gl_Position=uViewProj*vec4(aPos,1.0); }',
+    '#version 300 es\n' +
+    'precision mediump float;\n' +
+    'uniform vec3 uColor; out vec4 outColor;\n' +
+    'void main(){ outColor=vec4(uColor,0.78); }'
+  );
+  var fxaaProgram = program(
+    '#version 300 es\n' +
+    'in vec2 aPos; out vec2 vUv;\n' +
+    'void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.0,1.0); }',
+    '#version 300 es\n' +
+    'precision highp float;\n' +
+    'in vec2 vUv; uniform sampler2D uTex; uniform vec2 uTexel;\n' +
+    'out vec4 outColor;\n' +
+    'void main(){ vec3 c=texture(uTex,vUv).rgb;\n' +
+    '  vec3 n=texture(uTex,vUv+vec2(0.0,-uTexel.y)).rgb;\n' +
+    '  vec3 s=texture(uTex,vUv+vec2(0.0,uTexel.y)).rgb;\n' +
+    '  vec3 e=texture(uTex,vUv+vec2(uTexel.x,0.0)).rgb;\n' +
+    '  vec3 w=texture(uTex,vUv+vec2(-uTexel.x,0.0)).rgb;\n' +
+    '  vec3 m=(n+s+e+w)*0.25; vec3 edge=abs(c-m);\n' +
+    '  float amount=clamp(max(edge.r,max(edge.g,edge.b))*1.7,0.0,0.30);\n' +
+    '  outColor=vec4(mix(c,m,amount),1.0); }'
+  );
+
   var rainProgram = program(
     '#version 300 es\n' +
     'in vec3 aPos; uniform mat4 uViewProj;\n' +
@@ -369,6 +428,9 @@
   var rainVAO = null;
   var rainBuffer = null;
   var rainData = new Float32Array(3000 * 2 * 3);
+  var snowVAO = null;
+  var snowBuffer = null;
+  var snowData = new Float32Array(3000 * 2 * 3);
 
   var programRef = terrainProgram;
   var SHADOW_SIZE = 2048;
@@ -377,6 +439,10 @@
   var sceneFBO = null;
   var sceneColorTex = null;
   var sceneDepthTex = null;
+  var postFBO = null;
+  var postColorTex = null;
+  var fxaaQuadVAO = null;
+  var postNow = 0;
   var postQuadVAO = null;
   var lightVP = M4.create();
 
@@ -417,6 +483,18 @@
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, sceneDepthTex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
+    postColorTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, postColorTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    postFBO = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, postFBO);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, postColorTex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
     if (!postQuadVAO) {
       postQuadVAO = gl.createVertexArray();
       gl.bindVertexArray(postQuadVAO);
@@ -434,14 +512,43 @@
       rainBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, rainBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, rainData, gl.DYNAMIC_DRAW);
-      var rainLoc = uniformLocation(rainProgram, 'aPos');
+      var rainLoc = attrib(rainProgram, 'aPos');
       gl.enableVertexAttribArray(rainLoc);
       gl.vertexAttribPointer(rainLoc, 3, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(null);
+    }
+    if (!snowVAO) {
+      snowVAO = gl.createVertexArray();
+      gl.bindVertexArray(snowVAO);
+      snowBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, snowBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, snowData, gl.DYNAMIC_DRAW);
+      var snowLoc = attrib(snowProgram, 'aPos');
+      gl.enableVertexAttribArray(snowLoc);
+      gl.vertexAttribPointer(snowLoc, 3, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(null);
+    }
+    if (!fxaaQuadVAO) {
+      fxaaQuadVAO = gl.createVertexArray();
+      gl.bindVertexArray(fxaaQuadVAO);
+      var fxaaQuad = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, fxaaQuad);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+      var fxaaLoc = attrib(fxaaProgram, 'aPos');
+      gl.enableVertexAttribArray(fxaaLoc);
+      gl.vertexAttribPointer(fxaaLoc, 2, gl.FLOAT, false, 0, 0);
       gl.bindVertexArray(null);
     }
   }
 
   function makeLightVP(light) {
+    if (!world || !world.shadows || !world.camera) return;
+    world.shadows.update(world.camera, light);
+    var cascade = world.shadows.getShadowMatrix(2) || world.shadows.getShadowMatrix(1) || world.shadows.getShadowMatrix(0);
+    if (cascade) {
+      lightVP.set(cascade);
+      return;
+    }
     var dir = light.direction;
     var eye = [charPos[0] + dir[0] * 80, charPos[1] + 20 + dir[1] * 80, charPos[2] + dir[2] * 80];
     var view = M4.lookAt(M4.create(), eye, [charPos[0], charPos[1] + 4, charPos[2]], [0,1,0]);
@@ -463,6 +570,8 @@
     gl.uniformMatrix4fv(uniformLocation(depthProgram, 'uLightVP'), false, lightVP);
     var depthLoc = attrib(depthProgram, 'aPos');
     var meshes = [terrainMesh];
+    for (var tg = 0; tg < treeGroups.length; tg++) meshes.push(treeGroups[tg].mesh);
+    for (var gg = 0; gg < grassGroups.length; gg++) meshes.push(grassGroups[gg].mesh);
     for (var i = 0; i < meshes.length; i++) {
       if (!meshes[i]) continue;
       if (!meshes[i].shadowVAO) {
@@ -495,13 +604,13 @@
     return [x * 0.5 + 0.5, y * 0.5 + 0.5];
   }
 
-  function drawPost(now) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvasWorld.width, canvasWorld.height);
+  function drawPostToTarget(inputTexture, target, now) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target || null);
+    gl.viewport(0, 0, W, H);
     gl.disable(gl.DEPTH_TEST);
     gl.useProgram(postProgram);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, sceneColorTex);
+    gl.bindTexture(gl.TEXTURE_2D, inputTexture);
     gl.uniform1i(uniformLocation(postProgram, 'uScene'), 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, sceneDepthTex);
@@ -537,6 +646,32 @@
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
     gl.enable(gl.DEPTH_TEST);
+    return postColorTex;
+  }
+
+  function drawFxaa(inputTexture) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(fxaaProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, inputTexture);
+    gl.uniform1i(uniformLocation(fxaaProgram, 'uTex'), 0);
+    gl.uniform2f(uniformLocation(fxaaProgram, 'uTexel'), 1.0 / Math.max(1, W), 1.0 / Math.max(1, H));
+    gl.bindVertexArray(fxaaQuadVAO);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindVertexArray(null);
+    gl.enable(gl.DEPTH_TEST);
+  }
+
+  function drawPost(now) {
+    postNow = now;
+    if (world && world.postProcessing && typeof world.postProcessing.render === 'function') {
+      world.postProcessing.render(sceneColorTex, null);
+      return;
+    }
+    drawPostToTarget(sceneColorTex, postFBO, now);
+    drawFxaa(postColorTex);
   }
 
 
@@ -760,6 +895,65 @@
     return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx), new Float32Array(out.flex));
   }
 
+  function makeBirdMesh() {
+    // A distant bird needs a readable silhouette, not four large polygons.
+    // Wings sweep back from the shoulders; the tail closes the body.
+    var verts = [
+      [0, 0.00, -0.56],       // 0 head / front
+      [0, 0.05, 0.48],        // 1 tail
+      [-0.20, 0.04, -0.06],   // 2 left shoulder
+      [-1.16, 0.12, 0.30],    // 3 left wing tip
+      [-0.54, 0.06, 0.52],    // 4 left trailing edge
+      [0.20, 0.04, -0.06],    // 5 right shoulder
+      [1.16, 0.12, 0.30],     // 6 right wing tip
+      [0.54, 0.06, 0.52]      // 7 right trailing edge
+    ];
+    var tris = [
+      [0, 2, 3], [0, 3, 4], [0, 4, 1],
+      [0, 5, 6], [0, 6, 7], [0, 7, 1]
+    ];
+    var out = { pos: [], nor: [], col: [], idx: [] };
+    var base = 0;
+    for (var t = 0; t < tris.length; t++) {
+      for (var v = 0; v < 3; v++) {
+        var p = verts[tris[t][v]];
+        out.pos.push(p[0], p[1], p[2]);
+        var n = normalize3([p[0] * 0.12, 1, p[2] * 0.12]);
+        out.nor.push(n[0], n[1], n[2]);
+        out.col.push(0.12, 0.15, 0.19);
+      }
+      out.idx.push(base, base + 1, base + 2);
+      base += 3;
+    }
+    programRef = objectProgram;
+    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
+  }
+
+  function makeFireflyMesh() {
+    var points = [
+      [0, 0.5, 0], [0, -0.5, 0],
+      [0.45, 0, 0], [-0.45, 0, 0],
+      [0, 0, 0.45], [0, 0, -0.45]
+    ];
+    var faces = [
+      [0, 2, 4], [0, 4, 3], [0, 3, 5], [0, 5, 2],
+      [1, 4, 2], [1, 3, 4], [1, 5, 3], [1, 2, 5]
+    ];
+    var out = { pos: [], nor: [], col: [], idx: [] };
+    for (var i = 0; i < points.length; i++) {
+      var p = points[i];
+      out.pos.push(p[0], p[1], p[2]);
+      var n = normalize3(p);
+      out.nor.push(n[0], n[1], n[2]);
+      out.col.push(0.9, 0.85, 0.45);
+    }
+    for (var f = 0; f < faces.length; f++) {
+      out.idx.push(faces[f][0], faces[f][1], faces[f][2]);
+    }
+    programRef = objectProgram;
+    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
+  }
+
   
 // ---- terrain shaping --------------------------------------------------
   function smoothstep(a, b, x) {
@@ -812,6 +1006,80 @@
     t.built = true;
   }
 
+  // Split the terrain into chunks so TerrainSystem's LOD levels can actually
+  // be selected per visible region instead of being generated and ignored.
+  function makeTerrainChunkMeshes(terrain, chunkCount) {
+    var chunks = [];
+    var seg = terrain.segments;
+    var srcSeg = seg + 1;
+    var cellsPerChunk = seg / chunkCount;
+    var chunkWorld = TERRAIN_SIZE / chunkCount;
+    var lodDefs = terrain.lodLevels && terrain.lodLevels.length
+      ? terrain.lodLevels
+      : [{ factor: 1 }, { factor: 2 }, { factor: 4 }, { factor: 8 }];
+
+    for (var cz = 0; cz < chunkCount; cz++) {
+      for (var cx = 0; cx < chunkCount; cx++) {
+        var x0 = cx * cellsPerChunk;
+        var z0 = cz * cellsPerChunk;
+        var midX = -TERRAIN_SIZE * 0.5 + (x0 + cellsPerChunk * 0.5) / seg * TERRAIN_SIZE;
+        var midZ = -TERRAIN_SIZE * 0.5 + (z0 + cellsPerChunk * 0.5) / seg * TERRAIN_SIZE;
+        var center = [midX, terrain.getHeight(midX, midZ), midZ];
+        var radius = Math.sqrt(2) * chunkWorld * 0.5 + 18;
+        var levels = [];
+
+        for (var li = 0; li < lodDefs.length; li++) {
+          var step = lodDefs[li].factor || (1 << li);
+          var nx = Math.ceil(cellsPerChunk / step);
+          var vertCount = (nx + 1) * (nx + 1);
+          var positions = new Float32Array(vertCount * 3);
+          var normals = new Float32Array(vertCount * 3);
+          var colors = new Float32Array(vertCount * 3);
+          var indices = new Uint32Array(nx * nx * 6);
+          var vi = 0;
+
+          for (var j = 0; j <= nx; j++) {
+            var srcZ = z0 + Math.min(j * step, cellsPerChunk);
+            for (var i = 0; i <= nx; i++) {
+              var srcX = x0 + Math.min(i * step, cellsPerChunk);
+              var src = srcZ * srcSeg + srcX;
+              positions[vi * 3] = terrain.vertices[src * 3];
+              positions[vi * 3 + 1] = terrain.vertices[src * 3 + 1];
+              positions[vi * 3 + 2] = terrain.vertices[src * 3 + 2];
+              normals[vi * 3] = terrain.normals[src * 3];
+              normals[vi * 3 + 1] = terrain.normals[src * 3 + 1];
+              normals[vi * 3 + 2] = terrain.normals[src * 3 + 2];
+              colors[vi * 3] = terrain.colors[src * 3];
+              colors[vi * 3 + 1] = terrain.colors[src * 3 + 1];
+              colors[vi * 3 + 2] = terrain.colors[src * 3 + 2];
+              vi++;
+            }
+          }
+
+          var ii = 0;
+          for (var z = 0; z < nx; z++) {
+            for (var x = 0; x < nx; x++) {
+              var a = z * (nx + 1) + x;
+              var b = a + nx + 1;
+              indices[ii++] = a; indices[ii++] = b; indices[ii++] = a + 1;
+              indices[ii++] = a + 1; indices[ii++] = b; indices[ii++] = b + 1;
+            }
+          }
+
+          programRef = terrainProgram;
+          levels.push({
+            mesh: createMesh(positions, normals, colors, indices),
+            factor: step,
+            distance: lodDefs[li].distance || step * 50
+          });
+        }
+
+        chunks.push({ center: center, radius: radius, levels: levels });
+      }
+    }
+    return chunks;
+  }
+
   
   // ---- runtime -----------------------------------------------------------
   var world = null;
@@ -824,6 +1092,14 @@
   var grassMesh = null;
   var treeGroups = [];
   var grassGroups = [];
+  var terrainChunks = [];
+  var advancedWater = null;
+  var advancedVegetation = null;
+  var extShaderCompiler = null;
+  var birdMesh = null;
+  var fireflyMesh = null;
+  var birdObjects = [];
+  var fireflyObjects = [];
   var sunColor = [1, 0.95, 0.84];
 
   function buildVegetationGroups(list, meshFn, radius) {
@@ -867,9 +1143,29 @@
     var sun = world.dayNight ? world.dayNight.getSunPosition() : world.sky.getSunDirection();
     var h = Math.max(0, Math.min(1, sun[1] * 1.1));
     var dusk = Math.max(0, 1 - h * 1.7);
-    world.sky.skyColor = [0.10 + 0.22 * h + 0.05 * dusk, 0.27 + 0.25 * h + 0.02 * dusk, 0.50 + 0.24 * h];
-    world.sky.horizonColor = [0.48 + 0.23 * h + 0.22 * dusk, 0.49 + 0.20 * h + 0.08 * dusk, 0.48 + 0.24 * h];
-    world.sky.fogColor = [0.54 + 0.16 * h + 0.10 * dusk, 0.59 + 0.14 * h + 0.04 * dusk, 0.64 + 0.14 * h];
+    var overcast = world.weather ? Math.min(1, world.weather.getCloudCoverage()) : 0;
+    var skyR = 0.10 + 0.22 * h + 0.05 * dusk;
+    var skyG = 0.27 + 0.25 * h + 0.02 * dusk;
+    var skyB = 0.50 + 0.24 * h;
+    var horR = 0.48 + 0.23 * h + 0.22 * dusk;
+    var horG = 0.49 + 0.20 * h + 0.08 * dusk;
+    var horB = 0.48 + 0.24 * h;
+    var oc = overcast * 0.88;
+    world.sky.skyColor = [
+      skyR * (1 - oc) + 0.38 * oc,
+      skyG * (1 - oc) + 0.43 * oc,
+      skyB * (1 - oc) + 0.50 * oc
+    ];
+    world.sky.horizonColor = [
+      horR * (1 - oc) + 0.52 * oc,
+      horG * (1 - oc) + 0.55 * oc,
+      horB * (1 - oc) + 0.58 * oc
+    ];
+    world.sky.fogColor = [
+      (0.54 + 0.16 * h + 0.10 * dusk) * (1 - oc) + 0.48 * oc,
+      (0.59 + 0.14 * h + 0.04 * dusk) * (1 - oc) + 0.51 * oc,
+      (0.64 + 0.14 * h) * (1 - oc) + 0.55 * oc
+    ];
   }
 
   function sunDirectionFor(time) {
@@ -907,7 +1203,7 @@
     if (world && world.camera) {
       world.camera.position = [eye[0], eye[1], eye[2]];
       world.camera.target = [target[0], target[1], target[2]];
-      world.camera.fov = FOV;
+      world.camera.fov = FOV * 180 / Math.PI;
       world.camera.aspect = W / H;
       world.camera.update(0);
     }
@@ -939,6 +1235,7 @@
     starVisibility = Math.min(1, starVisibility);
     gl.uniform1f(uniformLocation(skyProgram, 'uStar'), starVisibility);
     gl.uniform1f(uniformLocation(skyProgram, 'uTime'), world.time || 0);
+    gl.uniform1f(uniformLocation(skyProgram, 'uFlash'), world.weather && world.weather.isThundering() ? 0.62 : 0);
     gl.bindVertexArray(skyMesh.vao);
     gl.drawElements(gl.TRIANGLES, skyMesh.count, gl.UNSIGNED_INT, 0);
     gl.bindVertexArray(null);
@@ -966,8 +1263,23 @@
     gl.uniform1f(uniformLocation(terrainProgram, 'uFogDensity'), 0.0015);
     gl.uniform3fv(uniformLocation(terrainProgram, 'uCameraPos'), new Float32Array(cameraPos));
     bindShadow(terrainProgram);
-    gl.bindVertexArray(terrainMesh.vao);
-    gl.drawElements(gl.TRIANGLES, terrainMesh.count, gl.UNSIGNED_INT, 0);
+    if (terrainChunks.length) {
+      for (var c = 0; c < terrainChunks.length; c++) {
+        var chunk = terrainChunks[c];
+        // Draw all 16 chunks. Frustum-culling a chunk by its bounding sphere
+        // can drop the near ground plane while the camera orbits, which reads
+        // as a black lower half. Sixteen draws are cheap enough to keep.
+        var dx = chunk.center[0] - cameraPos[0];
+        var dz = chunk.center[2] - cameraPos[2];
+        var lod = world.terrain.getLODLevel(Math.sqrt(dx * dx + dz * dz));
+        var level = chunk.levels[lod] || chunk.levels[chunk.levels.length - 1];
+        gl.bindVertexArray(level.mesh.vao);
+        gl.drawElements(gl.TRIANGLES, level.mesh.count, gl.UNSIGNED_INT, 0);
+      }
+    } else {
+      gl.bindVertexArray(terrainMesh.vao);
+      gl.drawElements(gl.TRIANGLES, terrainMesh.count, gl.UNSIGNED_INT, 0);
+    }
     gl.bindVertexArray(null);
   }
 
@@ -1031,17 +1343,44 @@
       phases[i] = w.phase;
     }
     var sky = world.sky;
+    var gerstner = new Float32Array(16);
+    var gerstnerSpeed = new Float32Array(4);
+    var fallbackWaves = [
+      { direction: [1, 0.3], steepness: 0.06, wavelength: 8, speed: 1 },
+      { direction: [0.5, 1], steepness: 0.05, wavelength: 5, speed: 1.2 },
+      { direction: [-0.7, 0.5], steepness: 0.04, wavelength: 3, speed: 1.5 },
+      { direction: [0.3, -0.8], steepness: 0.03, wavelength: 2, speed: 1.8 }
+    ];
+    var waveSource = advancedWater && advancedWater.waves.length ? advancedWater.waves : fallbackWaves;
+    for (var g = 0; g < 4; g++) {
+      var gw = waveSource[g] || fallbackWaves[g];
+      gerstner[g * 4] = gw.direction[0];
+      gerstner[g * 4 + 1] = gw.direction[1];
+      gerstner[g * 4 + 2] = gw.steepness;
+      gerstner[g * 4 + 3] = gw.wavelength;
+      gerstnerSpeed[g] = gw.speed || 1;
+    }
+    var waterColor = advancedWater ? advancedWater.waterColor : water.waterColor;
+    var deepColor = advancedWater ? advancedWater.deepColor : [0.02, 0.05, 0.10];
+    var shallowColor = advancedWater ? advancedWater.shallowColor : [0.12, 0.30, 0.36];
     gl.uniformMatrix4fv(uniformLocation(waterProgram, 'uViewProj'), false, viewProj);
     gl.uniform4fv(uniformLocation(waterProgram, 'uWaves[0]'), waves);
     gl.uniform1fv(uniformLocation(waterProgram, 'uPhases[0]'), phases);
+    gl.uniform4fv(uniformLocation(waterProgram, 'uGerstner[0]'), gerstner);
+    gl.uniform1fv(uniformLocation(waterProgram, 'uGerstnerSpeed[0]'), gerstnerSpeed);
+    gl.uniform1f(uniformLocation(waterProgram, 'uGerstnerTime'), advancedWater ? advancedWater.time : world.time);
     gl.uniform1f(uniformLocation(waterProgram, 'uWaterLevel'), water.waterLevel);
     gl.uniform3fv(uniformLocation(waterProgram, 'uSunDir'), new Float32Array(normalize3(world.lights.directionalLight.direction)));
     gl.uniform3fv(uniformLocation(waterProgram, 'uSunColor'), new Float32Array(world.lights.directionalLight.color));
     gl.uniform3fv(uniformLocation(waterProgram, 'uSkyTop'), new Float32Array(sky.getSkyColor()));
     gl.uniform3fv(uniformLocation(waterProgram, 'uSkyHorizon'), new Float32Array(sky.getHorizonColor()));
     gl.uniform3fv(uniformLocation(waterProgram, 'uCameraPos'), new Float32Array(cameraPos));
-    gl.uniform3fv(uniformLocation(waterProgram, 'uWaterColor'), new Float32Array([0.045, 0.15, 0.20]));
-    gl.uniform1f(uniformLocation(waterProgram, 'uAlpha'), 0.72);
+    gl.uniform3fv(uniformLocation(waterProgram, 'uWaterColor'), new Float32Array(waterColor.slice(0, 3)));
+    gl.uniform3fv(uniformLocation(waterProgram, 'uDeepColor'), new Float32Array(deepColor));
+    gl.uniform3fv(uniformLocation(waterProgram, 'uShallowColor'), new Float32Array(shallowColor));
+    gl.uniform1f(uniformLocation(waterProgram, 'uFoam'), advancedWater ? advancedWater.foamIntensity : 0.5);
+    gl.uniform1f(uniformLocation(waterProgram, 'uCaustic'), advancedWater ? advancedWater.causticIntensity : 0.3);
+    gl.uniform1f(uniformLocation(waterProgram, 'uAlpha'), advancedWater ? advancedWater.transparency : 0.72);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);
@@ -1082,6 +1421,131 @@
     gl.bindVertexArray(null);
   }
 
+  function drawSnow() {
+    if (!world.weather || !snowVAO) return;
+    var particles = world.weather.getParticles();
+    var n = 0;
+    for (var i = 0; i < particles.length && n < 3000; i++) {
+      var p = particles[i];
+      if (p.type !== 'snow' || p.y < -2) continue;
+      var base = n * 6;
+      snowData[base] = p.x; snowData[base + 1] = p.y; snowData[base + 2] = p.z;
+      snowData[base + 3] = p.x + 0.035; snowData[base + 4] = p.y - 0.18; snowData[base + 5] = p.z + 0.02;
+      n += 1;
+    }
+    if (!n) return;
+    gl.bindVertexArray(snowVAO);
+    gl.bindBuffer(gl.ARRAY_BUFFER, snowBuffer);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, snowData.subarray(0, n * 6));
+    gl.useProgram(snowProgram);
+    gl.uniformMatrix4fv(uniformLocation(snowProgram, 'uViewProj'), false, viewProj);
+    gl.uniform3fv(uniformLocation(snowProgram, 'uColor'), new Float32Array([0.92, 0.96, 1.0]));
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.drawArrays(gl.LINES, 0, n * 2);
+    gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(null);
+  }
+
+  function drawObjects() {
+    if (!world || !birdMesh) return;
+    var visible = world.getVisibleObjects();
+    gl.useProgram(objectProgram);
+    gl.uniformMatrix4fv(uniformLocation(objectProgram, 'uViewProj'), false, viewProj);
+    gl.uniform3fv(uniformLocation(objectProgram, 'uSunDir'), new Float32Array(normalize3(world.lights.directionalLight.direction)));
+    gl.uniform3fv(uniformLocation(objectProgram, 'uSunColor'), new Float32Array(world.lights.directionalLight.color));
+    gl.uniform3fv(uniformLocation(objectProgram, 'uAmbient'), new Float32Array(world.lights.ambientLight.color));
+    for (var i = 0; i < visible.length; i++) {
+      var obj = visible[i];
+      if (!obj.mesh) continue;
+      var s = obj.scale || 1;
+      var yaw = obj.yaw || 0;
+      var c = Math.cos(yaw) * s, sn = Math.sin(yaw) * s;
+      var m = M4.create();
+      m[0] = c; m[2] = -sn; m[8] = sn; m[10] = c;
+      m[5] = s; m[12] = obj.position[0]; m[13] = obj.position[1]; m[14] = obj.position[2]; m[15] = 1;
+      gl.uniformMatrix4fv(uniformLocation(objectProgram, 'uModel'), false, m);
+      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array(obj.color || [0.14, 0.15, 0.18]));
+      gl.uniform1f(uniformLocation(objectProgram, 'uGlow'), obj.glow || 0);
+      gl.bindVertexArray(obj.mesh.vao);
+      gl.drawElements(gl.TRIANGLES, obj.mesh.count, gl.UNSIGNED_INT, 0);
+    }
+    gl.bindVertexArray(null);
+  }
+
+  function spawnBirds() {
+    if (!birdMesh || !world) return;
+    for (var i = 0; i < 9; i++) {
+      var baseX = (i - 4) * 14;
+      var baseZ = -92 - Math.abs(i - 4) * 6;
+      var birdHeight = 23 + (i % 3) * 3;
+      var bird = {
+        mesh: birdMesh,
+        scale: 0.72 + (i % 3) * 0.08,
+        color: [0.13, 0.16, 0.20],
+        glow: 0,
+        angle: i * 0.8,
+        phase: i * 1.7,
+        baseX: baseX,
+        baseZ: baseZ,
+        height: birdHeight,
+        position: [baseX, birdHeight, baseZ],
+        boundingCenter: [baseX, birdHeight, baseZ],
+        boundingRadius: 3,
+        yaw: 0,
+        update: function (dt) {
+          this.angle += dt * 0.06;
+          this.position[0] = this.baseX + Math.sin(this.angle + this.phase) * 7;
+          this.position[2] = this.baseZ + Math.cos(this.angle * 0.8 + this.phase) * 4;
+          this.position[1] = this.height + Math.sin(this.angle * 2 + this.phase) * 1.2;
+          this.yaw = -0.22 + Math.sin(this.angle * 0.5 + this.phase) * 0.12;
+          this.boundingCenter = this.position;
+        }
+      };
+      birdObjects.push(bird);
+      world.addObject(bird);
+    }
+  }
+
+  function syncFireflies() {
+    if (!fireflyMesh || !world) return;
+    var night = world.dayNight && world.dayNight.isNight;
+    if (night && fireflyObjects.length === 0) {
+      for (var i = 0; i < 14; i++) {
+        var angle = Math.random() * Math.PI * 2;
+        var radius = 4 + Math.random() * 18;
+        var firefly = {
+          mesh: fireflyMesh,
+          scale: 0.055 + Math.random() * 0.035,
+          color: [1.0, 0.78, 0.28],
+          glow: 0.95,
+          angle: angle,
+          radius: radius,
+          height: 0.4 + Math.random() * 2.0,
+          position: [Math.cos(angle) * radius, world.terrain.getHeight(Math.cos(angle) * radius, Math.sin(angle) * radius), Math.sin(angle) * radius],
+          boundingCenter: [0, 0, 0],
+          boundingRadius: 0.4,
+          update: function (dt) {
+            this.angle += dt * (0.25 + this.scale);
+            this.position[0] = Math.cos(this.angle) * this.radius;
+            this.position[2] = Math.sin(this.angle) * this.radius;
+            this.position[1] = this.height + Math.sin(this.angle * 3.0) * 0.18;
+            this.boundingCenter = this.position;
+          }
+        };
+        fireflyObjects.push(firefly);
+        world.addObject(firefly);
+      }
+    } else if (!night && fireflyObjects.length) {
+      for (var j = 0; j < fireflyObjects.length; j++) world.removeObject(fireflyObjects[j]);
+      fireflyObjects.length = 0;
+    }
+  }
+
   function drawContactShadow() {
     if (!shadowMesh) return;
     gl.useProgram(shadowProgram);
@@ -1114,9 +1578,14 @@
     drawSky();
     drawTerrain();
     drawTrees();
+    if (advancedVegetation) {
+      advancedVegetation.render(world.camera, world.lights, { trees: false, grass: false });
+    }
     drawGrass(now / 1000);
     drawWater();
+    drawObjects();
     drawRain();
+    drawSnow();
     drawContactShadow();
     drawPost(now);
   }
@@ -1197,8 +1666,12 @@
     world.water.setWaterLevel(WATER_LEVEL);
     world.water.setWaveHeight(0.16);
     world.weather.setWeather(WEATHER_MODE, false);
-    if (WEATHER_MODE !== 'rain') world.weather.particles.length = 0;
-    world.weather.cloudCoverage = WEATHER_MODE === 'rain' ? 0.46 : 0.06;
+    if (WEATHER_MODE !== 'rain' && WEATHER_MODE !== 'storm' && WEATHER_MODE !== 'snow') {
+      world.weather.particles.length = 0;
+    }
+    world.weather.cloudCoverage = (WEATHER_MODE === 'rain' || WEATHER_MODE === 'storm')
+      ? 0.62
+      : (WEATHER_MODE === 'snow' ? 0.72 : 0.06);
     world.postProcessing.colorGrading.exposure = 1.06;
     world.postProcessing.colorGrading.contrast = 1.12;
     world.postProcessing.colorGrading.saturation = 0.82;
@@ -1219,7 +1692,7 @@
     world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
     sunColor = [1.0, 0.84, 0.63];
     world.shadows.setQuality('medium');
-    world.shadows.setShadowDistance(110);
+    world.shadows.setShadowDistance(180);
     if (window.World3DExt) {
       fog = new window.World3DExt.VolumetricFog({ getContext: function () { return gl; } }, null);
       fog.setFogColor(0.62, 0.69, 0.76);
@@ -1228,14 +1701,76 @@
       fog.setFogHeightFalloff(1.1);
       fog.setSunScatterIntensity(0.55);
       fog.setSunDirection(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+
+      extShaderCompiler = {
+        compile: function (vs, fs) { return program(vs, fs); },
+        use: function (p) { gl.useProgram(p); },
+        getAttributeLocation: function (p, name) { return attrib(p, name); },
+        setUniformMatrix4fv: function (p, name, value) { gl.uniformMatrix4fv(uniformLocation(p, name), false, value); },
+        setUniform1f: function (p, name, value) { gl.uniform1f(uniformLocation(p, name), value); },
+        setUniform1i: function (p, name, value) { gl.uniform1i(uniformLocation(p, name), value); },
+        setUniform2f: function (p, name, a, b) { gl.uniform2f(uniformLocation(p, name), a, b); },
+        setUniform3f: function (p, name, a, b, c) { gl.uniform3f(uniformLocation(p, name), a, b, c); }
+      };
+
+      advancedWater = new window.World3DExt.AdvancedWaterSystem(
+        { getContext: function () { return gl; } }, extShaderCompiler
+      );
+      [
+        { direction: [1, 0.3], steepness: 0.06, wavelength: 8, speed: 1.0 },
+        { direction: [0.5, 1], steepness: 0.05, wavelength: 5, speed: 1.2 },
+        { direction: [-0.7, 0.5], steepness: 0.04, wavelength: 3, speed: 1.5 },
+        { direction: [0.3, -0.8], steepness: 0.03, wavelength: 2, speed: 1.8 }
+      ].forEach(function (w) { advancedWater.addWave(w); });
+      advancedWater.setWaterColor(0.045, 0.15, 0.20, 0.72);
+      advancedWater.setDeepColor(0.02, 0.05, 0.10);
+      advancedWater.setShallowColor(0.12, 0.30, 0.36);
+      advancedWater.setWaveHeight(0.16);
+      advancedWater.setWaveSpeed(1.0);
+      advancedWater.setWaveScale(1.0);
+      advancedWater.setTransparency(0.72);
+      advancedWater.setReflectivity(0.55);
+      advancedWater.setFoamIntensity(0.55);
+      advancedWater.setFoamThreshold(0.5);
+      advancedWater.setCausticIntensity(0.38);
+      advancedWater.setNormalStrength(1.0);
+      advancedWater.update(0);
+      if (systemsEl) {
+        systemsEl.textContent = 'TERRAIN ' + TERRAIN_SIZE + '×' + TERRAIN_SIZE + ' · WATER ' +
+          advancedWater.getWaveCount() + ' WAVES · ' + world.weather.getCurrentWeather().toUpperCase();
+      }
     }
     setupWorldCamera();
 
     skyMesh = makeSkySphere();
     terrainMesh = makeTerrainMesh(world.terrain);
+    terrainChunks = makeTerrainChunkMeshes(world.terrain, 4);
     waterMesh = makeWaterMesh();
-    treeGroups = buildVegetationGroups(trees, makeTreeMesh, 58);
-    grassGroups = buildVegetationGroups(grass, makeGrassMesh, 58);
+    var nearTrees = trees.filter(function (t) { return Math.sqrt(t.x * t.x + t.z * t.z) < 135; });
+    treeGroups = buildVegetationGroups(nearTrees, makeTreeMesh, 58);
+    var nearGrass = grass.filter(function (g) { return Math.sqrt(g.x * g.x + g.z * g.z) < 58; });
+    grassGroups = buildVegetationGroups(nearGrass, makeGrassMesh, 58);
+
+    if (window.World3DExt && extShaderCompiler) {
+      advancedVegetation = new window.World3DExt.VegetationSystem(
+        { getContext: function () { return gl; } }, extShaderCompiler
+      );
+      advancedVegetation.init();
+      advancedVegetation.setLodDistance(180);
+      advancedVegetation.setWindStrength(0.28);
+      advancedVegetation.setWindDirection(1, 0, 0.35);
+      // Far trees are drawn by the base tree groups with the terrain shader
+      // (fog + shadows). The extension's instanced canopy/grass quads produced
+      // bright strips over the ridge, so its render layer stays off in this pass.
+      for (var fg = 0; fg < 1600; fg++) {
+        var fa = Math.random() * Math.PI * 2;
+        var fr = 62 + Math.random() * 34;
+        var fx = Math.cos(fa) * fr;
+        var fz = Math.sin(fa) * fr - 16;
+        var fy = world.terrain.getHeight(fx, fz);
+        if (fy > WATER_LEVEL + 0.6) advancedVegetation.addGrass([fx, fy, fz], 0.7 + Math.random() * 0.5);
+      }
+    }
     var flowerSpots = [];
     for (var fi = 0; fi < 1100; fi++) {
       var fx = (Math.random() * 2 - 1) * 30;
@@ -1245,9 +1780,59 @@
       flowerSpots.push({ x: fx, y: fy + 0.02, z: fz });
     }
     flowerMesh = makeFlowerMesh(flowerSpots);
+    birdMesh = makeBirdMesh();
+    fireflyMesh = makeFireflyMesh();
+    spawnBirds();
     shadowMesh = makeShadowMesh();
     createShadowTarget();
     createSceneTarget();
+    world.postProcessing.addPass('world-post', null);
+    world.postProcessing.addPass('fxaa', null);
+    world.postProcessing.setBackend(function (pp, input) {
+      var current = input;
+      for (var p = 0; p < pp.passes.length; p++) {
+        var pass = pp.passes[p];
+        if (!pass.enabled) continue;
+        if (pass.name === 'world-post') current = drawPostToTarget(current, postFBO, postNow);
+        else if (pass.name === 'fxaa') { drawFxaa(current); return null; }
+      }
+      return current;
+    });
+
+    window.AEVUM_WORLD_CONTROL = {
+      setTime: function (value) {
+        if (!world || !world.dayNight) return;
+        var t = ((Number(value) || 0) % 1 + 1) % 1;
+        world.dayNight.setTime(t);
+        world.dayNight.update(0);
+        world.sky.setTime(t);
+        world.sky.update(0);
+        SUN_DIR = sunDirectionFor(t);
+        world.dayNight.sunPosition = SUN_DIR;
+        world.sky.sunDirection = SUN_DIR;
+        if (world.dayNight.isNight) {
+          world.lights.setDirectional(world.dayNight.getMoonPosition(), [0.55, 0.62, 0.92], 0.16);
+          world.lights.setAmbient([0.34, 0.40, 0.62], 0.56);
+        } else {
+          world.lights.setDirectional(SUN_DIR, world.dayNight.getSunColor(), 1.2);
+          world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
+        }
+        styleSky();
+      },
+      setWeather: function (name) {
+        if (!world || !world.weather) return;
+        if (world.weather.weatherTypes.indexOf(name) === -1) return;
+        world.weather.setWeather(name, false);
+        weatherClock = 0;
+        weatherNext = 999999;
+      },
+      getState: function () {
+        return {
+          time: world && world.dayNight ? world.dayNight.getTime() : 0,
+          weather: world && world.weather ? world.weather.getCurrentWeather() : 'clear'
+        };
+      }
+    };
 
     if (renderOnly) {
       start = performance.now();
@@ -1265,6 +1850,10 @@
             gl.deleteFramebuffer(sceneFBO);
             gl.deleteTexture(sceneColorTex);
             gl.deleteTexture(sceneDepthTex);
+          }
+          if (postFBO) {
+            gl.deleteFramebuffer(postFBO);
+            gl.deleteTexture(postColorTex);
           }
           createSceneTarget();
         },
@@ -1294,8 +1883,7 @@
     await modelRenderer.loadVRM(vrm);
     bootStage('LOADING / VRM READY');
 
-    var actionRes = await fetch('/engine/assets/all_animations.glb', { cache: 'no-store' });
-    if (!actionRes.ok) throw new Error('GLB HTTP ' + actionRes.status);
+    var actionRes = await fetch('/engine/assets/all_animations.glb', { cache: 'no-store' });    if (!actionRes.ok) throw new Error('GLB HTTP ' + actionRes.status);
     bootStage('LOADING / MOTION RECEIVED');
     var action = window.AEVUM.formats.parseGLB(await actionRes.arrayBuffer());
     player = window.AEVUM.formats.GLTFAnimation.createPlayer(action);
@@ -1316,18 +1904,25 @@
 
     start = performance.now();
     last = start;
+    var frameCount = 0;
     function frame(now) {
+      frameCount += 1;
       var dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (world) {
         world.update(dt);
+        if (advancedWater) advancedWater.update(dt);
+        syncFireflies();
         if (world.weather.getCurrentWeather() === 'clear') world.weather.particles.length = 0;
         weatherClock += dt;
         if (weatherClock >= weatherNext) {
           weatherClock = 0;
           weatherNext = 180 + Math.random() * 120;
           var roll = Math.random();
-          var nextWeather = roll < 0.64 ? 'clear' : (roll < 0.86 ? 'cloud' : 'rain');
+          var nextWeather = roll < 0.55 ? 'clear'
+            : (roll < 0.74 ? 'cloudy'
+              : (roll < 0.87 ? 'rain'
+                : (roll < 0.94 ? 'storm' : 'snow')));
           world.weather.setWeather(nextWeather, true);
         }
         world.sky.setTime(world.dayNight.time);
@@ -1336,12 +1931,25 @@
         world.dayNight.sunPosition = SUN_DIR;
         world.sky.sunDirection = SUN_DIR;
         styleSky();
-        world.lights.setDirectional(SUN_DIR, world.dayNight.getSunColor(), world.dayNight.isDay ? 1.2 : 0.05);
-        world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
+        if (world.dayNight.isNight) {
+          world.lights.setDirectional(world.dayNight.getMoonPosition(), [0.55, 0.62, 0.92], 0.16);
+          world.lights.setAmbient([0.34, 0.40, 0.62], 0.56);
+        } else {
+          world.lights.setDirectional(SUN_DIR, world.dayNight.getSunColor(), 1.2);
+          world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
+        }
         sunColor = world.dayNight.getSunColor();
-        if (fog) fog.setSunDirection(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        if (fog) {
+          fog.setSunDirection(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+          fog.setFogDensity(0.0008 + world.weather.getFogIntensity() * 0.025 +
+            (world.weather.getCurrentWeather() === 'storm' ? 0.012 : 0));
+        }
+        if (advancedVegetation) {
+          advancedVegetation.setWindStrength(0.16 + world.weather.getWindSpeed() * 0.045);
+        }
       }
       if (player) player.update(dt);
+      if (advancedVegetation) advancedVegetation.update(dt, world.camera);
 
       var pose = null;
       if (player && vrm && retarget) {
@@ -1356,6 +1964,23 @@
       }
 
       renderWorld(now);
+      if (systemsEl && frameCount % 20 === 0) {
+        systemsEl.textContent = 'TERRAIN ' + TERRAIN_SIZE + '×' + TERRAIN_SIZE +
+          ' · TREES ' + trees.length + ' · GRASS ' + grass.length +
+          ' · WATER 8 · ' + world.weather.getCurrentWeather().toUpperCase() +
+          ' · PARTICLES ' + world.weather.getParticles().length +
+          ' · CHUNKS ' + terrainChunks.length +
+          ' · SHADOW ' + world.shadows.shadowMapSize + ' · POST FX';
+      }
+      window.AEVUM_WORLD_STATE = {
+        weather: world.weather.getCurrentWeather(),
+        particles: world.weather.getParticles().length,
+        snow: world.weather.getSnowAccumulation(),
+        cloud: world.weather.getCloudCoverage(),
+        objects: world.objects.length,
+        chunks: terrainChunks.length,
+        farTrees: advancedVegetation ? advancedVegetation.trees.length : 0
+      };
       if (modelRenderer && pose) {
         modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
           viewProjection: viewProj,

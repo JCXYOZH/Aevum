@@ -131,4 +131,63 @@
     return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx), new Float32Array(out.flex));
   }
 
+  function makeBirdMesh() {
+    // A distant bird needs a readable silhouette, not four large polygons.
+    // Wings sweep back from the shoulders; the tail closes the body.
+    var verts = [
+      [0, 0.00, -0.56],       // 0 head / front
+      [0, 0.05, 0.48],        // 1 tail
+      [-0.20, 0.04, -0.06],   // 2 left shoulder
+      [-1.16, 0.12, 0.30],    // 3 left wing tip
+      [-0.54, 0.06, 0.52],    // 4 left trailing edge
+      [0.20, 0.04, -0.06],    // 5 right shoulder
+      [1.16, 0.12, 0.30],     // 6 right wing tip
+      [0.54, 0.06, 0.52]      // 7 right trailing edge
+    ];
+    var tris = [
+      [0, 2, 3], [0, 3, 4], [0, 4, 1],
+      [0, 5, 6], [0, 6, 7], [0, 7, 1]
+    ];
+    var out = { pos: [], nor: [], col: [], idx: [] };
+    var base = 0;
+    for (var t = 0; t < tris.length; t++) {
+      for (var v = 0; v < 3; v++) {
+        var p = verts[tris[t][v]];
+        out.pos.push(p[0], p[1], p[2]);
+        var n = normalize3([p[0] * 0.12, 1, p[2] * 0.12]);
+        out.nor.push(n[0], n[1], n[2]);
+        out.col.push(0.12, 0.15, 0.19);
+      }
+      out.idx.push(base, base + 1, base + 2);
+      base += 3;
+    }
+    programRef = objectProgram;
+    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
+  }
+
+  function makeFireflyMesh() {
+    var points = [
+      [0, 0.5, 0], [0, -0.5, 0],
+      [0.45, 0, 0], [-0.45, 0, 0],
+      [0, 0, 0.45], [0, 0, -0.45]
+    ];
+    var faces = [
+      [0, 2, 4], [0, 4, 3], [0, 3, 5], [0, 5, 2],
+      [1, 4, 2], [1, 3, 4], [1, 5, 3], [1, 2, 5]
+    ];
+    var out = { pos: [], nor: [], col: [], idx: [] };
+    for (var i = 0; i < points.length; i++) {
+      var p = points[i];
+      out.pos.push(p[0], p[1], p[2]);
+      var n = normalize3(p);
+      out.nor.push(n[0], n[1], n[2]);
+      out.col.push(0.9, 0.85, 0.45);
+    }
+    for (var f = 0; f < faces.length; f++) {
+      out.idx.push(faces[f][0], faces[f][1], faces[f][2]);
+    }
+    programRef = objectProgram;
+    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
+  }
+
   

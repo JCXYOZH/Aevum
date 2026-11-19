@@ -484,8 +484,10 @@ const World3DEngine = (function () {
           this.rainIntensity = 1.0 * progress; this.cloudCoverage = 1.0 * progress; this.windSpeed = 8 * progress;
           break;
         case 'snow':
-          this.snowAccumulation = Math.min(1, this.snowAccumulation + dt * 0.01 * progress);
-          this.cloudCoverage = 0.7 * progress; this.windSpeed = 1.5 * progress;
+          this.snowAccumulation = 0.7 * progress;
+          this.rainIntensity = 0;
+          this.cloudCoverage = 0.72 * progress;
+          this.windSpeed = 1.5 * progress;
           break;
         case 'fog':
           this.fogIntensity = 0.8 * progress; this.windSpeed = 0.5 * progress;
@@ -503,7 +505,7 @@ const World3DEngine = (function () {
       if (this.snowAccumulation > 0.01 && this.currentWeather === 'snow') {
         const count = Math.floor(100 * dt);
         for (let i = 0; i < count && this.particles.length < this.maxParticles; i++) {
-          this.particles.push({ type: 'snow', x: (Math.random()-0.5)*100, y: 50+Math.random()*20, z: (Math.random()-0.5)*100, vy: -1-Math.random()*2, vx: (Math.random()-0.5)*2, vz: (Math.random()-0.5)*2, size: Math.random()*0.05+0.02, life: 10 });
+          this.particles.push({ type: 'snow', x: (Math.random()-0.5)*100, y: 50+Math.random()*20, z: (Math.random()-0.5)*100, vy: -7-Math.random()*5, vx: (Math.random()-0.5)*2, vz: (Math.random()-0.5)*2, size: Math.random()*0.05+0.02, life: 14 });
         }
       }
       for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -895,13 +897,14 @@ const World3DEngine = (function () {
 
     render(inputTexture, outputTarget) {
       if (!this.enabled) return inputTexture;
-      let current = inputTexture;
-      for (const pass of this.passes) {
-        if (!pass.enabled) continue;
-        // 渲染pass到临时纹理
-        current = this._renderPass(pass, current, outputTarget);
+      if (typeof this.backend === 'function') {
+        return this.backend(this, inputTexture, outputTarget);
       }
-      return current;
+      return inputTexture;
+    }
+
+    setBackend(backend) {
+      this.backend = typeof backend === 'function' ? backend : null;
     }
 
     _renderPass(pass, input, output) {

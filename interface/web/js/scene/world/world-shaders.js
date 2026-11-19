@@ -51,7 +51,7 @@
     'in vec3 vDir;\n' +
     'uniform vec3 uSkyTop; uniform vec3 uSkyHorizon; uniform vec3 uGroundColor;\n' +
     'uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uCloudColor;\n' +
-    'uniform float uCloud; uniform float uStar; uniform float uTime;\n' +
+    'uniform float uCloud; uniform float uStar; uniform float uTime; uniform float uFlash;\n' +
     'out vec4 outColor;\n' +
     'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }\n' +
     'float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);\n' +
@@ -77,6 +77,7 @@
     '    star=step(0.9992,hash(cell))*pow(max(0.0,1.0-r*2.0),12.0)*uStar*smoothstep(0.02,0.24,d.y);\n' +
     '  }\n' +
     '  sky+=vec3(star)*0.85;\n' +
+    '  sky+=vec3(0.62,0.70,0.82)*uFlash;\n' +
     '  outColor=vec4(sky,1.0);\n' +
     '}'
   );
@@ -84,30 +85,47 @@
     '#version 300 es\n' +
     'in vec2 aPos;\n' +
     'uniform mat4 uViewProj; uniform vec4 uWaves[8]; uniform float uPhases[8];\n' +
+    'uniform vec4 uGerstner[4]; uniform float uGerstnerSpeed[4]; uniform float uGerstnerTime;\n' +
     'uniform float uWaterLevel;\n' +
-    'out vec3 vWorld; out vec3 vNormal;\n' +
+    'out vec3 vWorld; out vec3 vNormal; out float vCrest;\n' +
     'void main(){\n' +
     '  vec2 p=aPos; float y=0.0, dx=0.0, dz=0.0;\n' +
     '  for(int i=0;i<8;i++){ vec4 w=uWaves[i]; float ph=dot(p,w.xy)*w.z+uPhases[i];\n' +
     '    y+=sin(ph)*w.w; dx+=cos(ph)*w.w*w.x*w.z; dz+=cos(ph)*w.w*w.y*w.z; }\n' +
+    '  for(int g=0;g<4;g++){ vec4 gw=uGerstner[g]; float k=6.28318/max(gw.w,0.001);\n' +
+    '    float c=sqrt(9.8/k); vec2 dir=normalize(gw.xy+vec2(0.0001));\n' +
+    '    float f=k*(dot(dir,p)-c*uGerstnerTime*uGerstnerSpeed[g]); float a=gw.z/k;\n' +
+    '    y+=a*cos(f); dx+=-dir.x*gw.z*sin(f); dz+=-dir.y*gw.z*sin(f); }\n' +
+    '  vCrest=y;\n' +
     '  vWorld=vec3(p.x,uWaterLevel+y,p.y);\n' +
     '  vNormal=normalize(vec3(-dx,1.0,-dz));\n' +
     '  gl_Position=uViewProj*vec4(vWorld,1.0);\n' +
     '}',
     '#version 300 es\n' +
     'precision highp float;\n' +
-    'in vec3 vWorld; in vec3 vNormal;\n' +
+    'in vec3 vWorld; in vec3 vNormal; in float vCrest;\n' +
     'uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSkyTop; uniform vec3 uSkyHorizon;\n' +
-    'uniform vec3 uCameraPos; uniform vec3 uWaterColor; uniform float uAlpha;\n' +
+    'uniform vec3 uCameraPos; uniform vec3 uWaterColor; uniform vec3 uDeepColor; uniform vec3 uShallowColor;\n' +
+    'uniform float uAlpha; uniform float uFoam; uniform float uCaustic;\n' +
+    'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }\n' +
+    'float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);\n' +
+    '  float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));\n' +
+    '  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y); }\n' +
     'out vec4 outColor;\n' +
     'void main(){\n' +
     '  vec3 n=normalize(vNormal); vec3 V=normalize(uCameraPos-vWorld);\n' +
     '  float fres=pow(1.0-max(dot(n,V),0.0),3.0);\n' +
     '  vec3 refl=mix(uSkyHorizon,uSkyTop,0.55);\n' +
-    '  vec3 col=mix(uWaterColor,refl,0.18+fres*0.78);\n' +
+    '  vec3 body=mix(uShallowColor,uDeepColor,clamp((vCrest+0.22)/0.44,0.0,1.0));\n' +
+    '  vec3 col=mix(body,refl,0.18+fres*0.78);\n' +
     '  vec3 R=reflect(-normalize(uSunDir),n);\n' +
     '  float spec=pow(max(dot(R,V),0.0),180.0);\n' +
     '  col+=uSunColor*spec*1.6;\n' +
+    '  float foam=smoothstep(0.16,0.30,vCrest)*uFoam;\n' +
+    '  foam*=0.55+0.45*noise(vWorld.xz*7.0);\n' +
+    '  col=mix(col,vec3(0.86,0.91,0.92),clamp(foam,0.0,0.38));\n' +
+    '  float caustic=noise(vWorld.xz*4.0)*noise(vWorld.xz*7.0+1.7);\n' +
+    '  col+=vec3(0.90,0.96,0.82)*caustic*uCaustic;\n' +
     '  float alpha=clamp(uAlpha+fres*0.22,0.38,0.94);\n' +
     '  outColor=vec4(col,alpha);\n' +
     '}'
@@ -136,7 +154,7 @@
     '  float shadow=1.0;\n' +
     '  if(sc.x>0.0 && sc.x<1.0 && sc.y>0.0 && sc.y<1.0 && sc.z<1.0){\n' +
     '    float d=texture(uShadowMap,sc.xy).r;\n' +
-    '    shadow=(d < sc.z-uShadowBias) ? 1.0 : 1.0;\n' +
+    '    shadow=(d < sc.z-uShadowBias) ? 0.62 : 1.0;\n' +
     '  }\n' +
     '  vec3 lit=vColor*(uAmbient+uSunColor*(0.32+0.75*ndl)*shadow);\n' +
     '  float dist=length(vWorld-uCameraPos);\n' +
@@ -227,6 +245,47 @@
     '}'
   );
 
+  var objectProgram = program(
+    '#version 300 es\n' +
+    'in vec3 aPos; in vec3 aNormal; uniform mat4 uViewProj; uniform mat4 uModel;\n' +
+    'out vec3 vNormal; out vec3 vWorld;\n' +
+    'void main(){ vec4 w=uModel*vec4(aPos,1.0); vWorld=w.xyz; vNormal=normalize(mat3(uModel)*aNormal); gl_Position=uViewProj*w; }',
+    '#version 300 es\n' +
+    'precision highp float;\n' +
+    'in vec3 vNormal; in vec3 vWorld;\n' +
+    'uniform vec3 uColor; uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uAmbient; uniform float uGlow;\n' +
+    'out vec4 outColor;\n' +
+    'void main(){ vec3 n=normalize(vNormal); float ndl=max(dot(n,normalize(uSunDir)),0.0);\n' +
+    '  vec3 lit=uColor*(uAmbient+uSunColor*(0.25+0.75*ndl))+uColor*uGlow;\n' +
+    '  lit=lit/(lit+vec3(1.0)); outColor=vec4(lit,1.0); }'
+  );
+  var snowProgram = program(
+    '#version 300 es\n' +
+    'in vec3 aPos; uniform mat4 uViewProj;\n' +
+    'void main(){ gl_Position=uViewProj*vec4(aPos,1.0); }',
+    '#version 300 es\n' +
+    'precision mediump float;\n' +
+    'uniform vec3 uColor; out vec4 outColor;\n' +
+    'void main(){ outColor=vec4(uColor,0.78); }'
+  );
+  var fxaaProgram = program(
+    '#version 300 es\n' +
+    'in vec2 aPos; out vec2 vUv;\n' +
+    'void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.0,1.0); }',
+    '#version 300 es\n' +
+    'precision highp float;\n' +
+    'in vec2 vUv; uniform sampler2D uTex; uniform vec2 uTexel;\n' +
+    'out vec4 outColor;\n' +
+    'void main(){ vec3 c=texture(uTex,vUv).rgb;\n' +
+    '  vec3 n=texture(uTex,vUv+vec2(0.0,-uTexel.y)).rgb;\n' +
+    '  vec3 s=texture(uTex,vUv+vec2(0.0,uTexel.y)).rgb;\n' +
+    '  vec3 e=texture(uTex,vUv+vec2(uTexel.x,0.0)).rgb;\n' +
+    '  vec3 w=texture(uTex,vUv+vec2(-uTexel.x,0.0)).rgb;\n' +
+    '  vec3 m=(n+s+e+w)*0.25; vec3 edge=abs(c-m);\n' +
+    '  float amount=clamp(max(edge.r,max(edge.g,edge.b))*1.7,0.0,0.30);\n' +
+    '  outColor=vec4(mix(c,m,amount),1.0); }'
+  );
+
   var rainProgram = program(
     '#version 300 es\n' +
     'in vec3 aPos; uniform mat4 uViewProj;\n' +
@@ -240,6 +299,9 @@
   var rainVAO = null;
   var rainBuffer = null;
   var rainData = new Float32Array(3000 * 2 * 3);
+  var snowVAO = null;
+  var snowBuffer = null;
+  var snowData = new Float32Array(3000 * 2 * 3);
 
   var programRef = terrainProgram;
   var SHADOW_SIZE = 2048;
@@ -248,6 +310,10 @@
   var sceneFBO = null;
   var sceneColorTex = null;
   var sceneDepthTex = null;
+  var postFBO = null;
+  var postColorTex = null;
+  var fxaaQuadVAO = null;
+  var postNow = 0;
   var postQuadVAO = null;
   var lightVP = M4.create();
 
@@ -288,6 +354,18 @@
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, sceneDepthTex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
+    postColorTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, postColorTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    postFBO = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, postFBO);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, postColorTex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
     if (!postQuadVAO) {
       postQuadVAO = gl.createVertexArray();
       gl.bindVertexArray(postQuadVAO);
@@ -305,14 +383,43 @@
       rainBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, rainBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, rainData, gl.DYNAMIC_DRAW);
-      var rainLoc = uniformLocation(rainProgram, 'aPos');
+      var rainLoc = attrib(rainProgram, 'aPos');
       gl.enableVertexAttribArray(rainLoc);
       gl.vertexAttribPointer(rainLoc, 3, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(null);
+    }
+    if (!snowVAO) {
+      snowVAO = gl.createVertexArray();
+      gl.bindVertexArray(snowVAO);
+      snowBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, snowBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, snowData, gl.DYNAMIC_DRAW);
+      var snowLoc = attrib(snowProgram, 'aPos');
+      gl.enableVertexAttribArray(snowLoc);
+      gl.vertexAttribPointer(snowLoc, 3, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(null);
+    }
+    if (!fxaaQuadVAO) {
+      fxaaQuadVAO = gl.createVertexArray();
+      gl.bindVertexArray(fxaaQuadVAO);
+      var fxaaQuad = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, fxaaQuad);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+      var fxaaLoc = attrib(fxaaProgram, 'aPos');
+      gl.enableVertexAttribArray(fxaaLoc);
+      gl.vertexAttribPointer(fxaaLoc, 2, gl.FLOAT, false, 0, 0);
       gl.bindVertexArray(null);
     }
   }
 
   function makeLightVP(light) {
+    if (!world || !world.shadows || !world.camera) return;
+    world.shadows.update(world.camera, light);
+    var cascade = world.shadows.getShadowMatrix(2) || world.shadows.getShadowMatrix(1) || world.shadows.getShadowMatrix(0);
+    if (cascade) {
+      lightVP.set(cascade);
+      return;
+    }
     var dir = light.direction;
     var eye = [charPos[0] + dir[0] * 80, charPos[1] + 20 + dir[1] * 80, charPos[2] + dir[2] * 80];
     var view = M4.lookAt(M4.create(), eye, [charPos[0], charPos[1] + 4, charPos[2]], [0,1,0]);
@@ -334,6 +441,8 @@
     gl.uniformMatrix4fv(uniformLocation(depthProgram, 'uLightVP'), false, lightVP);
     var depthLoc = attrib(depthProgram, 'aPos');
     var meshes = [terrainMesh];
+    for (var tg = 0; tg < treeGroups.length; tg++) meshes.push(treeGroups[tg].mesh);
+    for (var gg = 0; gg < grassGroups.length; gg++) meshes.push(grassGroups[gg].mesh);
     for (var i = 0; i < meshes.length; i++) {
       if (!meshes[i]) continue;
       if (!meshes[i].shadowVAO) {
@@ -366,13 +475,13 @@
     return [x * 0.5 + 0.5, y * 0.5 + 0.5];
   }
 
-  function drawPost(now) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvasWorld.width, canvasWorld.height);
+  function drawPostToTarget(inputTexture, target, now) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target || null);
+    gl.viewport(0, 0, W, H);
     gl.disable(gl.DEPTH_TEST);
     gl.useProgram(postProgram);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, sceneColorTex);
+    gl.bindTexture(gl.TEXTURE_2D, inputTexture);
     gl.uniform1i(uniformLocation(postProgram, 'uScene'), 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, sceneDepthTex);
@@ -408,6 +517,32 @@
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
     gl.enable(gl.DEPTH_TEST);
+    return postColorTex;
+  }
+
+  function drawFxaa(inputTexture) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(fxaaProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, inputTexture);
+    gl.uniform1i(uniformLocation(fxaaProgram, 'uTex'), 0);
+    gl.uniform2f(uniformLocation(fxaaProgram, 'uTexel'), 1.0 / Math.max(1, W), 1.0 / Math.max(1, H));
+    gl.bindVertexArray(fxaaQuadVAO);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindVertexArray(null);
+    gl.enable(gl.DEPTH_TEST);
+  }
+
+  function drawPost(now) {
+    postNow = now;
+    if (world && world.postProcessing && typeof world.postProcessing.render === 'function') {
+      world.postProcessing.render(sceneColorTex, null);
+      return;
+    }
+    drawPostToTarget(sceneColorTex, postFBO, now);
+    drawFxaa(postColorTex);
   }
 
 

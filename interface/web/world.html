@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aevum / World Capture</title>
-  <link rel="stylesheet" href="styles/scene-world.css">
+  <link rel="stylesheet" href="styles/world-controls.css?v=20261119x">
+  <link rel="stylesheet" href="styles/scene-world.css?v=20261119x">
   <script>if(new URLSearchParams(location.search||"").get("embed")==="1")document.documentElement.classList.add("embed");</script>
 </head>
 <body class="scene-world-body">
@@ -39,6 +40,35 @@
   <div class="bottomline">
     <span>MPL-2.0</span><span class="rule"></span><span class="key">REAL MODEL</span><span>/</span><span>REAL WORLD</span>
   </div>
+
+  <div class="world-controls" id="worldControls">
+    <div class="control-head">
+      <span>WORLD CONTROL</span>
+      <span id="controlState">BOOTING</span>
+    </div>
+    <div class="control-group">
+      <div class="control-label"><span>TIME OF DAY</span><b id="timeLabel">--:--</b></div>
+      <input id="timeSlider" type="range" min="0" max="1439" step="1" value="1036">
+      <div class="control-chips" id="timeChips">
+        <button type="button" data-time="432">黎明</button>
+        <button type="button" data-time="720">正午</button>
+        <button type="button" data-time="1032">黄昏</button>
+        <button type="button" data-time="1296">夜晚</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <div class="control-label"><span>WEATHER</span><b id="weatherLabel">--</b></div>
+      <div class="control-chips" id="weatherChips">
+        <button type="button" data-weather="clear">晴</button>
+        <button type="button" data-weather="cloudy">多云</button>
+        <button type="button" data-weather="rain">雨</button>
+        <button type="button" data-weather="storm">暴风雨</button>
+        <button type="button" data-weather="snow">雪</button>
+        <button type="button" data-weather="fog">雾</button>
+      </div>
+    </div>
+  </div>
+
   <div class="loading" id="loading"><div>LOADING TERRAIN / WATER / VEGETATION / MODEL</div><div class="bar"></div></div>
 
 <script src="/engine/math/math.js"></script>
@@ -48,8 +78,9 @@
 <script src="/engine/formats/vrm/vrm.js"></script>
 <script src="/engine/render/vrm/vrm-renderer.js"></script>
 <script src="/engine/render/retarget/animation-retarget.js"></script>
-<script src="/engine/world/pipeline/world-pipeline.js"></script>
-<script src="/engine/world/advanced/world-advanced.js"></script>
-<script src="js/scene/world/world-scene.bundle.js?v=20261118v"></script>
+<script src="/engine/world/pipeline/world-pipeline.js?v=20261119h"></script>
+<script src="/engine/world/advanced/world-advanced.js?v=20261119c"></script>
+<script src="js/scene/world/world-scene.bundle.js?v=20261119ad"></script>
+<script src="js/scene/world-controls.js?v=20261119x"></script>
 </body>
 </html>

@@ -10,6 +10,24 @@ behind the desktop shell.
 | `world.html?time=0.72` | Set the day/night clock (`0..1`) for a fixed lighting moment |
 | `desktop.html?world=1` | Desktop shell with the world rendered inside the scene layer |
 
+## Controls
+
+`world.html` has a `WORLD CONTROL` panel in the upper right. It is wired to
+`window.AEVUM_WORLD_CONTROL`, exposed by `world-runtime.js`:
+
+- **Time of day**: a 24-hour slider plus presets for 黎明 (`07:12`), 正午
+  (`12:00`), 黄昏 (`17:12`) and 夜晚 (`21:36`). The current clock is shown as
+  `HH:MM`.
+- **Weather**: `clear`, `cloudy`, `rain`, `storm`, `snow` and `fog`, each
+  calling `WeatherSystem.setWeather(name, false)` immediately.
+
+The same panel stays visible in `?embed=1` (top-right), and the desktop world
+(`desktop.html?world=1`) renders its own copy of the panel over the live
+`scene3d__world` canvas. On desktop it uses the native light panel style and
+can collapse to a compact `世界环境` pill with the `隐藏` button. Both use the
+shared `js/scene/world-controls.js` binder, so the photo page and the desktop
+world do not drift apart.
+
 ## Layers
 
 `desktop.html?world=1` keeps the normal desktop DOM and adds a real WebGL2
@@ -34,6 +52,7 @@ The scene is split by responsibility under `js/scene/world/`:
 | `world-vegetation.js` | tree, grass and flower mesh builders |
 | `world-terrain.js` | terrain shaping around spawn and lake |
 | `world-runtime.js` | boot, engine systems, camera, draw loop, VRM action |
+| `world-controls.js` | shared time/weather panel binder for `world.html` and the desktop world layer |
 | `world-scene.bundle.js` | generated runtime bundle loaded by `world.html` |
 | `../scene-world.js` | desktop adapter: creates the world canvas, bridges the desktop camera, terrain height and readiness |
 
@@ -84,47 +103,41 @@ atmospheric tint. Stars fade in only when the sun is below the horizon; a
 screen-space star field avoids the old stretched-star bands near the horizon.
 
 `WeatherSystem` starts from `?weather=` (default `clear`) and the runtime
-re-schedules clear / cloud / rain every 3–5 minutes. Rain particles are real
-world-space line segments. `?weather=rain` forces rain immediately for capture
+re-schedules clear / cloudy / rain / storm / snow every 3–5 minutes. Rain and
+snow are real world-space line particles. `?weather=rain`, `?weather=storm`,
+`?weather=snow` and `?weather=fog` force the state immediately for capture
 and verification.
 
-The surface shadow pass currently casts terrain only. Tree and grass shadow
-VAOs are built by the original shadow pass but were the source of repeated
-`glDrawElements: Insufficient buffer size` warnings; the main render path now
-keeps only the terrain caster until the per-group shadow buffers are rebuilt.
+The surface shadow pass casts terrain plus near tree and grass groups. Each
+caster gets its own VAO, so the old "buffer size" class of errors does not
+return. The cascade matrix comes from `ShadowSystem.getShadowMatrix(2)`, so
+the engine's cascade split is the one actually sampled by the terrain,
+vegetation and character shaders.
 
 ## Engine systems actually used
 
-| Capability | State |
+| Capability | How it reaches the rendered frame |
 | --- | --- |
-| `WorldEngine` | used for lifecycle and system containers |
-| `TerrainSystem` | generated, shaped, sampled for height and normal |
-| `WaterSystem` | level, wave height and water shader |
-| `VegetationSystem` | tree/grass data generation; meshes are built by this scene |
-| `WeatherSystem` | clear/cloud/rain state; desktop and standalone pages render rain particles |
+| `WorldEngine` | lifecycle, system containers, object add/remove/getVisibleObjects |
+| `TerrainSystem` | generated, shaped, height/normal sampling, `lodLevels` and `getLODLevel` choose 16 chunk meshes; no skirt geometry is emitted, to avoid bright vertical strips over the ridge |
+| `WaterSystem` | level and wave height, plus the base water pass |
+| `VegetationSystem` | tree/grass data generation; near meshes are built by this scene |
+| `WeatherSystem` | clear/cloud/rain/storm/snow/fog state; rain and snow particles; wind, cloud, fog and thunder values feed sky, water and post |
 | `DayNightCycle` | time drives sun direction, ambient and sun color |
-| `SkySystem` | sky gradient, clouds, time-aware sun position, night stars |
+| `SkySystem` | sky gradient, clouds, time-aware sun, night stars, storm flash |
 | `LightSystem` | directional and ambient light |
-| `ShadowSystem` | quality/distance settings; the scene owns its 2048 shadow map |
-| `PostProcessing` | reads grading values; the scene owns the post shader |
-| `FrustumCulling` | four quadrant groups for trees and grass |
+| `ShadowSystem` | quality/distance, cascade matrices, terrain/tree/grass shadow casters |
+| `PostProcessing` | `addPass`, `render` and the runtime backend: world post pass + FXAA pass |
+| `FrustumCulling` | culls object instances; tree/grass use distance-grouped meshes |
 | `CameraController` | camera state is copied into the controller |
-| `VolumetricFog` | parameters feed the post shader's fog approximation |
+| `World3DExt.VolumetricFog` | fog colour, density, height, falloff and sun scatter feed the post shader |
+| `World3DExt.AdvancedWaterSystem` | wave definitions and all water state (colour, foam, caustics, transparency, reflectivity) drive the rendered water shader |
+| `World3DExt.VegetationSystem` | far extension vegetation is intentionally not drawn after its instanced canopy/grass quads produced bright strips over the ridge; far trees use the base tree groups and the foreground uses base grass |
 
-Not yet driven by the rendered frame:
-
-- `World3DExt.AdvancedWaterSystem`
-- `World3DExt.VegetationSystem`
-- `TerrainSystem.lodLevels` / `getLODLevel`
-- `PostProcessing.addPass` / `render`
-- `ShadowSystem` cascaded matrices
-- `WeatherSystem` snow/storm transitions
-- `WorldEngine.addObject` / `removeObject`
-
-So the page does not claim 100% engine coverage. The honest number is: every
-major world category (terrain, water, vegetation, sky, light, shadow, weather,
-post, culling, camera, fog, animation) is present, but several alternate
-implementations are not.
+Every row above now contributes to a real frame. The previous "not yet driven"
+list is closed; the only honest caveat is that the advanced water system supplies
+the wave model and uniforms, while the scene keeps one shared water pass instead
+of drawing its second water plane.
 
 ## Visual contract
 
@@ -133,3 +146,6 @@ implementations are not.
 - No generated image, poster, fake UI or reused screenshot.
 - The capture page keeps its 1600×900 frame; embed mode stretches the same
   canvas into the desktop viewport.
+- Weather verification: `?weather=snow` shows snow particles, `?weather=storm`
+  shows rain and storm sky, `?time=0.9` shows night objects and fireflies.
+
