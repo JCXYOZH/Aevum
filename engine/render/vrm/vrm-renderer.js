@@ -270,6 +270,12 @@
       const binary = vrm.glb.binary;
       const readAccessor = getAccessor();
       this.vrm = vrm;
+      // Hot-swap must not leave mesh entries from the previous model. Their
+      // nodeIndex can exceed the new model's node array, which makes the
+      // render loop read json.nodes[nodeIndex] as undefined.
+      this.textures = [];
+      this.primitives = [];
+      this.meshes = [];
       this.bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
       this.textures = await this.loadTextures(json, binary);
       const world = computeNodeWorld(json, this.math, null);

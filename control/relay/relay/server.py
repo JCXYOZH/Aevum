@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -84,6 +86,14 @@ class RelayApp:
         self._heartbeats: Dict[str, float] = {}     # client -> 最后一次心跳
         self._seen: Dict[str, float] = {}           # client -> 第一次进房（浏览人数）
         self._lock = threading.Lock()
+        self._world_lock = threading.Lock()
+        self._world_players: Dict[str, Dict[str, Any]] = {}
+        self._world_window = 5.0
+        self._world_max_players = 64
+        self._rooms_lock = threading.Lock()
+        self._rooms: Dict[str, Dict[str, Any]] = {}
+        self._room_window = 8.0
+        self._room_max_messages = 200
 
         # 房间由服务端自己开：第一条消息是系统说明，不是用户内容
         code, created = self.memory.ensure_session(self.room, ROOM_MAX_TURNS * 2)
@@ -136,7 +146,167 @@ class RelayApp:
             "memory": self.memory.stats(),
             "transfer": self.transfers.stats(),
             "presence": self.presence(),
+            "world": self.world_snapshot(),
         }
+
+    def world_snapshot(self) -> Dict[str, Any]:
+        now = time.time()
+        with self._world_lock:
+            self._purge_world(now)
+            players = [dict(p) for p in self._world_players.values()]
+        players.sort(key=lambda p: p["id"])
+        return {"players": players, "online": len(players), "window": int(self._world_window)}
+
+    def _purge_world(self, now: float) -> None:
+        stale = [pid for pid, p in self._world_players.items()
+                 if now - p["seen"] > self._world_window]
+        for pid in stale:
+            del self._world_players[pid]
+
+    def world_state(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        """联机位置通道：只保留最近 5 秒的角色状态，不落盘、不记历史。
+
+        客户端约 8Hz 上报一次，响应里带回同一房间的全部在线角色；这是
+        广域网中继上的最小状态同步面，后续可替换为 WebSocket 而不改语义。
+        """
+        pid = str(body.get("id", "")).strip()
+        if not pid or len(pid) > 64:
+            raise RelayFault(ERR_R2_MSG_EMPTY, "id 必填，1–64 字符")
+        values = []
+        for key in ("x", "y", "z", "yaw"):
+            value = body.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise RelayFault(ERR_R2_MSG_EMPTY, key + " 必须是数字")
+            if not math.isfinite(float(value)):
+                raise RelayFault(ERR_R2_MSG_EMPTY, key + " 必须是有限数字")
+            values.append(round(float(value), 3))
+        clip = str(body.get("clip", "walk"))
+        if clip not in ("idle", "walk", "run"):
+            clip = "walk"
+        room = str(body.get("room", "world-lobby")).strip()
+        room = room if self._ROOM_RE.match(room) else "world-lobby"
+        name = str(body.get("name", ""))[:24]
+        name = "".join(ch for ch in name if ch.isprintable())
+        now = time.time()
+        with self._world_lock:
+            self._purge_world(now)
+            if pid not in self._world_players and len(self._world_players) >= self._world_max_players:
+                oldest = min(self._world_players.items(), key=lambda kv: kv[1]["seen"])[0]
+                del self._world_players[oldest]
+            self._world_players[pid] = {
+                "id": pid,
+                "name": name,
+                "room": room,
+                "x": values[0], "y": values[1], "z": values[2], "yaw": values[3],
+                "clip": clip,
+                "seen": now,
+            }
+            players = [dict(p) for p in self._world_players.values()]
+        players = [p for p in players if p.get("room") == room]
+        players.sort(key=lambda p: p["id"])
+        out = []
+        for p in players:
+            p["age"] = round(now - p["seen"], 3)
+            p.pop("seen", None)
+            out.append(p)
+        return {"players": out, "online": len(out), "self": pid}
+
+    # ------------------------- 联机房间（聊天 + 成员） -------------------------
+    _ROOM_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+    def _room_id(self, room: str) -> str:
+        room = str(room).strip()
+        if not self._ROOM_RE.match(room):
+            raise RelayFault(ERR_R2_MSG_EMPTY, "房间号只能包含字母、数字、下划线和短横线，1–32 字符")
+        return room
+
+    def _purge_room_members(self, room: Dict[str, Any], now: float) -> None:
+        stale = [pid for pid, m in room["members"].items()
+                 if now - m["seen"] > self._room_window]
+        for pid in stale:
+            del room["members"][pid]
+
+    def _room_snapshot(self, room_id: str, now: float) -> Dict[str, Any]:
+        room = self._rooms.get(room_id)
+        if not room:
+            return {"room": room_id, "exists": False, "members": [], "messages": []}
+        self._purge_room_members(room, now)
+        if not room["members"]:
+            # 最后一个人也完全下机：房间和聊天记录一起消失。
+            del self._rooms[room_id]
+            return {"room": room_id, "exists": False, "members": [], "messages": []}
+        members = [
+            {"id": pid, "name": m["name"], "age": round(now - m["seen"], 2)}
+            for pid, m in room["members"].items()
+        ]
+        members.sort(key=lambda m: m["name"])
+        return {
+            "room": room_id,
+            "exists": True,
+            "members": members,
+            "messages": list(room["messages"]),
+        }
+
+    def room_join(self, room_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        pid = str(body.get("id", "")).strip()
+        if not pid or len(pid) > 64:
+            raise RelayFault(ERR_R2_MSG_EMPTY, "id 必填，1–64 字符")
+        name = "".join(ch for ch in str(body.get("name", ""))[:24] if ch.isprintable()) or "旅人"
+        rid = self._room_id(room_id)
+        now = time.time()
+        with self._rooms_lock:
+            room = self._rooms.get(rid)
+            if not room:
+                room = self._rooms[rid] = {"members": {}, "messages": [], "created": now}
+            self._purge_room_members(room, now)
+            room["members"][pid] = {"name": name, "seen": now}
+            return self._room_snapshot(rid, now)
+
+    def room_leave(self, room_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        pid = str(body.get("id", "")).strip()
+        rid = self._room_id(room_id)
+        now = time.time()
+        with self._rooms_lock:
+            room = self._rooms.get(rid)
+            if not room:
+                return {"room": rid, "exists": False, "members": [], "messages": []}
+            room["members"].pop(pid, None)
+            return self._room_snapshot(rid, now)
+
+    def room_snapshot(self, room_id: str) -> Dict[str, Any]:
+        rid = self._room_id(room_id)
+        with self._rooms_lock:
+            return self._room_snapshot(rid, time.time())
+
+    def room_post(self, room_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        pid = str(body.get("id", "")).strip()
+        if not pid or len(pid) > 64:
+            raise RelayFault(ERR_R2_MSG_EMPTY, "id 必填，1–64 字符")
+        text = "".join(ch for ch in str(body.get("text", ""))[:200]
+                       if ch.isprintable() or ch == " ")
+        text = text.strip()
+        if not text:
+            raise RelayFault(ERR_R2_MSG_EMPTY, "消息不能为空")
+        rid = self._room_id(room_id)
+        now = time.time()
+        with self._rooms_lock:
+            room = self._rooms.get(rid)
+            if not room:
+                room = self._rooms[rid] = {"members": {}, "messages": [], "created": now}
+            self._purge_room_members(room, now)
+            member = room["members"].get(pid)
+            if not member:
+                raise RelayFault(ERR_R2_MSG_EMPTY, "先加入房间再发言")
+            room["members"][pid]["seen"] = now
+            room["messages"].append({
+                "id": pid,
+                "name": member["name"],
+                "text": text,
+                "ts": int(now * 1000),
+            })
+            if len(room["messages"]) > self._room_max_messages:
+                del room["messages"][: len(room["messages"]) - self._room_max_messages]
+            return self._room_snapshot(rid, now)
 
     def shutdown(self) -> None:
         self.memory.shutdown()
@@ -332,6 +502,45 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send(ERR_OK, self.app.presence())
                 else:
                     self._error(code, hint="client 必填，1–64 字符")
+                return True
+
+        if parts == ["v1", "world", "state"]:
+            if method == "GET":
+                self._send(ERR_OK, self.app.world_snapshot())
+                return True
+            if method == "POST":
+                body = self._json_body()
+                if body is None:
+                    self._error(ERR_R2_MSG_EMPTY, hint="请求体必须是 JSON 对象")
+                    return True
+                self._send(ERR_OK, self.app.world_state(body))
+                return True
+
+        if len(parts) >= 4 and parts[:3] == ["v1", "world", "rooms"]:
+            rid = parts[3]
+            if len(parts) == 4 and method == "GET":
+                self._send(ERR_OK, self.app.room_snapshot(rid))
+                return True
+            if len(parts) == 5 and parts[4] == "join" and method == "POST":
+                body = self._json_body()
+                if body is None:
+                    self._error(ERR_R2_MSG_EMPTY, hint="请求体必须是 JSON 对象")
+                    return True
+                self._send(ERR_OK, self.app.room_join(rid, body))
+                return True
+            if len(parts) == 5 and parts[4] == "leave" and method == "POST":
+                body = self._json_body()
+                if body is None:
+                    self._error(ERR_R2_MSG_EMPTY, hint="请求体必须是 JSON 对象")
+                    return True
+                self._send(ERR_OK, self.app.room_leave(rid, body))
+                return True
+            if len(parts) == 5 and parts[4] == "messages" and method == "POST":
+                body = self._json_body()
+                if body is None:
+                    self._error(ERR_R2_MSG_EMPTY, hint="请求体必须是 JSON 对象")
+                    return True
+                self._send(ERR_OK, self.app.room_post(rid, body))
                 return True
 
         if parts == ["v1", "sessions"]:

@@ -59,12 +59,31 @@
   var skinMaterial = null;
   var charPos = [0, 0, 0];
   var charScale = 1;
+  var charYaw = Math.PI;
+  var charYawCurrent = Math.PI;
+  var keys = Object.create(null);
+  var modelBoundsMinY = 0;
+  var hasIdleClip = false;
+  var roamBroadcast = 0;
+  function publishRoamState(name, data) {
+    document.documentElement.setAttribute('data-roam', JSON.stringify({
+      state: name,
+      x: Number((data && data.x) || 0),
+      y: Number((data && data.y) || 0),
+      z: Number((data && data.z) || 0),
+      yaw: Number((data && data.yaw) || 0),
+      chunks: (data && data.chunks) || 0,
+      clip: (data && data.clip) || ''
+    }));
+  }
   var eye = [0, 5, 12];
   var target = [0, 1.5, 0];
   var viewProj = M4.create();
   var cameraPos = eye;
   var last = performance.now();
   var start = last;
+  var fpsFrames = 0;
+  var fpsClock = last;
 
   function styleSky() {
     if (!world) return;
@@ -104,13 +123,820 @@
     return normalize3([Math.cos(angle) * 0.22, Math.sin(angle) * 0.55, -1.0]);
   }
 
-  function setupWorldCamera() {    var ground = world ? world.terrain.getHeight(SPAWN[0], SPAWN[1]) : 0;
+  function setupWorldCamera() {
+    document.documentElement.setAttribute('data-roam-boot',
+      [String(renderOnly), String(!!world), String(!!modelRenderer)].join('|'));
+    var ground = world ? world.terrain.getHeight(SPAWN[0], SPAWN[1]) : 0;
     charPos = [SPAWN[0], ground, SPAWN[1]];
+    charYaw = Math.PI;
+    charYawCurrent = Math.PI;
     eye = [0.75, ground + 2.55, 6.8];
     target = [0, ground + 1.42, 0];
     var view = M4.lookAt(M4.create(), eye, target, [0, 1, 0]);
     var proj = M4.perspective(M4.create(), FOV, W / H, 0.08, 700);
     M4.mult(viewProj, view, proj);
+  }
+
+  function initRoamInput() {
+    function capture(code) {
+      return code === 'KeyW' || code === 'KeyA' || code === 'KeyS' || code === 'KeyD' ||
+        code === 'ShiftLeft' || code === 'ShiftRight' ||
+        code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight';
+    }
+    window.addEventListener('keydown', function (e) {
+      if (!capture(e.code)) return;
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || '')) return;
+      keys[e.code] = true;
+      if (e.code.indexOf('Arrow') === 0) e.preventDefault();
+    }, { passive: false });
+    window.addEventListener('keyup', function (e) {
+      if (capture(e.code)) keys[e.code] = false;
+    });
+  }
+
+  function initCameraInput() {
+    if (!canvasWorld) return;
+    canvasWorld.style.cursor = 'grab';
+    canvasWorld.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      camDragging = true;
+      camLastX = e.clientX;
+      camLastY = e.clientY;
+      canvasWorld.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (!camDragging) return;
+      var dx = e.clientX - camLastX;
+      var dy = e.clientY - camLastY;
+      camLastX = e.clientX;
+      camLastY = e.clientY;
+      camYaw -= dx * 0.0042;
+      camPitch = Math.max(0.04, Math.min(1.05, camPitch + dy * 0.0032));
+    });
+    window.addEventListener('pointerup', function () {
+      if (!camDragging) return;
+      camDragging = false;
+      canvasWorld.style.cursor = 'grab';
+    });
+    canvasWorld.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      camDistance = Math.max(3.2, Math.min(16, camDistance + e.deltaY * 0.006));
+    }, { passive: false });
+    canvasWorld.addEventListener('dblclick', function () {
+      camYaw = charYawCurrent;
+      camPitch = 0.24;
+      camDistance = 7.2;
+    });
+  }
+
+  function treeBlocks(x, z) {
+    var i;
+    for (i = 0; i < trees.length; i++) {
+      var t = trees[i];
+      var r = 0.8 * (t.scale || 1);
+      if ((x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < r * r) return true;
+    }
+    var blockedByChunkTree = false;
+    streamChunks.forEach(function (chunk) {
+      if (blockedByChunkTree || !chunk.trees) return;
+      for (var j = 0; j < chunk.trees.length; j++) {
+        var st = chunk.trees[j];
+        var sr = 0.8 * (st.scale || 1);
+        if ((x - st.x) * (x - st.x) + (z - st.z) * (z - st.z) < sr * sr) {
+          blockedByChunkTree = true;
+          return;
+        }
+      }
+    });
+    return blockedByChunkTree;
+  }
+
+  function canWalkAt(x, z, fromX, fromZ) {
+    if (streamHeightAt(world.terrain, x, z) < WATER_LEVEL + 0.35) return false;
+    if (!treeBlocks(x, z)) return true;
+    return typeof fromX === 'number' && treeBlocks(fromX, fromZ);
+  }
+
+  window.AevumWorldDebug = {
+    heightAt: function (x, z) { return world ? streamHeightAt(world.terrain, x, z) : null; },
+    canWalk: function (x, z) { return !!world && canWalkAt(x, z); },
+    waterLevel: function () { return WATER_LEVEL; }
+  };
+
+  // ---- 联机位置通道（HTTP 状态中继，8Hz 上报） --------------------------
+  var relayBase = '';
+  var netId = '';
+  var netName = '';
+  var netStatus = 'offline';
+  var netOnline = 0;
+  var netClock = 0;
+  var netBroadcast = 0;
+  var netInFlight = false;
+  var remotePlayers = Object.create(null);
+  var avatarParts = null;
+  var playerTagEls = Object.create(null);
+  var roomId = 'world-lobby';
+  var roomMembers = [];
+  var roomMessages = [];
+  var roomStatus = 'connecting';
+  var roomClock = 0;
+  var roomPollClock = 0;
+  var roomInFlight = false;
+  var roomEls = null;
+  var roomJoinedOnce = false;
+  var roomSystemLines = [];
+  var roomBaselineNames = null;
+  var camYaw = Math.PI;
+  var camPitch = 0.24;
+  var camBroadcast = 0;
+  var camDistance = 7.2;
+  var camDragging = false;
+  var camLastX = 0;
+  var camLastY = 0;
+  var modelName = '默认 VRM';
+  var motionData = null;
+
+  function initNetwork() {
+    var query = new URLSearchParams(window.location.search);
+    relayBase = query.get('relay') || '';
+    if (!relayBase) {
+      relayBase = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
+        ? 'http://' + location.hostname + ':8790'
+        : location.origin + '/relay';
+    }
+    relayBase = relayBase.replace(/\/+$/, '');
+    try {
+      netId = window.sessionStorage.getItem('aevum.world.netId') || '';
+      if (!netId) {
+        netId = (window.crypto && window.crypto.randomUUID)
+          ? window.crypto.randomUUID()
+          : 'p' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        window.sessionStorage.setItem('aevum.world.netId', netId);
+      }
+    } catch (e) {
+      netId = 'p' + Math.random().toString(36).slice(2, 10);
+    }
+    netName = query.get('name') || ('旅人-' + netId.slice(0, 4));
+    document.documentElement.setAttribute('data-net',
+      JSON.stringify({ status: 'connecting', id: netId, relay: relayBase, online: 0, remote: 0 }));
+  }
+
+  function netColorFor(id) {
+    var palette = [
+      [0.98, 0.48, 0.22], [0.22, 0.72, 0.96], [0.62, 0.88, 0.34],
+      [0.94, 0.68, 0.24], [0.78, 0.48, 0.96], [0.28, 0.86, 0.72]
+    ];
+    var h = 0;
+    for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 997;
+    return palette[h % palette.length];
+  }
+
+  function buildAvatarMesh(boxes) {
+    var positions = [];
+    var normals = [];
+    var indices = [];
+    function box(cx, cy, cz, hx, hy, hz) {
+      var base = positions.length / 3;
+      var faces = [
+        [[1, 0, 0], [[1, -1, -1], [1, 1, -1], [1, 1, 1], [1, -1, 1]]],
+        [[-1, 0, 0], [[-1, -1, 1], [-1, 1, 1], [-1, 1, -1], [-1, -1, -1]]],
+        [[0, 1, 0], [[-1, 1, 1], [1, 1, 1], [1, 1, -1], [-1, 1, -1]]],
+        [[0, -1, 0], [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]]],
+        [[0, 0, 1], [[1, -1, 1], [1, 1, 1], [-1, 1, 1], [-1, -1, 1]]],
+        [[0, 0, -1], [[-1, -1, -1], [-1, 1, -1], [1, 1, -1], [1, -1, -1]]]
+      ];
+      for (var f = 0; f < faces.length; f++) {
+        var n = faces[f][0];
+        var q = faces[f][1];
+        for (var v = 0; v < 4; v++) {
+          positions.push(cx + q[v][0] * hx, cy + q[v][1] * hy, cz + q[v][2] * hz);
+          normals.push(n[0], n[1], n[2]);
+        }
+        var o = base + f * 4;
+        indices.push(o, o + 1, o + 2, o, o + 2, o + 3);
+      }
+    }
+    for (var b = 0; b < boxes.length; b++) box.apply(null, boxes[b]);
+    return createMesh(positions, normals, null, indices);
+  }
+
+  function makeAvatarMesh() {
+    return {
+      body: buildAvatarMesh([
+        [0, 0.78, 0, 0.22, 0.16, 0.13],
+        [-0.15, 0.38, 0, 0.09, 0.40, 0.10],
+        [0.15, 0.38, 0, 0.09, 0.40, 0.10],
+        [-0.34, 1.28, 0, 0.07, 0.30, 0.09],
+        [0.34, 1.28, 0, 0.07, 0.30, 0.09]
+      ]),
+      torso: buildAvatarMesh([[0, 1.32, 0, 0.26, 0.42, 0.15]]),
+      core: buildAvatarMesh([[0, 1.34, 0.16, 0.09, 0.09, 0.02]]),
+      head: buildAvatarMesh([[0, 1.86, 0, 0.16, 0.17, 0.16]])
+    };
+  }
+  function applyRemotePlayers(list) {
+    var now = performance.now();
+    var seenId = false;
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      if (p.id === netId) { seenId = true; continue; }
+      var r = remotePlayers[p.id];
+      if (!r) {
+        r = remotePlayers[p.id] = {
+          id: p.id, name: p.name || '旅人',
+          x: p.x, y: p.y, z: p.z, yaw: p.yaw,
+          tx: p.x, ty: p.y, tz: p.z, tyaw: p.yaw,
+          clip: p.clip || 'walk', color: netColorFor(p.id), last: now
+        };
+      } else {
+        r.tx = p.x; r.ty = p.y; r.tz = p.z; r.tyaw = p.yaw;
+        r.clip = p.clip || r.clip;
+        r.last = now;
+      }
+    }
+    for (var id in remotePlayers) {
+      if (now - remotePlayers[id].last > 5000) delete remotePlayers[id];
+    }
+    netOnline = list.length;
+  }
+
+  function sendNetState() {
+    if (netInFlight || !world || !modelRenderer) return;
+    netInFlight = true;
+    fetch(relayBase + '/v1/world/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({
+        id: netId, name: netName,
+        room: roomId,
+        x: +charPos[0].toFixed(3), y: +charPos[1].toFixed(3), z: +charPos[2].toFixed(3),
+        yaw: +charYawCurrent.toFixed(3), clip: clip
+      })
+    }).then(function (res) { return res.json(); }).then(function (data) {
+      if (!data || !data.ok) throw new Error('relay error');
+      netStatus = 'online';
+      applyRemotePlayers(data.players || []);
+    }).catch(function () {
+      netStatus = 'offline';
+    }).finally(function () {
+      netInFlight = false;
+    });
+  }
+
+  function updateNetwork(dt) {
+    if (!relayBase) return;
+    netClock += dt;
+    netBroadcast += dt;
+    if (netClock >= 0.12) {
+      netClock = 0;
+      sendNetState();
+    }
+    var k = Math.min(1, dt * 12);
+    for (var id in remotePlayers) {
+      var r = remotePlayers[id];
+      r.x += (r.tx - r.x) * k;
+      r.y += (r.ty - r.y) * k;
+      r.z += (r.tz - r.z) * k;
+      var dy = ((r.tyaw - r.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      r.yaw += dy * k;
+    }
+    if (netBroadcast >= 0.5) {
+      netBroadcast = 0;
+      document.documentElement.setAttribute('data-net', JSON.stringify({
+        status: netStatus, id: netId, name: netName, relay: relayBase,
+        online: netOnline,
+        remote: Object.keys(remotePlayers).length,
+        players: Object.keys(remotePlayers).map(function (rid) {
+          return { name: remotePlayers[rid].name, x: remotePlayers[rid].x, z: remotePlayers[rid].z };
+        })
+      }));
+    }
+  }
+
+  function drawRemotePlayers() {
+    if (!avatarParts) return;
+    var ids = Object.keys(remotePlayers);
+    if (!ids.length) return;
+    gl.useProgram(objectProgram);
+    gl.uniformMatrix4fv(uniformLocation(objectProgram, 'uViewProj'), false, viewProj);
+    gl.uniform3fv(uniformLocation(objectProgram, 'uSunDir'), new Float32Array(normalize3(world.lights.directionalLight.direction)));
+    gl.uniform3fv(uniformLocation(objectProgram, 'uSunColor'), new Float32Array(world.lights.directionalLight.color));
+    gl.uniform3fv(uniformLocation(objectProgram, 'uAmbient'), new Float32Array(world.lights.ambientLight.color));
+    for (var i = 0; i < ids.length; i++) {
+      var r = remotePlayers[ids[i]];
+      var dx = r.x - charPos[0], dz = r.z - charPos[2];
+      var dist2 = dx * dx + dz * dz;
+      var cdx = r.x - cameraPos[0], cdy = r.y + 1.2 - cameraPos[1], cdz = r.z - cameraPos[2];
+      var cameraDist = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz);
+      var nearFade = Math.min(1, Math.max(0, (cameraDist - 5.0) / 3.0));
+      if (dist2 > 90 * 90 || dist2 < 2.4 * 2.4 || nearFade < 0.08) continue;
+      var avatarScale = 0.8 * (0.5 + nearFade * 0.5);
+      var m = M4.fromTRS(M4.create(), [r.x, r.y, r.z],
+        math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], r.yaw + Math.PI),
+        [avatarScale, avatarScale, avatarScale]);
+      gl.uniformMatrix4fv(uniformLocation(objectProgram, 'uModel'), false, m);
+      gl.uniform1f(uniformLocation(objectProgram, 'uGlow'), 0.12);
+      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.10, 0.14, 0.18]));
+      gl.bindVertexArray(avatarParts.body.vao);
+      gl.drawElements(gl.TRIANGLES, avatarParts.body.count, gl.UNSIGNED_INT, 0);
+      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array(r.color));
+      gl.bindVertexArray(avatarParts.torso.vao);
+      gl.drawElements(gl.TRIANGLES, avatarParts.torso.count, gl.UNSIGNED_INT, 0);
+      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.82, 0.66, 0.52]));
+      gl.bindVertexArray(avatarParts.head.vao);
+      gl.drawElements(gl.TRIANGLES, avatarParts.head.count, gl.UNSIGNED_INT, 0);
+      gl.uniform1f(uniformLocation(objectProgram, 'uGlow'), 0.55);
+      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.86, 0.94, 0.62]));
+      gl.bindVertexArray(avatarParts.core.vao);
+      gl.drawElements(gl.TRIANGLES, avatarParts.core.count, gl.UNSIGNED_INT, 0);
+    }
+    gl.bindVertexArray(null);
+  }
+
+  function updatePlayerTags() {
+    var root = document.getElementById('playerTags');
+    if (!root) return;
+    var rect = canvasWorld.getBoundingClientRect();
+    var ids = Object.keys(remotePlayers);
+    for (var i = 0; i < ids.length; i++) {
+      var id = ids[i];
+      var r = remotePlayers[id];
+      var tag = playerTagEls[id];
+      if (!tag) {
+        tag = document.createElement('div');
+        tag.className = 'player-tag';
+        tag.textContent = r.name || '旅人';
+        root.appendChild(tag);
+        playerTagEls[id] = tag;
+      }
+      var tx = r.x, ty = r.y + 2.4, tz = r.z;
+      var cw = viewProj[3] * tx + viewProj[7] * ty + viewProj[11] * tz + viewProj[15];
+      if (cw <= 0.05) { tag.style.display = 'none'; continue; }
+      var cx = (viewProj[0] * tx + viewProj[4] * ty + viewProj[8] * tz + viewProj[12]) / cw;
+      var cy = (viewProj[1] * tx + viewProj[5] * ty + viewProj[9] * tz + viewProj[13]) / cw;
+      var sx = (cx * 0.5 + 0.5) * rect.width;
+      var sy = (1 - (cy * 0.5 + 0.5)) * rect.height;
+      var ddx = r.x - charPos[0], ddz = r.z - charPos[2];
+      var near = ddx * ddx + ddz * ddz < 2.4 * 2.4;
+      var cdx = r.x - cameraPos[0], cdy = r.y + 1.2 - cameraPos[1], cdz = r.z - cameraPos[2];
+      if (cdx * cdx + cdy * cdy + cdz * cdz < 7 * 7) near = true;
+      if (near || ddx * ddx + ddz * ddz > 70 * 70 || sx < -40 || sx > rect.width + 40 || sy < -20 || sy > rect.height + 20) {
+        tag.style.display = 'none';
+        continue;
+      }
+      tag.style.display = 'block';
+      tag.style.transform = 'translate(' + sx.toFixed(1) + 'px,' + sy.toFixed(1) + 'px) translate(-50%,-100%)';
+    }
+    for (var rid in playerTagEls) {
+      if (!remotePlayers[rid]) {
+        playerTagEls[rid].remove();
+        delete playerTagEls[rid];
+      }
+    }
+  }
+
+  function initWorldUI() {
+    var query = new URLSearchParams(window.location.search);
+    var requestedRoom = (query.get('room') || 'world-lobby').trim();
+    roomId = /^[A-Za-z0-9_-]{1,32}$/.test(requestedRoom) ? requestedRoom : 'world-lobby';
+    roomEls = {
+      panel: document.getElementById('socialPanel'),
+      log: document.getElementById('chatLog'),
+      form: document.getElementById('chatForm'),
+      input: document.getElementById('chatInput'),
+      room: document.getElementById('roomLabel'),
+      online: document.getElementById('roomOnline'),
+      state: document.getElementById('modelState'),
+      pick: document.getElementById('modelPick'),
+      file: document.getElementById('modelFile')
+    };
+    if (roomEls.room) roomEls.room.textContent = 'ROOM · ' + roomId;
+    if (roomEls.form) {
+      roomEls.form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        sendChat();
+      });
+    }
+    if (roomEls.pick && roomEls.file) {
+      roomEls.pick.addEventListener('click', function () { roomEls.file.click(); });
+      roomEls.file.addEventListener('change', function () {
+        var file = roomEls.file.files && roomEls.file.files[0];
+        if (file) loadCharacterFile(file);
+        roomEls.file.value = '';
+      });
+    }
+    document.documentElement.setAttribute('data-room', JSON.stringify({ room: roomId, status: 'connecting' }));
+    window.addEventListener('pagehide', leaveRoom);
+    addSystemLine('正在连接房间 ' + roomId + '…');
+    window.AevumWorldRuntime = {
+      loadCharacterFile: loadCharacterFile,
+      loadCharacterBuffer: applyCharacterBuffer,
+      room: function () { return roomId; },
+      players: function () { return roomMembers; },
+      camera: function () { return { yaw: camYaw, pitch: camPitch, distance: camDistance }; }
+    };
+  }
+
+  function roomTime(ts) {
+    try {
+      var d = new Date(ts);
+      return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    } catch (e) { return '--:--'; }
+  }
+
+  function addSystemLine(text) {
+    roomSystemLines.push({ text: text, ts: Date.now() });
+    if (roomSystemLines.length > 10) roomSystemLines.shift();
+    renderChat();
+  }
+
+  function renderChat() {
+    if (!roomEls || !roomEls.log) return;
+    var log = roomEls.log;
+    log.innerHTML = '';
+    roomSystemLines.forEach(function (line) {
+      var el = document.createElement('div');
+      el.className = 'chat-line is-system';
+      el.textContent = line.text;
+      log.appendChild(el);
+    });
+    roomMessages.slice(-80).forEach(function (m) {
+      var el = document.createElement('div');
+      el.className = 'chat-line' + (m.id === netId ? ' is-self' : '');
+      var who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = m.name || '旅人';
+      var when = document.createElement('span');
+      when.className = 'when';
+      when.textContent = roomTime(m.ts);
+      var body = document.createElement('span');
+      body.className = 'body';
+      body.textContent = m.text;
+      el.appendChild(who);
+      el.appendChild(when);
+      el.appendChild(body);
+      log.appendChild(el);
+    });
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function applyRoomSnapshot(data) {
+    if (!data || !data.ok) return;
+    if (data.exists) {
+      roomSystemLines = roomSystemLines.filter(function (line) {
+        return line.text.indexOf('正在连接') === -1;
+      });
+    }
+    roomStatus = data.exists ? 'online' : 'empty';
+    if (data.exists) {
+      roomMessages = Array.isArray(data.messages) ? data.messages : [];
+      roomMembers = Array.isArray(data.members) ? data.members : [];
+      var names = roomMembers.map(function (m) { return m.id + ':' + m.name; });
+      if (roomBaselineNames) {
+        names.forEach(function (entry) {
+          if (roomBaselineNames.indexOf(entry) === -1) {
+            var nm = entry.split(':').slice(1).join(':');
+            if (nm !== netName) addSystemLine(nm + ' 进入房间');
+          }
+        });
+        roomBaselineNames.forEach(function (entry) {
+          if (names.indexOf(entry) === -1 && roomBaselineNames.length > 0) {
+            var nm = entry.split(':').slice(1).join(':');
+            if (nm !== netName) addSystemLine(nm + ' 离开房间');
+          }
+        });
+      }
+      roomBaselineNames = names;
+      if (roomEls && roomEls.online) roomEls.online.textContent = roomMembers.length + ' ONLINE';
+    } else {
+      roomMessages = [];
+      roomMembers = [];
+      roomBaselineNames = null;
+      roomSystemLines = [];
+      if (roomEls && roomEls.online) roomEls.online.textContent = '0 ONLINE';
+      addSystemLine('房间已关闭，最后一人离开后记录已销毁');
+    }
+    renderChat();
+    document.documentElement.setAttribute('data-room', JSON.stringify({
+      room: roomId, status: roomStatus, online: roomMembers.length,
+      members: roomMembers.map(function (m) { return m.name; }),
+      messages: roomMessages.length
+    }));
+  }
+
+  function joinRoom() {
+    if (roomInFlight) return;
+    roomInFlight = true;
+    fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/join', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+      body: JSON.stringify({ id: netId, name: netName })
+    }).then(function (res) { return res.json(); }).then(function (data) {
+      if (!data || !data.ok) throw new Error('join failed');
+      roomJoinedOnce = true;
+      applyRoomSnapshot(data);
+    }).catch(function () {
+      roomStatus = 'offline';
+      if (roomEls && roomEls.online) roomEls.online.textContent = 'OFFLINE';
+      document.documentElement.setAttribute('data-room', JSON.stringify({ room: roomId, status: 'offline' }));
+    }).finally(function () { roomInFlight = false; });
+  }
+
+  function pollRoom() {
+    if (roomInFlight) return;
+    roomInFlight = true;
+    fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId), { cache: 'no-store' })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (!data || !data.ok) throw new Error('poll failed');
+        applyRoomSnapshot(data);
+      })
+      .catch(function () {
+        roomStatus = 'offline';
+      })
+      .finally(function () { roomInFlight = false; });
+  }
+
+  function updateRoom(dt) {
+    if (!relayBase) return;
+    roomClock += dt;
+    roomPollClock += dt;
+    if (roomClock >= 2.5) {
+      roomClock = 0;
+      joinRoom();
+    }
+    if (roomPollClock >= 1.1) {
+      roomPollClock = 0;
+      pollRoom();
+    }
+  }
+
+  function sendChat() {
+    if (!roomEls || !roomEls.input) return;
+    var text = roomEls.input.value.trim();
+    if (!text) return;
+    roomEls.input.value = '';
+    fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/messages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+      body: JSON.stringify({ id: netId, text: text })
+    }).then(function (res) { return res.json(); }).then(function (data) {
+      if (!data || !data.ok) throw new Error(data && data.message || 'send failed');
+      applyRoomSnapshot(data);
+      if (roomEls && roomEls.input) roomEls.input.focus();
+    }).catch(function (err) {
+      addSystemLine('发送失败：' + (err && err.message ? err.message : '中继不可用'));
+    });
+  }
+
+  function leaveRoom() {
+    if (!relayBase || !netId) return;
+    var url = relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/leave';
+    var body = JSON.stringify({ id: netId });
+    try {
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true });
+    } catch (e) { /* ignore */ }
+    try {
+      if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'text/plain' }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function inflateRawBytes(bytes) {
+    if (!window.DecompressionStream) return Promise.reject(new Error('当前浏览器不支持 ZIP 解压'));
+    var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Response(stream).arrayBuffer().then(function (buf) {
+      return new Uint8Array(buf);
+    });
+  }
+
+  async function extractVRMFromZip(file) {
+    var buf = await file.arrayBuffer();
+    var dv = new DataView(buf);
+    var eocd = -1;
+    var lower = Math.max(0, buf.byteLength - 65557);
+    for (var i = buf.byteLength - 22; i >= lower; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('ZIP 目录损坏，找不到 EOCD');
+    var count = dv.getUint16(eocd + 10, true);
+    var cdOffset = dv.getUint32(eocd + 16, true);
+    var p = cdOffset;
+    var best = null;
+    var decoder = new TextDecoder('utf-8');
+    for (var n = 0; n < count; n++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      var method = dv.getUint16(p + 10, true);
+      var compSize = dv.getUint32(p + 20, true);
+      var uncompSize = dv.getUint32(p + 24, true);
+      var nameLen = dv.getUint16(p + 28, true);
+      var extraLen = dv.getUint16(p + 30, true);
+      var commentLen = dv.getUint16(p + 32, true);
+      var localOffset = dv.getUint32(p + 42, true);
+      var name = decoder.decode(new Uint8Array(buf, p + 46, nameLen));
+      if (/\.vrm$/i.test(name) && (!best || uncompSize > best.uncompSize)) {
+        best = { name: name, method: method, compSize: compSize, localOffset: localOffset };
+      }
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    if (!best) throw new Error('ZIP 内没有 .vrm 文件；目前只支持 VRM 角色模型');
+    if (dv.getUint32(best.localOffset, true) !== 0x04034b50) throw new Error('ZIP 本地头损坏');
+    var lNameLen = dv.getUint16(best.localOffset + 26, true);
+    var lExtraLen = dv.getUint16(best.localOffset + 28, true);
+    var dataStart = best.localOffset + 30 + lNameLen + lExtraLen;
+    var raw = new Uint8Array(buf, dataStart, best.compSize);
+    if (best.method === 0) return { name: best.name, bytes: raw };
+    if (best.method === 8) {
+      var inflated = await inflateRawBytes(raw);
+      return { name: best.name, bytes: inflated };
+    }
+    throw new Error('不支持的 ZIP 压缩方式 ' + best.method);
+  }
+
+  async function applyCharacterBuffer(buffer, label) {
+    if (!modelRenderer || !window.AEVUM || !window.AEVUM.formats) throw new Error('角色渲染器尚未就绪');
+    var next = window.AEVUM.formats.parseVRM(buffer);
+    await modelRenderer.loadVRM(next);
+    vrm = next;
+    if (motionData) {
+      player = window.AEVUM.formats.GLTFAnimation.createPlayer(motionData);
+      hasIdleClip = player.clips.some(function (c) { return c.name === 'idle'; });
+      var wanted = player.clips.some(function (c) { return c.name === clip; }) ? clip : 'walk';
+      clip = wanted;
+      player.setClip(clip).reset().setLoop(true).play();
+      player.update(0.08);
+    }
+    var bounds = modelRenderer.bounds;
+    modelBoundsMinY = bounds.min[1];
+    charScale = 2.55 / Math.max(0.001, bounds.max[1] - bounds.min[1]);
+    charPos[1] = streamHeightAt(world.terrain, charPos[0], charPos[2]);
+    M4.fromTRS(modelMatrix, [charPos[0], charPos[1] - bounds.min[1] * charScale, charPos[2]],
+      math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], charYawCurrent + Math.PI),
+      [charScale, charScale, charScale]);
+    modelBaseY = modelMatrix[13];
+    modelName = label;
+    if (statEl) statEl.textContent = (clip || 'walk').toUpperCase() + ' / ' + (vrm.humanBones || []).length + ' BONES';
+    if (roomEls && roomEls.state) roomEls.state.textContent = label;
+    document.documentElement.setAttribute('data-model', JSON.stringify({
+      name: label, format: 'vrm', bones: (vrm.humanBones || []).length, height: 2.55
+    }));
+  }
+
+  async function loadCharacterFile(file) {
+    if (!roomEls || !roomEls.state) return;
+    roomEls.state.textContent = '识别中…';
+    try {
+      var head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+      var isZip = file.name.toLowerCase().endsWith('.zip') || (head[0] === 0x50 && head[1] === 0x4b);
+      var buffer;
+      var label = file.name.replace(/\.(zip|vrm)$/i, '');
+      if (isZip) {
+        roomEls.state.textContent = '解压 ZIP…';
+        var entry = await extractVRMFromZip(file);
+        var exact = new ArrayBuffer(entry.bytes.byteLength);
+        new Uint8Array(exact).set(entry.bytes);
+        buffer = exact;
+        label = entry.name.split('/').pop().replace(/\.vrm$/i, '');
+      } else if (file.name.toLowerCase().endsWith('.vrm') ||
+        (head.length >= 4 && head[0] === 0x67 && head[1] === 0x6c && head[2] === 0x54 && head[3] === 0x46)) {
+        buffer = await file.arrayBuffer();
+      } else {
+        throw new Error('只支持 .vrm 或包含 .vrm 的 .zip');
+      }
+      roomEls.state.textContent = '加载模型…';
+      await applyCharacterBuffer(buffer, label);
+      roomEls.state.textContent = '已加载 ' + label + ' · VRM';
+      addSystemLine('角色模型已切换：' + label);
+    } catch (err) {
+      roomEls.state.textContent = '加载失败：' + (err && err.message ? err.message : '未知错误');
+      addSystemLine('模型加载失败：' + (err && err.message ? err.message : '未知错误'));
+    }
+  }
+
+  function updateRoamCharacter(dt) {
+    if (renderOnly || !world || !modelRenderer) {
+      publishRoamState(renderOnly ? 'render-only' : (!world ? 'no-world' : 'no-model'), {});
+      return;
+    }
+    var forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
+    var strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    if (keys.ArrowUp) forward += 1;
+    if (keys.ArrowDown) forward -= 1;
+    if (keys.ArrowRight) strafe += 1;
+    if (keys.ArrowLeft) strafe -= 1;
+    var camfx = Math.sin(camYaw);
+    var camfz = Math.cos(camYaw);
+    var dx = camfx * forward - camfz * strafe;
+    var dz = camfz * forward + camfx * strafe;
+    var moving = dx !== 0 || dz !== 0;
+    if (moving) {
+      var len = Math.sqrt(dx * dx + dz * dz) || 1;
+      dx /= len; dz /= len;
+      var speed = (keys.ShiftLeft || keys.ShiftRight) ? 5.6 : 1.8;
+      var nextX = charPos[0] + dx * speed * dt;
+      var nextZ = charPos[2] + dz * speed * dt;
+      var moved = false;
+      if (canWalkAt(nextX, nextZ, charPos[0], charPos[2])) {
+        charPos[0] = nextX;
+        charPos[2] = nextZ;
+        charYaw = Math.atan2(dx, dz);
+        moved = true;
+      } else if (canWalkAt(nextX, charPos[2], charPos[0], charPos[2])) {
+        charPos[0] = nextX;
+        charYaw = Math.atan2(dx, 0);
+        moved = true;
+      } else if (canWalkAt(charPos[0], nextZ, charPos[0], charPos[2])) {
+        charPos[2] = nextZ;
+        charYaw = Math.atan2(0, dz);
+        moved = true;
+      } else {
+        var baseYaw = Math.atan2(dx, dz);
+        var deflects = [0.5, -0.5, 1.0, -1.0, Math.PI];
+        for (var di = 0; di < deflects.length && !moved; di++) {
+          var ao = baseYaw + deflects[di];
+          var ox = charPos[0] + Math.sin(ao) * speed * dt;
+          var oz = charPos[2] + Math.cos(ao) * speed * dt;
+          if (canWalkAt(ox, oz)) {
+            charPos[0] = ox;
+            charPos[2] = oz;
+            charYaw = ao;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) moving = false;
+    }
+    charPos[1] = streamHeightAt(world.terrain, charPos[0], charPos[2]);
+    updateTerrainStream(world.terrain, charPos[0], charPos[2]);
+    var diff = ((charYaw - charYawCurrent + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    charYawCurrent += diff * Math.min(1, dt * 10);
+    modelBaseY = charPos[1] - modelBoundsMinY * charScale;
+    M4.fromTRS(modelMatrix, [charPos[0], modelBaseY, charPos[2]],
+      math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], charYawCurrent + Math.PI),
+      [charScale, charScale, charScale]);
+    if (player) {
+      var nextClip = moving ? ((keys.ShiftLeft || keys.ShiftRight) ? 'run' : 'walk') : (hasIdleClip ? 'idle' : 'walk');
+      if (clip !== nextClip) {
+        clip = nextClip;
+        player.setClip(clip).reset().setLoop(true).play();
+      }
+    }
+    roamBroadcast += dt;
+    if (roamBroadcast >= 0.5) {
+      roamBroadcast = 0;
+      publishRoamState('roaming', {
+        x: charPos[0], y: charPos[1], z: charPos[2], yaw: charYawCurrent,
+        cam: camYaw, chunks: terrainChunks.length, clip: clip
+      });
+    }
+    if (window.AevumMarkGraphics) window.AevumMarkGraphics('RoamController');
+  }
+
+  function cameraClearRatio(target, eye) {
+    var near = [];
+    var i, t;
+    for (i = 0; i < trees.length; i++) {
+      var tr = trees[i];
+      var dx = tr.x - target[0], dz = tr.z - target[2];
+      if (dx * dx + dz * dz < 16 * 16) near.push([tr.x, tr.z, 2.5 * (tr.scale || 1)]);
+    }
+    streamChunks.forEach(function (chunk) {
+      if (!chunk.trees) return;
+      for (var j = 0; j < chunk.trees.length; j++) {
+        var st = chunk.trees[j];
+        var sx = st.x - target[0], sz = st.z - target[2];
+        if (sx * sx + sz * sz < 16 * 16) near.push([st.x, st.z, 2.5 * (st.scale || 1)]);
+      }
+    });
+    var ratio = 1;
+    var px, pz;
+    for (i = 1; i <= 12; i++) {
+      t = i / 12;
+      px = target[0] + (eye[0] - target[0]) * t;
+      pz = target[2] + (eye[2] - target[2]) * t;
+      for (var k = 0; k < near.length; k++) {
+        var nx = px - near[k][0], nz = pz - near[k][1];
+        if (nx * nx + nz * nz < near[k][2] * near[k][2]) {
+          ratio = Math.min(ratio, Math.max(0.32, (i - 1) / 12));
+          break;
+        }
+      }
+    }
+    // A hill between the character and the camera is an opaque wall that
+    // grows/shrinks with the wheel. Pull the camera in front of the first
+    // terrain sample that rises above the sight line.
+    if (world && world.terrain) {
+      for (i = 1; i <= 12; i++) {
+        t = i / 12;
+        px = target[0] + (eye[0] - target[0]) * t;
+        pz = target[2] + (eye[2] - target[2]) * t;
+        var cy = target[1] + (eye[1] - target[1]) * t;
+        if (cy < streamHeightAt(world.terrain, px, pz) + 0.35) {
+          ratio = Math.min(ratio, Math.max(0.30, (i - 1) / 12));
+          break;
+        }
+      }
+    }
+    return ratio;
   }
 
   function updateCamera() {
@@ -123,11 +949,46 @@
         W = Math.max(1, external.width || canvasWorld.width || W);
         H = Math.max(1, external.height || canvasWorld.height || H);
       }
+    } else {
+      var fx = Math.sin(camYaw);
+      var fz = Math.cos(camYaw);
+      var horizontal = camDistance * Math.cos(camPitch);
+      var lift = 1.5 + camDistance * Math.sin(camPitch);
+      var desiredEye = [charPos[0] - fx * horizontal, charPos[1] + lift, charPos[2] - fz * horizontal];
+      var desiredTarget = [charPos[0], charPos[1] + 1.45, charPos[2]];
+      if (world && world.terrain) {
+        var cameraGround = streamHeightAt(world.terrain, desiredEye[0], desiredEye[2]);
+        if (desiredEye[1] < cameraGround + 0.8) desiredEye[1] = cameraGround + 0.8;
+      }
+      var clearRatio = cameraClearRatio(desiredTarget, desiredEye);
+      if (clearRatio < 1) {
+        desiredEye[0] = desiredTarget[0] + (desiredEye[0] - desiredTarget[0]) * clearRatio;
+        desiredEye[1] = desiredTarget[1] + (desiredEye[1] - desiredTarget[1]) * clearRatio;
+        desiredEye[2] = desiredTarget[2] + (desiredEye[2] - desiredTarget[2]) * clearRatio;
+      }
+      var smooth = 1 - Math.pow(0.001, 1 / 60);
+      eye = [
+        eye[0] + (desiredEye[0] - eye[0]) * smooth,
+        eye[1] + (desiredEye[1] - eye[1]) * smooth,
+        eye[2] + (desiredEye[2] - eye[2]) * smooth
+      ];
+      target = [
+        target[0] + (desiredTarget[0] - target[0]) * smooth,
+        target[1] + (desiredTarget[1] - target[1]) * smooth,
+        target[2] + (desiredTarget[2] - target[2]) * smooth
+      ];
     }
     var view = M4.lookAt(M4.create(), eye, target, [0, 1, 0]);
     var proj = M4.perspective(M4.create(), FOV, W / H, 0.08, 700);
     M4.mult(viewProj, view, proj);
     cameraPos = eye;
+    camBroadcast += 1;
+    if (camBroadcast >= 15) {
+      camBroadcast = 0;
+      document.documentElement.setAttribute('data-cam', JSON.stringify({
+        yaw: +camYaw.toFixed(3), pitch: +camPitch.toFixed(3), distance: +camDistance.toFixed(2)
+      }));
+    }
     if (world && world.camera) {
       world.camera.position = [eye[0], eye[1], eye[2]];
       world.camera.target = [target[0], target[1], target[2]];
@@ -221,7 +1082,7 @@
   }
 
   function drawTrees() {
-    if (!treeGroups.length) return;
+    if (!treeGroups.length && !terrainChunks.length) return;
     gl.useProgram(terrainProgram);
     var light = world.lights.directionalLight;
     var ambient = world.lights.ambientLight;
@@ -235,9 +1096,14 @@
     bindShadow(terrainProgram);
     for (var i = 0; i < treeGroups.length; i++) {
       var g = treeGroups[i];
-      if (world.frustumCulling && !world.frustumCulling.isVisible(g.center, g.radius)) continue;
       gl.bindVertexArray(g.mesh.vao);
       gl.drawElements(gl.TRIANGLES, g.mesh.count, gl.UNSIGNED_INT, 0);
+    }
+    for (var c = 0; c < terrainChunks.length; c++) {
+      var chunk = terrainChunks[c];
+      if (!chunk.treeMesh) continue;
+      gl.bindVertexArray(chunk.treeMesh.vao);
+      gl.drawElements(gl.TRIANGLES, chunk.treeMesh.count, gl.UNSIGNED_INT, 0);
     }
     gl.bindVertexArray(null);
   }
@@ -318,7 +1184,7 @@
   }
 
   function drawGrass(time) {
-    if (!grassGroups.length) return;
+    if (!grassGroups.length && !terrainChunks.length) return;
     updateGrassWind(time);
     gl.useProgram(grassProgram);
     var light = world.lights.directionalLight;
@@ -334,9 +1200,18 @@
     bindShadow(grassProgram);
     for (var i = 0; i < grassGroups.length; i++) {
       var g = grassGroups[i];
-      if (world.frustumCulling && !world.frustumCulling.isVisible(g.center, g.radius)) continue;
       gl.bindVertexArray(g.mesh.vao);
       gl.drawElements(gl.TRIANGLES, g.mesh.count, gl.UNSIGNED_INT, 0);
+    }
+    for (var c = 0; c < terrainChunks.length; c++) {
+      var chunk = terrainChunks[c];
+      if (!chunk.grassMesh) continue;
+      gl.bindVertexArray(chunk.grassMesh.vao);
+      gl.drawElements(gl.TRIANGLES, chunk.grassMesh.count, gl.UNSIGNED_INT, 0);
+    }
+    if (detailGrassMesh) {
+      gl.bindVertexArray(detailGrassMesh.vao);
+      gl.drawElements(gl.TRIANGLES, detailGrassMesh.count, gl.UNSIGNED_INT, 0);
     }
     gl.bindVertexArray(null);
   }
@@ -653,6 +1528,7 @@
 
   function renderWorld(now) {
     updateCamera();
+    updatePlayerTags();
     if (world.frustumCulling) world.frustumCulling.update(viewProj);
     makeLightVP(world.lights.directionalLight);
     renderShadowMap();
@@ -669,6 +1545,7 @@
     drawGrass(now / 1000);
     drawWater();
     drawObjects();
+    drawRemotePlayers();
     drawRain();
     drawSnow();
     drawContactShadow();
@@ -894,17 +1771,23 @@
       advancedWater.init();
       advancedWater.update(0);
       if (systemsEl) {
-        systemsEl.textContent = 'TERRAIN ' + TERRAIN_SIZE + '×' + TERRAIN_SIZE + ' · WATER ' +
+        systemsEl.textContent = 'TERRAIN STREAM 64m · WATER ' +
           advancedWater.getWaveCount() + ' WAVES · ' + world.weather.getCurrentWeather().toUpperCase();
       }
       document.documentElement.setAttribute('data-world3dext', String(!!window.World3DExt));
       document.documentElement.setAttribute('data-advanced-water', String(!!advancedWater));
     }
     setupWorldCamera();
+    initRoamInput();
+    initCameraInput();
+    initNetwork();
+    initWorldUI();
+    avatarParts = makeAvatarMesh();
 
     skyMesh = makeSkySphere();
     terrainMesh = makeTerrainMesh(world.terrain);
-    terrainChunks = makeTerrainChunkMeshes(world.terrain, 4);
+    terrainChunks = [];
+    updateTerrainStream(world.terrain, SPAWN[0], SPAWN[1]);
     waterMesh = makeWaterMesh();
     var nearTrees = trees.filter(function (t) { return Math.sqrt(t.x * t.x + t.z * t.z) < 135; });
     treeGroups = buildVegetationGroups(nearTrees, makeTreeMesh, 58);
@@ -931,7 +1814,7 @@
     initGrassWindCompute();
     shadowMesh = makeShadowMesh();
     createShadowTarget();
-    createSceneTarget();
+    resizeWorldCanvas();
     world.postProcessing.addPass('world-post', null);
     world.postProcessing.addPass('fxaa', null);
     world.postProcessing.setBackend(function (pp, input) {
@@ -1019,7 +1902,7 @@
 
     initCharacterSkin();
 
-    var modelRenderer = new window.AEVUM.render.VRMRenderer(canvasModel, {
+    modelRenderer = new window.AEVUM.render.VRMRenderer(canvasModel, {
       clearColor: [0, 0, 0, 0],
       skinMaterial: skinMaterial,
       lighting: {
@@ -1041,8 +1924,11 @@
 
     var actionRes = await fetch('/engine/assets/all_animations.glb', { cache: 'no-store' });    if (!actionRes.ok) throw new Error('GLB HTTP ' + actionRes.status);
     bootStage('LOADING / MOTION RECEIVED');
-    var action = window.AEVUM.formats.parseGLB(await actionRes.arrayBuffer());
-    player = window.AEVUM.formats.GLTFAnimation.createPlayer(action);
+    motionData = window.AEVUM.formats.parseGLB(await actionRes.arrayBuffer());
+    player = window.AEVUM.formats.GLTFAnimation.createPlayer(motionData);
+    hasIdleClip = player.clips.some(function (c) { return c.name === 'idle'; });
+    document.documentElement.setAttribute('data-clips',
+      player.clips.map(function (c) { return c.name; }).join(','));
     clip = player.clips.some(function (c) { return c.name === 'run'; }) ? 'run' : 'walk';
     player.setClip(clip).reset().setLoop(true).play();
     player.update(0.08);
@@ -1051,9 +1937,10 @@
 
     var bounds = modelRenderer.bounds;
     var modelHeight = bounds.max[1] - bounds.min[1];
+    modelBoundsMinY = bounds.min[1];
     charScale = 2.55 / Math.max(0.001, modelHeight);
     var ground = world.terrain.getHeight(SPAWN[0], SPAWN[1]);
-    M4.fromTRS(modelMatrix, [SPAWN[0], ground - bounds.min[1] * charScale, SPAWN[1]], math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], Math.PI), [charScale, charScale, charScale]);
+    M4.fromTRS(modelMatrix, [SPAWN[0], ground - bounds.min[1] * charScale, SPAWN[1]], math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], 0), [charScale, charScale, charScale]);
     modelBaseY = modelMatrix[13];
     if (!window.OrbSkeleton || !window.OrbAnimation || !window.OrbAnimation.ProceduralMotion || !window.OrbAnimation.BreathingMotion) {
       throw new Error('OrbSkeleton/OrbAnimation is required; inline character breathing is removed');
@@ -1070,8 +1957,43 @@
     start = performance.now();
     last = start;
     var frameCount = 0;
+
+    function resizeWorldCanvas() {
+      var cw = Math.max(1, Math.round(canvasWorld.clientWidth || window.innerWidth || W));
+      var ch = Math.max(1, Math.round(canvasWorld.clientHeight || window.innerHeight || H));
+      var same = W === cw && H === ch && canvasWorld.width === cw && canvasWorld.height === ch;
+      if (same && sceneFBO) return;
+      W = cw;
+      H = ch;
+      canvasWorld.width = cw;
+      canvasWorld.height = ch;
+      var metaSize = document.getElementById('metaSize');
+      if (metaSize) metaSize.textContent = cw + ' × ' + ch + ' / WEBGL2';
+      if (sceneFBO) {
+        gl.deleteFramebuffer(sceneFBO);
+        gl.deleteTexture(sceneColorTex);
+        gl.deleteTexture(sceneDepthTex);
+        sceneFBO = null;
+        sceneColorTex = null;
+        sceneDepthTex = null;
+      }
+      if (postRenderTarget) {
+        postRenderTarget.dispose();
+        postRenderTarget = null;
+        postFBO = null;
+        postColorTex = null;
+      } else if (postFBO) {
+        gl.deleteFramebuffer(postFBO);
+        gl.deleteTexture(postColorTex);
+        postFBO = null;
+        postColorTex = null;
+      }
+      createSceneTarget();
+    }
+
     function frame(now) {
       frameCount += 1;
+      resizeWorldCanvas();
       var dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (world) {
@@ -1110,6 +2032,9 @@
             (world.weather.getCurrentWeather() === 'storm' ? 0.012 : 0));
         }
       }
+      updateRoamCharacter(dt);
+      updateNetwork(dt);
+      updateRoom(dt);
       if (player) player.update(dt);
 
       if (proceduralMotion) {
@@ -1124,7 +2049,7 @@
 
       var pose = null;
       if (player && vrm && retarget) {
-        pose = retarget(vrm, action.json, player.getPose(), {
+        pose = retarget(vrm, motionData.json, player.getPose(), {
           neutralStance: false,
           symmetricArms: false,
           footClearance: true,
@@ -1135,13 +2060,21 @@
       }
 
       renderWorld(now);
+      fpsFrames++;
+      if (now - fpsClock >= 1000) {
+        document.documentElement.setAttribute('data-fps',
+          String(Number((fpsFrames * 1000 / (now - fpsClock)).toFixed(1))));
+        fpsFrames = 0;
+        fpsClock = now;
+      }
       if (systemsEl && frameCount % 20 === 0) {
-        systemsEl.textContent = 'TERRAIN ' + TERRAIN_SIZE + '×' + TERRAIN_SIZE +
-          ' · TREES ' + trees.length + ' · GRASS ' + grass.length +
+        systemsEl.textContent = 'TERRAIN STREAM · TREES ' + trees.length + ' + ' +
+          terrainChunks.length + ' CHUNK FORESTS · GRASS ' + grass.length +
           ' · WATER 8 · ' + world.weather.getCurrentWeather().toUpperCase() +
           ' · PARTICLES ' + world.weather.getParticles().length +
           ' · CHUNKS ' + terrainChunks.length +
-          ' · SHADOW ' + world.shadows.shadowMapSize + ' · POST FX';
+          ' · SHADOW ' + world.shadows.shadowMapSize + ' · POST FX' +
+          ' · ONLINE ' + netOnline;
       }
       window.AEVUM_WORLD_STATE = {
         weather: world.weather.getCurrentWeather(),

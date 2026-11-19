@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aevum / World Capture</title>
   <link rel="stylesheet" href="styles/world-controls.css?v=20261119x">
-  <link rel="stylesheet" href="styles/scene-world.css?v=20261119x">
+  <link rel="stylesheet" href="styles/world-social.css?v=20261120g9p">
+  <link rel="stylesheet" href="styles/scene-world.css?v=20261120g9p">
   <script>if(new URLSearchParams(location.search||"").get("embed")==="1")document.documentElement.classList.add("embed");</script>
 </head>
 <body class="scene-world-body">
@@ -34,7 +35,7 @@
   </div>
   <div class="meta">
     <strong id="metaStat">LOADING</strong>
-    1600 × 900 / WEBGL2<br>
+    <span id="metaSize">AUTO / WEBGL2</span><br>
     <span id="metaSystems">WORLD 0</span>
   </div>
   <div class="bottomline">
@@ -68,34 +69,59 @@
       </div>
     </div>
   </div>
+  <div class="social-panel" id="socialPanel">
+    <div class="social-head">
+      <div>
+        <b>WORLD CHANNEL</b>
+        <span id="roomLabel">ROOM · world-lobby</span>
+      </div>
+      <span class="social-online" id="roomOnline">0 ONLINE</span>
+    </div>
+    <div class="chat-log" id="chatLog" aria-live="polite"></div>
+    <form class="chat-form" id="chatForm" autocomplete="off">
+      <input id="chatInput" maxlength="200" placeholder="说点什么…" aria-label="世界聊天输入">
+      <button type="submit" id="chatSend">发送</button>
+    </form>
+    <div class="model-row">
+      <button type="button" id="modelPick">加载角色模型</button>
+      <span id="modelState">默认 VRM</span>
+      <input type="file" id="modelFile" accept=".vrm,.zip,application/zip,application/octet-stream" hidden>
+    </div>
+    <div class="social-foot">ZIP 自动识别其中的 .vrm · 房间最后一人离开后自动销毁</div>
+  </div>
+
+  <div class="roam-hint" id="roamHint">
+    方向键 / WASD 移动 · Shift 奔跑 · 鼠标拖动转视角 · 滚轮缩放 · 双击回正
+  </div>
+  <div class="player-tags" id="playerTags" aria-hidden="true"></div>
 
   <div class="loading" id="loading"><div>LOADING TERRAIN / WATER / VEGETATION / MODEL</div><div class="bar"></div></div>
 
 <script src="/engine/math/math.js"></script>
-<script src="/engine/character/skin/skin-system.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/math.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/skeleton.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/animation.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/physics.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/interaction.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/behavior.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/pbr.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/post.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/shader.js?v=20261120g8e"></script>
-<script src="/engine/graphics/core/gl-core/index.js?v=20261120g8e"></script>
-<script src="/engine/graphics/extensions/gl-extensions.js?v=20261120g8e"></script>
-<script src="/engine/graphics/shaders/shader-geometry.js?v=20261120g8e"></script>
-<script src="/engine/graphics/textures/texture-buffer-pipeline.js?v=20261120g8e"></script>
-<script src="/engine/graphics/post/gl-compute-post.js?v=20261120g8e"></script>
+<script src="/engine/character/skin/skin-system.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/math.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/skeleton.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/animation.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/physics.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/interaction.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/behavior.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/pbr.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/post.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/shader.js?v=20261120g9p"></script>
+<script src="/engine/graphics/core/gl-core/index.js?v=20261120g9p"></script>
+<script src="/engine/graphics/extensions/gl-extensions.js?v=20261120g9p"></script>
+<script src="/engine/graphics/shaders/shader-geometry.js?v=20261120g9p"></script>
+<script src="/engine/graphics/textures/texture-buffer-pipeline.js?v=20261120g9p"></script>
+<script src="/engine/graphics/post/gl-compute-post.js?v=20261120g9p"></script>
 <script src="/engine/world/advanced/world-advanced.js?v=20261119dc"></script>
 <script src="/engine/formats/gltf/glb.js"></script>
 <script src="/engine/formats/gltf/gltf-accessor.js"></script>
 <script src="/engine/formats/gltf/gltf-animation.js"></script>
 <script src="/engine/formats/vrm/vrm.js"></script>
-<script src="/engine/render/vrm/vrm-renderer.js"></script>
+<script src="/engine/render/vrm/vrm-renderer.js?v=20261120g9r"></script>
 <script src="/engine/render/retarget/animation-retarget.js"></script>
-<script src="/engine/world/pipeline/world-pipeline.js?v=20261120g8e"></script>
-<script src="js/scene/world/world-scene.bundle.js?v=20261120g8e"></script>
+<script src="/engine/world/pipeline/world-pipeline.js?v=20261120g9p"></script>
+<script src="js/scene/world/world-scene.bundle.js?v=20261120g9q"></script>
 <script src="js/scene/world-controls.js?v=20261119x"></script>
 </body>
 </html>

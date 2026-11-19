@@ -36,8 +36,8 @@
     if (line) line.textContent = 'REJECTED / ' + String(e.reason && (e.reason.message || e.reason));
   });
 
-  var W = renderOnly ? Math.max(1, canvasWorld.width) : 1600;
-  var H = renderOnly ? Math.max(1, canvasWorld.height) : 900;
+  var W = Math.max(1, canvasWorld.clientWidth || canvasWorld.width || 1);
+  var H = Math.max(1, canvasWorld.clientHeight || canvasWorld.height || 1);
   var FOV = 56 * Math.PI / 180;
   var TERRAIN_SIZE = 200;
   var WATER_LEVEL = -3.2;
@@ -133,15 +133,17 @@
     flex = flex ? (flex instanceof Float32Array ? flex : new Float32Array(flex)) : null;
     var vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
+    var buffers = [];
     var posBuffer = buffer(positions, gl.ARRAY_BUFFER);
+    buffers.push(posBuffer);
     bindAttrib(programRef, 'aPos', posBuffer, 3, 0, 0);
-    if (normals) bindAttrib(programRef, 'aNormal', buffer(normals, gl.ARRAY_BUFFER), 3, 0, 0);
-    if (colors) bindAttrib(programRef, 'aColor', buffer(colors, gl.ARRAY_BUFFER), 3, 0, 0);
-    if (flex) bindAttrib(programRef, 'aFlex', buffer(flex, gl.ARRAY_BUFFER), 1, 0, 0);
+    if (normals) { var normalBuffer = buffer(normals, gl.ARRAY_BUFFER); buffers.push(normalBuffer); bindAttrib(programRef, 'aNormal', normalBuffer, 3, 0, 0); }
+    if (colors) { var colorBuffer = buffer(colors, gl.ARRAY_BUFFER); buffers.push(colorBuffer); bindAttrib(programRef, 'aColor', colorBuffer, 3, 0, 0); }
+    if (flex) { var flexBuffer = buffer(flex, gl.ARRAY_BUFFER); buffers.push(flexBuffer); bindAttrib(programRef, 'aFlex', flexBuffer, 1, 0, 0); }
     var ibo = managedBuffer('world-mesh-index-' + (meshSeq++), indices, gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
     gl.bindVertexArray(null);
-    return { vao: vao, count: indices.length, ibo: ibo, posBuffer: posBuffer };
+    return { vao: vao, count: indices.length, ibo: ibo, posBuffer: posBuffer, buffers: buffers };
   }
 
   
