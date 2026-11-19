@@ -1,7 +1,8 @@
 # Aevum
 
-> 一个在浏览器里长草的开源项目。  
-> 目前的主要成就：一片草地、一个湖、两个小人，以及一个偶尔会 emo 下雨的天气系统。
+> 一个在浏览器里长草的开源项目。 / An open-source project that grows grass in a browser.  
+> 目前的主要成就：一片草地、一个湖、两个小人，以及一个偶尔会 emo 下雨的天气系统。  
+> Current achievements: one field, one lake, two small people, and a weather system that occasionally gets emo and rains.
 
 <p align="center">
   <img src="docs/assets/readme/world-sunset.png" width="88%" alt="Aevum 世界的傍晚">
@@ -76,6 +77,41 @@ Aevum 是一个社区共建的社区平台。说人话：它想做一个能跑�
 `desktop.html?world=1` 里的 3D 世界也有一份。桌面版不是再贴一块黑色调试窗，而是跟着桌面走的浅色面板；右上角点「隐藏」会收成一个 `世界环境` 小胶囊，点「显示」再展开。
 
 这两个入口共用 `js/scene/world-controls.js` 和同一个 `window.AEVUM_WORLD_CONTROL`，所以不会出现“拍照页能切、桌面世界不会动”的分裂。
+
+---
+
+## 四个时刻 / Four moments
+
+<p align="center">
+  <img src="docs/assets/readme/desktop/desktop-dawn.png" width="49%" alt="Aevum 桌面世界，黎明">
+  <img src="docs/assets/readme/desktop/desktop-noon.png" width="49%" alt="Aevum 桌面世界，正午">
+  <br>
+  <img src="docs/assets/readme/desktop/desktop-sunset.png" width="49%" alt="Aevum 桌面世界，黄昏">
+  <img src="docs/assets/readme/desktop/desktop-night.png" width="49%" alt="Aevum 桌面世界，夜晚与雪">
+  <br>
+  <sub>黎明 / 正午 / 黄昏 / 夜晚 · 桌面 3D 世界实时截图，已裁掉桌面外框<br>
+  Dawn / Noon / Sunset / Night · live desktop 3D captures, outer desktop chrome cropped out</sub>
+</p>
+
+---
+
+## 一封给路过的人的信 / A letter to whoever wandered in
+
+**中文**
+
+你大概不是来找一个“平台”的。你只是看见浏览器里有一片草地，草里站着两个小人，天上还有几只鸟，于是停下来两秒。够了。
+
+Aevum 现在就像一个还没写完的世界：太阳会按时间上下班，天气有六种脾气，湖面会反光，鸟群会在远处拐弯。它不要求你留下，也不要求你懂“控制平面”。你可以只是拖一下视角，看草被风吹歪，然后关掉页面去吃饭。
+
+如果它让你笑了半秒，这个项目今天就没有白活。想留下来，后门在 [CONTRIBUTING.md](CONTRIBUTING.md)；不想，前门就在右上角。
+
+**English**
+
+You probably didn't come here looking for “a platform”. You saw a field in a browser, two small characters standing in it, a few birds in the sky, and stopped for two seconds. That's enough.
+
+Right now Aevum is an unfinished world: the sun clocks in and out, the weather has six moods, the lake catches the light, and the birds turn somewhere far away. It doesn't ask you to stay, or to understand a “control plane”. You can drag the view, watch the grass lean in the wind, and close the tab for dinner.
+
+If it made you smile for half a second, the project did its job today. If you want to stay, the back door is [CONTRIBUTING.md](CONTRIBUTING.md); if not, the front door is the top-right corner.
 
 ---
 

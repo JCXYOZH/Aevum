@@ -1498,7 +1498,7 @@
         boundingRadius: 3,
         yaw: 0,
         update: function (dt) {
-          this.angle += dt * 0.06;
+          this.angle += dt * 0.45;
           this.position[0] = this.baseX + Math.sin(this.angle + this.phase) * 7;
           this.position[2] = this.baseZ + Math.cos(this.angle * 0.8 + this.phase) * 4;
           this.position[1] = this.height + Math.sin(this.angle * 2 + this.phase) * 1.2;
