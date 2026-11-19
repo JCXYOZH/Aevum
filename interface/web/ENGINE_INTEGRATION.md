@@ -74,8 +74,7 @@
 
 | 模块 | 原因 |
 | --- | --- |
-| `engine/world/terrain/terrain-atmosphere.js`、`terrain-lod-water.js`、`terrain-vegetation-water.js` | 这些是程序化地形/天空/水体/植被，要求自己的网格、LOD、深度和后处理；当前地面是单平面 shader，硬接会破坏 DOM 分层和现有相机投影 |
-| `engine/world/pipeline/world-pipeline.js` 的光照/阴影/昼夜/后处理 | 当前只用了 `CameraController`；VRM 已在自己的轻量 shader 里补主光/环境/高光/轮廓光，PMX 仍用内置简化光照。接真实阴影需要改两个渲染器的材质和 uniform，并引入 shadow map |
+| `engine/world/pipeline/world-pipeline.js` 的光照/阴影/昼夜/后处理 | `WorldEngine` 已提供这些系统；其中 `PostProcessing` 作为运行时 backend 的容器。角色渲染器仍使用各自的轻量光照，不共享该 G-Buffer |
 | `engine/character/deferred/*`（GI、头发/布料、粒子、延迟队列、材质扩展） | 依赖完整 `SpiritRenderer` 渲染图和 G-Buffer；不是当前每个角色一个透明 canvas 的结构 |
 | `engine/character/skin/*`（皮肤材质、湿度、物理妆容、皮肤物理） | 面向 SSS/皮肤材质管线，当前 PMX/VRM 渲染器没有对应的材质插槽 |
 | `engine/graphics/core/gl-core/*`、`engine/graphics/post/*` | 另一套 WebGL 核心/PBR/后处理栈，和现有 `WebGLRenderer`/`VRMRenderer` 重复；同时加载会出现两个资源与渲染循环 |

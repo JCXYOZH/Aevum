@@ -132,7 +132,11 @@ vegetation and character shaders.
 | `CameraController` | camera state is copied into the controller |
 | `World3DExt.VolumetricFog` | fog colour, density, height, falloff and sun scatter feed the post shader |
 | `World3DExt.AdvancedWaterSystem` | wave definitions and all water state (colour, foam, caustics, transparency, reflectivity) drive the rendered water shader |
-| `World3DExt.VegetationSystem` | far extension vegetation is intentionally not drawn after its instanced canopy/grass quads produced bright strips over the ridge; far trees use the base tree groups and the foreground uses base grass |
+
+Far grass is no longer a second instanced layer. It is merged into the base
+`VegetationSystem` grass array and rendered by the same `makeGrassMesh` /
+`grassProgram`, so fog, shadow and wind are shared. The old
+`World3DExt.VegetationSystem` implementation has been removed.
 
 Every row above now contributes to a real frame. The previous "not yet driven"
 list is closed; the only honest caveat is that the advanced water system supplies

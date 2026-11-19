@@ -157,19 +157,14 @@
 | `deferred/deferred-particles.js` | 944 | 粒子 |
 | `deferred/material-extensions.js` | 1,193 | 材质扩展 |
 
-### 2.10 `world/`（7 个）
+### 2.10 `world/`（2 个）
 
 | 文件 | 行数 | 职责 |
 |---|---:|---|
-| `pipeline/world-pipeline.js` | 920 | 世界渲染管线与阶段编排 |
-| `advanced/world-advanced.js` | 675 | 世界高级能力与实验实现 |
-| `terrain/terrain-atmosphere.js` | 489 | 地形大气 |
-| `terrain/terrain-lod-water.js` | 598 | 地形 LOD 与水体 |
-| `terrain/terrain-lod-weather.js` | 489 | 地形 LOD 与天气 |
-| `terrain/terrain-vegetation-water.js` | 519 | 植被与水体 |
-| `terrain/terrain-water-atmosphere.js` | 458 | 水体与大气 |
+| `pipeline/world-pipeline.js` | 998 | 世界渲染管线与阶段编排 |
+| `advanced/world-advanced.js` | 423 | 体积雾与高级水 |
 
-地形、天气、水体、LOD、世界管线属于引擎能力，不因为 `validate.html` 没有加载就判定为非引擎。
+地形、天气、水体、LOD、世界管线属于引擎能力，不因为 `validate.html` 没有加载就判定为非引擎。旧 `terrain/` 下的 5 个平行实现已删除，避免同一职责多套代码。
 
 ### 2.11 `legacy/orb/`（74 个，旧 Orb 引擎）
 
