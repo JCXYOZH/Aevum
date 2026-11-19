@@ -241,6 +241,12 @@
     gl.bindVertexArray(null);
   }
 
+  function initGraphicsEntry() {
+    if (!window.OrbWebGLCore) throw new Error('OrbWebGLCore entry is required');
+    window.OrbWebGLCore.init();
+    markGraphics('OrbWebGLCore');
+  }
+
   function initGrassWindCompute() {
     if (!window.WebGLCoreExt || !window.WebGLCoreExt.ComputeSimulator) {
       throw new Error('WebGLCoreExt.ComputeSimulator is required; inline grass wind is removed');
@@ -896,6 +902,7 @@
     fireflyMesh = makeFireflyMesh();
     spawnBirds();
     initBirdPicker();
+    initGraphicsEntry();
     initGrassWindCompute();
     shadowMesh = makeShadowMesh();
     createShadowTarget();

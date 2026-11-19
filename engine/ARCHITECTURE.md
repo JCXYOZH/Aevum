@@ -206,7 +206,7 @@ interface/console/
 | `core/gl-core/physics.js` | `Particle` / Verlet | `world-runtime.js` 萤火虫运动 |
 | `core/gl-core/interaction.js` | `Picker` / `Pickable` | `world-runtime.js` `initBirdPicker()` 鼠标拾取鸟群 |
 | `post/gl-compute-post.js` | `ComputeSimulator` | `world-runtime.js` `initGrassWindCompute()` / `updateGrassWind()`：每帧 transform feedback 生成 64 个风场偏移，作为 `GrassWind` UBO 供草顶点着色器读取 |
-| `core/gl-core/index.js` | `OrbWebGLCore` 入口 | 页面加载，供以上模块统一命名空间 |
+| `core/gl-core/index.js` | `OrbWebGLCore` 入口 | `world-runtime.js` `initGraphicsEntry()` 调用 `init()`，校验 9 个核心命名空间 |
 
 world 源码中已无 `gl.createBuffer()`、`gl.createFramebuffer()`、`gl.createProgram()`；bundle 由 `world-context.js`、`world-shaders.js`、`world-terrain.js`、`world-vegetation.js`、`world-runtime.js` 顺序拼接生成。14 个 graphics 文件均有真实调用点；草摆动唯一实现位于 `world-runtime.js` 的 `ComputeSimulator` 风场，`world-shaders.js` 草顶点着色器只读取 `GrassWind` UBO，不再保留 inline `sin(uTime...)` 等价实现。
 
