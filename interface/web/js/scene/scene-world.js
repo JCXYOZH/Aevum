@@ -72,7 +72,7 @@
   else global.addEventListener("resize", onResize);
 
   var script = document.createElement("script");
-  script.src = "js/scene/world/world-scene.bundle.js?v=20261119ae";
+  script.src = "js/scene/world/world-scene.bundle.js?v=20261119ce";
   script.async = true;
   script.onerror = function () { fail("世界渲染器装载失败"); };
   script.onload = function () {
@@ -108,3 +108,4 @@
     ready: function () { return Boolean(global.AEVUM_WORLD_READY && global.AEVUM_SCENE_READY); }
   };
 })(window);
+

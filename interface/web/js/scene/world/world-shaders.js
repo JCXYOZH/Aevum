@@ -199,15 +199,51 @@
     'uniform float uTime; uniform float uFogDensity; uniform float uFogHeight; uniform float uFogFalloff;\n' +
     'uniform float uExposure; uniform float uContrast; uniform float uSaturation; uniform float uTemperature;\n' +
     'uniform float uBloom; uniform float uVignette; uniform float uGrain; uniform vec2 uSunScreen; uniform float uNear; uniform float uFar;\n' +
+    'uniform vec2 uTexel;\n' +
+    'uniform float uSsao; uniform float uSsaoRadius; uniform float uSsaoBias; uniform float uSsaoIntensity; uniform float uSsaoRange; uniform float uSsaoSamples;\n' +
+    'uniform float uDof; uniform float uDofFocus; uniform float uDofRange; uniform float uDofAmount;\n' +
     'out vec4 outColor;\n' +
     'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }\n' +
     'vec3 worldFromDepth(vec2 uv,float depth){\n' +
     '  vec4 clip=vec4(uv*2.0-1.0,depth*2.0-1.0,1.0);\n' +
     '  vec4 world=uInvViewProj*clip; world/=world.w; return world.xyz;\n' +
     '}\n' +
+    'float linearDepth(float d){ float ndc=d*2.0-1.0; return (2.0*uNear*uFar)/(uFar+uNear-ndc*(uFar-uNear)); }\n' +
+    'vec3 sampleScene(vec2 uv){ return texture(uScene,clamp(uv,vec2(0.001),vec2(0.999))).rgb; }\n' +
     'void main(){\n' +
     '  vec3 scene=texture(uScene,vUv).rgb;\n' +
     '  float depth=texture(uDepth,vUv).r;\n' +
+    '  // SSAO: depth-only contact darkening, no extra G-buffer required.\n' +
+    '  float ao=1.0;\n' +
+    '  if(uSsao>0.001 && depth<0.9999){\n' +
+    '    float center=linearDepth(depth); float occ=0.0;\n' +
+    '    for(int i=0;i<12;i++){\n' +
+    '      if(float(i)>=uSsaoSamples) break;\n' +
+    '      float a=float(i)*2.399963+hash(vUv)*6.283185;\n' +
+    '      float r=sqrt((float(i)+1.0)/12.0)*uSsaoRadius*0.012;\n' +
+    '      float sd=texture(uDepth,vUv+vec2(cos(a),sin(a))*r).r;\n' +
+    '      if(sd<0.9999){\n' +
+    '        float sl=linearDepth(sd); float diff=center-sl;\n' +
+    '        if(diff>uSsaoBias && diff<uSsaoRange) occ+=1.0-diff/uSsaoRange;\n' +
+    '      }\n' +
+    '    }\n' +
+    '    ao=clamp(1.0-uSsaoIntensity*(occ/12.0),0.45,1.0);\n' +
+    '    scene*=mix(1.0,ao,uSsao);\n' +
+    '  }\n' +
+    '  // Depth of field: far field softens around the chosen focus distance.\n' +
+    '  if(uDof>0.001 && depth<0.9999){\n' +
+    '    float center=linearDepth(depth);\n' +
+    '    float coc=smoothstep(uDofFocus-uDofRange,uDofFocus+uDofRange,center);\n' +
+    '    if(coc>0.01){\n' +
+    '      vec3 blurred=vec3(0.0);\n' +
+    '      for(int i=0;i<8;i++){\n' +
+    '        float a=float(i)*0.785398;\n' +
+    '        float r2=(1.0+float(i%2))*uDofAmount;\n' +
+    '        blurred+=sampleScene(vUv+vec2(cos(a),sin(a))*uTexel*r2);\n' +
+    '      }\n' +
+    '      blurred/=8.0; scene=mix(scene,blurred,coc*uDof);\n' +
+    '    }\n' +
+    '  }\n' +
     '  if(depth<0.9999){\n' +
     '    vec3 wp=worldFromDepth(vUv,depth);\n' +
     '    vec3 ray=normalize(wp-uCameraPos);\n' +
@@ -490,6 +526,19 @@
     gl.uniformMatrix4fv(uniformLocation(postProgram, 'uInvViewProj'), false, inv);
     gl.uniform3fv(uniformLocation(postProgram, 'uCameraPos'), new Float32Array(eye));
     var pp = world && world.postProcessing ? world.postProcessing : null;
+    gl.uniform2f(uniformLocation(postProgram, 'uTexel'), 1.0 / Math.max(1, W), 1.0 / Math.max(1, H));
+    var ssao = pp && pp.ssao ? pp.ssao : null;
+    var dof = pp && pp.dof ? pp.dof : null;
+    gl.uniform1f(uniformLocation(postProgram, 'uSsao'), ssao && ssao.enabled !== false ? 1 : 0);
+    gl.uniform1f(uniformLocation(postProgram, 'uSsaoRadius'), ssao ? ssao.radius : 0.28);
+    gl.uniform1f(uniformLocation(postProgram, 'uSsaoBias'), ssao ? ssao.bias : 0.08);
+    gl.uniform1f(uniformLocation(postProgram, 'uSsaoIntensity'), ssao ? ssao.intensity : 0.55);
+    gl.uniform1f(uniformLocation(postProgram, 'uSsaoRange'), ssao && ssao.range ? ssao.range : 6);
+    gl.uniform1f(uniformLocation(postProgram, 'uSsaoSamples'), ssao ? ssao.samples : 10);
+    gl.uniform1f(uniformLocation(postProgram, 'uDof'), dof && dof.enabled !== false ? (dof.strength || 1) : 0);
+    gl.uniform1f(uniformLocation(postProgram, 'uDofFocus'), dof ? dof.focusDistance : 16);
+    gl.uniform1f(uniformLocation(postProgram, 'uDofRange'), dof ? dof.focusRange : 14);
+    gl.uniform1f(uniformLocation(postProgram, 'uDofAmount'), dof ? dof.blurAmount : 5);
     var exposure = pp && pp.colorGrading ? pp.colorGrading.exposure : 1.06;
     var contrast = pp && pp.colorGrading ? pp.colorGrading.contrast : 1.04;
     var sat = pp && pp.colorGrading ? pp.colorGrading.saturation : 1.04;

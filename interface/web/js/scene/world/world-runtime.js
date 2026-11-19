@@ -596,6 +596,17 @@
     world.postProcessing.bloom.intensity = 0.16;
     world.postProcessing.vignette.intensity = 0.24;
     world.postProcessing.filmGrain.intensity = 0.014;
+    world.postProcessing.ssao.enabled = true;
+    world.postProcessing.ssao.radius = 0.28;
+    world.postProcessing.ssao.bias = 0.08;
+    world.postProcessing.ssao.intensity = 0.55;
+    world.postProcessing.ssao.range = 8;
+    world.postProcessing.ssao.samples = 10;
+    world.postProcessing.dof.enabled = true;
+    world.postProcessing.dof.focusDistance = 18;
+    world.postProcessing.dof.focusRange = 12;
+    world.postProcessing.dof.blurAmount = 4;
+    world.postProcessing.dof.strength = 1;
     world.sky.setTime(0.285);
     world.sky.update(0);
     styleSky();
