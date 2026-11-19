@@ -187,28 +187,9 @@ interface/console/
 
 `core/` 不依赖 `validate.html`；它供更大的应用组装使用。
 
-### 5.6 `graphics/`：WebGL 能力层
+### 5.6 `graphics/`：已移除
 
-| 目录 / 文件 | 职责 |
-| --- | --- |
-| `core/gl-core/index.js` | WebGL 上下文、着色器编译、缓冲、纹理、状态与绘制封装（统一出口） |
-| `core/gl-core/math.js` | 图形层矩阵、向量、包围体辅助 |
-| `core/gl-core/skeleton.js` | 骨骼纹理、蒙皮矩阵上传 |
-| `core/gl-core/animation.js` | 动画采样与骨骼更新的图形侧适配 |
-| `core/gl-core/physics.js` | 物理/碰撞相关的 GPU 数据组织 |
-| `core/gl-core/interaction.js` | 拾取、射线、交互状态 |
-| `core/gl-core/behavior.js` | 行为/状态驱动 |
-| `core/gl-core/pbr.js` | PBR 材质与光照参数 |
-| `core/gl-core/post.js` | 后处理链的图形侧封装 |
-| `core/gl-core/shader.js` | 着色器源码与 uniform/attribute 装配 |
-| `extensions/gl-extensions.js` | 扩展检测与能力封装（仅保留 WebGLContext/VAO/UBO/GPUInstancing/GeometryGenerator） |
-| `shaders/shader-geometry.js` | 几何装配/管线状态（GeometryProcessor/PipelineState，唯一 owner） |
-| `textures/texture-buffer-pipeline.js` | 纹理、顶点/索引缓冲与 FBO（唯一 render pipeline owner） |
-| `post/gl-compute-post.js` | GPU compute 后处理（仅保留 ComputeSimulator） |
-
-职责归并：V4 `shader-pipeline.js`、V6 `shader-geometry-gpu.js` 与 V2 `shader-geometry.js` 类/方法集一致，已删除；V3 `render-targets.js` 与 V5 `texture-buffer-pipeline.js` 同职责，保留带 `FramebufferManager` 的 V5。混合文件按类删除重复：V2 的 `ShaderManager` 由 `core/gl-core/shader.js` 的 `OrbShader` 承担；`gl-extensions` 的 `ShaderCompiler/BufferManager/TextureManager/FramebufferManager/AdvancedMath` 删除；`gl-compute-post` 的 `InstancedRenderer/AdvancedTextureManager/FramebufferManager` 删除。
-
-`gl-core` 原先是 5,884 行单文件，现已按功能拆到 `core/gl-core/`；`index.js` 只做出口，不承载具体实现。
+当前 world/desktop 使用 `interface/web/js/scene/world` 内联实现；仓库内无运行代码引用 `engine/graphics`。原 17 个模块已按职责归并并删除，恢复点 `backup/graphics-before-full-removal-20261120`。
 
 ### 5.7 `loaders/`：模型加载与适配
 

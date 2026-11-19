@@ -54,28 +54,9 @@
 | `diagnostics/performance-monitor.js` | 732 | 帧时间、历史采样、性能统计 |
 | `toolkit/core-toolkit.js` | 1,235 | 数学、字符串、数组、对象、颜色、时间工具 |
 
-### 2.4 `graphics/`（14 个）
+### 2.4 `graphics/`（已移除）
 
-| 文件 | 行数 | 职责 |
-|---|---:|---|
-| `core/gl-core/index.js` | 22 | `gl-core` 统一出口 |
-| `core/gl-core/math.js` | 698 | 图形层矩阵、向量、包围体 |
-| `core/gl-core/skeleton.js` | 709 | 骨骼纹理、蒙皮矩阵上传 |
-| `core/gl-core/animation.js` | 866 | 动画采样与骨骼更新适配 |
-| `core/gl-core/physics.js` | 705 | 物理/碰撞的 GPU 数据组织 |
-| `core/gl-core/interaction.js` | 639 | 拾取、射线、交互状态 |
-| `core/gl-core/behavior.js` | 545 | 行为/状态驱动 |
-| `core/gl-core/pbr.js` | 491 | PBR 材质与光照参数 |
-| `core/gl-core/post.js` | 565 | 后处理链图形侧封装 |
-| `core/gl-core/shader.js` | 644 | 着色器源码、uniform/attribute 装配 |
-| `extensions/gl-extensions.js` | 675 | 扩展检测与能力封装（仅保留 WebGLContext/VAO/UBO/GPUInstancing/GeometryGenerator） |
-| `shaders/shader-geometry.js` | 503 | 几何装配/管线状态（GeometryProcessor/PipelineState，唯一 owner） |
-| `textures/texture-buffer-pipeline.js` | 720 | 纹理、顶点/索引缓冲与 FBO（唯一 render pipeline owner） |
-| `post/gl-compute-post.js` | 146 | GPU compute 后处理（仅保留 ComputeSimulator） |
-
-职责归并说明：V4 `shader-pipeline.js`、V6 `shader-geometry-gpu.js` 与 V2 `shader-geometry.js` 类/方法集一致，已删除；V3 `targets/render-targets.js` 的 `RenderPipeline / TextureManager / BufferManager` 与 V5 `textures/texture-buffer-pipeline.js` 同职责，V5 额外提供 `FramebufferManager`，保留 V5。混合文件按类归并：V2 删除重复的 `ShaderManager`（由 `core/gl-core/shader.js` 的 `OrbShader` 承担）；`gl-extensions` 删除重复的 `ShaderCompiler/BufferManager/TextureManager/FramebufferManager/AdvancedMath`；`gl-compute-post` 删除重复的 `InstancedRenderer/AdvancedTextureManager/FramebufferManager`。
-
-`core/gl-core/` 由原 5,884 行 `gl-core.js` 按功能拆分而来，共 10 个文件（9 个实现文件 + `index.js` 出口），拼接后与原文一致，全部通过 `node --check`。
+当前 world/desktop 使用 `interface/web/js/scene/world` 内联实现；仓库内无运行代码引用 `engine/graphics`。原 17 个模块已按职责归并并删除，恢复点 `backup/graphics-before-full-removal-20261120`。
 
 ### 2.5 `formats/`（8 个，纯解析）
 
