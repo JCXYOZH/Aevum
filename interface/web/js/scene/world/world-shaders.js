@@ -14,7 +14,7 @@
     'in vec3 vNormal; in vec3 vColor; in vec3 vWorld;\n' +
     'uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uAmbient;\n' +
     'uniform vec3 uFogColor; uniform float uFogDensity; uniform vec3 uCameraPos;\n' +
-    'uniform mat4 uLightVP; uniform sampler2D uShadowMap; uniform float uShadowBias;\n' +
+    'uniform mat4 uLightVPs[4]; uniform vec4 uShadowDistances; uniform sampler2D uShadowMap; uniform float uShadowBias;\n' +
     'out vec4 outColor;\n' +
     'void main(){\n' +
     '  vec3 n=normalize(vNormal);\n' +
@@ -26,10 +26,23 @@
     '  base=mix(base, vec3(0.29,0.27,0.24), smoothstep(0.55,0.92,slope)*0.58);\n' +
     '  float grain=noise(vWorld.xz*2.1);\n' +
     '  base*=0.88+0.14*grain;\n' +
-    '  vec4 sc=uLightVP*vec4(vWorld,1.0); sc.xyz/=sc.w; sc.xyz=sc.xyz*0.5+0.5;\n' +
+    '  float viewDist=length(vWorld-uCameraPos);\n' +
+    '  float cascade=0.0;\n' +
+    '  if(viewDist>uShadowDistances.x) cascade=1.0;\n' +
+    '  if(viewDist>uShadowDistances.y) cascade=2.0;\n' +
+    '  if(viewDist>uShadowDistances.z) cascade=3.0;\n' +
+    '  vec4 sc;\n' +
+    '  if(cascade<0.5) sc=uLightVPs[0]*vec4(vWorld,1.0);\n' +
+    '  else if(cascade<1.5) sc=uLightVPs[1]*vec4(vWorld,1.0);\n' +
+    '  else if(cascade<2.5) sc=uLightVPs[2]*vec4(vWorld,1.0);\n' +
+    '  else sc=uLightVPs[3]*vec4(vWorld,1.0);\n' +
+    '  sc.xyz/=sc.w; vec2 suv=sc.xy*0.5+0.5;\n' +
     '  float shadow=1.0;\n' +
-    '  if(sc.x>0.0 && sc.x<1.0 && sc.y>0.0 && sc.y<1.0 && sc.z<1.0){\n' +
-    '    float d=texture(uShadowMap,sc.xy).r;\n' +
+    '  if(suv.x>0.001 && suv.x<0.999 && suv.y>0.001 && suv.y<0.999 && sc.z<1.0){\n' +
+    '    vec2 off=vec2((cascade>0.5 && cascade<1.5) || cascade>2.5 ? 0.5 : 0.0,\n' +
+    '                  cascade>1.5 ? 0.5 : 0.0);\n' +
+    '    vec2 atlas=off+suv*0.5;\n' +
+    '    float d=texture(uShadowMap,atlas).r;\n' +
     '    shadow=(d < sc.z-uShadowBias) ? 0.38 : 1.0;\n' +
     '  }\n' +
     '  vec3 lit=base*(uAmbient + uSunColor*(0.25+0.85*ndl)*shadow);\n' +
@@ -145,15 +158,28 @@
     'in vec3 vNormal; in vec3 vColor; in vec3 vWorld;\n' +
     'uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uAmbient;\n' +
     'uniform vec3 uFogColor; uniform float uFogDensity; uniform vec3 uCameraPos;\n' +
-    'uniform mat4 uLightVP; uniform sampler2D uShadowMap; uniform float uShadowBias;\n' +
+    'uniform mat4 uLightVPs[4]; uniform vec4 uShadowDistances; uniform sampler2D uShadowMap; uniform float uShadowBias;\n' +
     'out vec4 outColor;\n' +
     'void main(){\n' +
     '  vec3 n=normalize(vNormal);\n' +
     '  float ndl=max(dot(n,normalize(uSunDir)),0.0);\n' +
-    '  vec4 sc=uLightVP*vec4(vWorld,1.0); sc.xyz/=sc.w; sc.xyz=sc.xyz*0.5+0.5;\n' +
+    '  float viewDist=length(vWorld-uCameraPos);\n' +
+    '  float cascade=0.0;\n' +
+    '  if(viewDist>uShadowDistances.x) cascade=1.0;\n' +
+    '  if(viewDist>uShadowDistances.y) cascade=2.0;\n' +
+    '  if(viewDist>uShadowDistances.z) cascade=3.0;\n' +
+    '  vec4 sc;\n' +
+    '  if(cascade<0.5) sc=uLightVPs[0]*vec4(vWorld,1.0);\n' +
+    '  else if(cascade<1.5) sc=uLightVPs[1]*vec4(vWorld,1.0);\n' +
+    '  else if(cascade<2.5) sc=uLightVPs[2]*vec4(vWorld,1.0);\n' +
+    '  else sc=uLightVPs[3]*vec4(vWorld,1.0);\n' +
+    '  sc.xyz/=sc.w; vec2 suv=sc.xy*0.5+0.5;\n' +
     '  float shadow=1.0;\n' +
-    '  if(sc.x>0.0 && sc.x<1.0 && sc.y>0.0 && sc.y<1.0 && sc.z<1.0){\n' +
-    '    float d=texture(uShadowMap,sc.xy).r;\n' +
+    '  if(suv.x>0.001 && suv.x<0.999 && suv.y>0.001 && suv.y<0.999 && sc.z<1.0){\n' +
+    '    vec2 off=vec2((cascade>0.5 && cascade<1.5) || cascade>2.5 ? 0.5 : 0.0,\n' +
+    '                  cascade>1.5 ? 0.5 : 0.0);\n' +
+    '    vec2 atlas=off+suv*0.5;\n' +
+    '    float d=texture(uShadowMap,atlas).r;\n' +
     '    shadow=(d < sc.z-uShadowBias) ? 0.62 : 1.0;\n' +
     '  }\n' +
     '  vec3 lit=vColor*(uAmbient+uSunColor*(0.32+0.75*ndl)*shadow);\n' +
@@ -341,6 +367,8 @@
 
   var programRef = terrainProgram;
   var SHADOW_SIZE = 2048;
+  var SHADOW_TILES = 2;
+  var SHADOW_TILE_SIZE = SHADOW_SIZE / SHADOW_TILES;
   var shadowFBO = null;
   var shadowTex = null;
   var sceneFBO = null;
@@ -352,6 +380,8 @@
   var postNow = 0;
   var postQuadVAO = null;
   var lightVP = M4.create();
+  var lightVPs = [M4.create(), M4.create(), M4.create(), M4.create()];
+  var shadowVPData = new Float32Array(16 * 4);
 
   function createShadowTarget() {
     shadowTex = gl.createTexture();
@@ -451,20 +481,25 @@
   function makeLightVP(light) {
     if (!world || !world.shadows || !world.camera) return;
     world.shadows.update(world.camera, light);
-    var cascade = world.shadows.getShadowMatrix(2) || world.shadows.getShadowMatrix(1) || world.shadows.getShadowMatrix(0);
-    if (cascade) {
-      lightVP.set(cascade);
-      return;
+    var cascades = world.shadows.cascades || 4;
+    for (var c = 0; c < 4; c++) {
+      var source = world.shadows.getShadowMatrix(Math.min(c, cascades - 1));
+      if (source) {
+        lightVPs[c].set(source);
+      } else {
+        var dir = light.direction;
+        var eye = [charPos[0] + dir[0] * 80, charPos[1] + 20 + dir[1] * 80, charPos[2] + dir[2] * 80];
+        var view = M4.lookAt(M4.create(), eye, [charPos[0], charPos[1] + 4, charPos[2]], [0,1,0]);
+        var proj = M4.create();
+        proj.fill(0);
+        var s = 42 + c * 28;
+        proj[0] = 1/s; proj[5] = 1/s;
+        proj[10] = -2/160; proj[14] = -1; proj[11] = -1; proj[15] = 1;
+        M4.mult(lightVPs[c], proj, view);
+      }
+      shadowVPData.set(lightVPs[c], c * 16);
     }
-    var dir = light.direction;
-    var eye = [charPos[0] + dir[0] * 80, charPos[1] + 20 + dir[1] * 80, charPos[2] + dir[2] * 80];
-    var view = M4.lookAt(M4.create(), eye, [charPos[0], charPos[1] + 4, charPos[2]], [0,1,0]);
-    var proj = M4.create();
-    proj.fill(0);
-    var s = 62;
-    proj[0] = 1/s; proj[5] = 1/s;
-    proj[10] = -2/160; proj[14] = -1; proj[11] = -1; proj[15] = 1;
-    M4.mult(lightVP, proj, view);
+    lightVP.set(lightVPs[0]);
   }
 
   function renderShadowMap() {
@@ -474,7 +509,6 @@
     gl.clear(gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
     gl.useProgram(depthProgram);
-    gl.uniformMatrix4fv(uniformLocation(depthProgram, 'uLightVP'), false, lightVP);
     var depthLoc = attrib(depthProgram, 'aPos');
     var meshes = [terrainMesh];
     for (var tg = 0; tg < treeGroups.length; tg++) meshes.push(treeGroups[tg].mesh);
@@ -491,8 +525,17 @@
         gl.bindVertexArray(null);
         meshes[i].shadowVAO = sv;
       }
-      gl.bindVertexArray(meshes[i].shadowVAO);
-      gl.drawElements(gl.TRIANGLES, meshes[i].count, gl.UNSIGNED_INT, 0);
+    }
+    for (var c = 0; c < 4; c++) {
+      var col = c % SHADOW_TILES;
+      var row = Math.floor(c / SHADOW_TILES);
+      gl.viewport(col * SHADOW_TILE_SIZE, row * SHADOW_TILE_SIZE, SHADOW_TILE_SIZE, SHADOW_TILE_SIZE);
+      gl.uniformMatrix4fv(uniformLocation(depthProgram, 'uLightVP'), false, lightVPs[c]);
+      for (var mi = 0; mi < meshes.length; mi++) {
+        if (!meshes[mi]) continue;
+        gl.bindVertexArray(meshes[mi].shadowVAO);
+        gl.drawElements(gl.TRIANGLES, meshes[mi].count, gl.UNSIGNED_INT, 0);
+      }
     }
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO);

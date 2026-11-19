@@ -161,7 +161,10 @@
   }
 
   function bindShadow(prog) {
-    gl.uniformMatrix4fv(uniformLocation(prog, 'uLightVP'), false, lightVP);
+    gl.uniformMatrix4fv(uniformLocation(prog, 'uLightVPs[0]'), false, shadowVPData);
+    var dists = world && world.shadows && world.shadows.cascadeDistances;
+    if (!dists) dists = [18, 54, 108, 180];
+    gl.uniform4f(uniformLocation(prog, 'uShadowDistances'), dists[0], dists[1], dists[2], dists[3]);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, shadowTex);
     gl.uniform1i(uniformLocation(prog, 'uShadowMap'), 1);
@@ -619,7 +622,7 @@
     world.lights.setDirectional(SUN_DIR, world.dayNight.getSunColor(), 1.20);
     world.lights.setAmbient(world.dayNight.getAmbientColor(), 0.46);
     sunColor = [1.0, 0.84, 0.63];
-    world.shadows.setQuality('medium');
+    world.shadows.setQuality('high');
     world.shadows.setShadowDistance(180);
     if (window.World3DExt) {
       fog = new window.World3DExt.VolumetricFog({ getContext: function () { return gl; } }, null);
