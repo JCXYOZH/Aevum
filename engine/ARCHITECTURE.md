@@ -201,12 +201,12 @@ interface/console/
 | `core/gl-core/pbr.js` | PBR 材质与光照参数 |
 | `core/gl-core/post.js` | 后处理链的图形侧封装 |
 | `core/gl-core/shader.js` | 着色器源码与 uniform/attribute 装配 |
-| `extensions/gl-extensions.js` | 扩展检测与能力封装 |
-| `shaders/shader-geometry.js` | 几何装配/网格生成（唯一几何 owner） |
+| `extensions/gl-extensions.js` | 扩展检测与能力封装（仅保留 WebGLContext/VAO/UBO/GPUInstancing/GeometryGenerator） |
+| `shaders/shader-geometry.js` | 几何装配/管线状态（GeometryProcessor/PipelineState，唯一 owner） |
 | `textures/texture-buffer-pipeline.js` | 纹理、顶点/索引缓冲与 FBO（唯一 render pipeline owner） |
-| `post/gl-compute-post.js` | 计算式后处理与后处理链 |
+| `post/gl-compute-post.js` | GPU compute 后处理（仅保留 ComputeSimulator） |
 
-职责归并：V4 `shader-pipeline.js`、V6 `shader-geometry-gpu.js` 与 V2 `shader-geometry.js` 类/方法集一致，已删除；V3 `render-targets.js` 与 V5 `texture-buffer-pipeline.js` 同职责，保留带 `FramebufferManager` 的 V5，删除 V3。
+职责归并：V4 `shader-pipeline.js`、V6 `shader-geometry-gpu.js` 与 V2 `shader-geometry.js` 类/方法集一致，已删除；V3 `render-targets.js` 与 V5 `texture-buffer-pipeline.js` 同职责，保留带 `FramebufferManager` 的 V5。混合文件按类删除重复：V2 的 `ShaderManager` 由 `core/gl-core/shader.js` 的 `OrbShader` 承担；`gl-extensions` 的 `ShaderCompiler/BufferManager/TextureManager/FramebufferManager/AdvancedMath` 删除；`gl-compute-post` 的 `InstancedRenderer/AdvancedTextureManager/FramebufferManager` 删除。
 
 `gl-core` 原先是 5,884 行单文件，现已按功能拆到 `core/gl-core/`；`index.js` 只做出口，不承载具体实现。
 
