@@ -1370,15 +1370,21 @@
     gl.uniform3fv(uniformLocation(terrainProgram, 'uCameraPos'), new Float32Array(cameraPos));
     bindShadow(terrainProgram);
     if (terrainChunks.length) {
+      // All chunks must use the same LOD: per-chunk LOD selection creates
+      // T-junction cracks at chunk borders, which read as bright ridge lines.
+      var nearestChunkDistance = Infinity;
+      for (var n = 0; n < terrainChunks.length; n++) {
+        var ndx = terrainChunks[n].center[0] - cameraPos[0];
+        var ndz = terrainChunks[n].center[2] - cameraPos[2];
+        nearestChunkDistance = Math.min(nearestChunkDistance, Math.sqrt(ndx * ndx + ndz * ndz));
+      }
+      var globalLod = world.terrain.getLODLevel(nearestChunkDistance);
       for (var c = 0; c < terrainChunks.length; c++) {
         var chunk = terrainChunks[c];
         // Draw all 16 chunks. Frustum-culling a chunk by its bounding sphere
         // can drop the near ground plane while the camera orbits, which reads
         // as a black lower half. Sixteen draws are cheap enough to keep.
-        var dx = chunk.center[0] - cameraPos[0];
-        var dz = chunk.center[2] - cameraPos[2];
-        var lod = world.terrain.getLODLevel(Math.sqrt(dx * dx + dz * dz));
-        var level = chunk.levels[lod] || chunk.levels[chunk.levels.length - 1];
+        var level = chunk.levels[globalLod] || chunk.levels[chunk.levels.length - 1];
         gl.bindVertexArray(level.mesh.vao);
         gl.drawElements(gl.TRIANGLES, level.mesh.count, gl.UNSIGNED_INT, 0);
       }

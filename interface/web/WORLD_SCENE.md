@@ -119,7 +119,7 @@ vegetation and character shaders.
 | Capability | How it reaches the rendered frame |
 | --- | --- |
 | `WorldEngine` | lifecycle, system containers, object add/remove/getVisibleObjects |
-| `TerrainSystem` | generated, shaped, height/normal sampling, `lodLevels` and `getLODLevel` choose 16 chunk meshes; no skirt geometry is emitted, to avoid bright vertical strips over the ridge |
+| `TerrainSystem` | generated, shaped, height/normal sampling; `getLODLevel` chooses one shared LOD for all 16 chunk meshes, avoiding T-junction cracks at chunk borders |
 | `WaterSystem` | level and wave height, plus the base water pass |
 | `VegetationSystem` | tree/grass data generation; near meshes are built by this scene |
 | `WeatherSystem` | clear/cloud/rain/storm/snow/fog state; rain and snow particles; wind, cloud, fog and thunder values feed sky, water and post |
