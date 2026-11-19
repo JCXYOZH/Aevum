@@ -187,9 +187,23 @@ interface/console/
 
 `core/` 不依赖 `validate.html`；它供更大的应用组装使用。
 
-### 5.6 `graphics/`：已移除
+### 5.6 `graphics/`：当前 world/desktop 的实际图形依赖
 
-当前 world/desktop 使用 `interface/web/js/scene/world` 内联实现；仓库内无运行代码引用 `engine/graphics`。原 17 个模块已按职责归并并删除，恢复点 `backup/graphics-before-full-removal-20261120`。
+`engine/graphics` 是唯一图形模块 owner。world/desktop 不再保留与之等价的 inline 实现：
+
+| 文件 | 唯一职责 | 实际调用点 |
+| --- | --- | --- |
+| `core/gl-core/math.js` | `OrbMath` 向量与矩阵 | `world-vegetation.js` `normalize3()` |
+| `core/gl-core/shader.js` | `OrbShader.ShaderManager` | `world-context.js` `program()` |
+| `core/gl-core/post.js` | `OrbPost.RenderTarget` | `world-shaders.js` `createSceneTarget()` 的 post FBO |
+| `shaders/shader-geometry.js` | V2 `GeometryProcessor` / `PipelineState` | `world-shaders.js` `makeSkySphere()` |
+| `textures/texture-buffer-pipeline.js` | V5 `BufferManager` / `FramebufferManager` / `TextureManager` / `RenderPipeline` | `world-context.js` `managedBuffer()`；`world-shaders.js` scene/shadow FBO、depth 纹理、FXAA pass |
+| `extensions/gl-extensions.js` | `GeometryGenerator` 等 | `world-shaders.js` `makeSkySphere()` 球体生成 |
+| `post/gl-compute-post.js` | `ComputeSimulator` | 尚未接入真实模拟调用 |
+| `core/gl-core/{skeleton,animation,physics,interaction,behavior,pbr}.js` | 角色/动画/物理/交互/行为/PBR 能力 | 尚未接入 world 真实调用 |
+| `core/gl-core/index.js` | `OrbWebGLCore` 入口 | 页面加载，供以上模块统一命名空间 |
+
+world 源码中已无 `gl.createBuffer()`、`gl.createFramebuffer()`、`gl.createProgram()`；bundle 由 `world-context.js`、`world-shaders.js`、`world-terrain.js`、`world-vegetation.js`、`world-runtime.js` 顺序拼接生成。未接入的 7 个核心能力模块是唯一实现，不得再用 inline 版本替代；接入前不能宣称 100% 利用率。
 
 ### 5.7 `loaders/`：模型加载与适配
 

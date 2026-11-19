@@ -385,6 +385,11 @@
   var sceneDepthTex = null;
   var postFBO = null;
   var postColorTex = null;
+  var postRenderTarget = null;
+  var v5FramebufferManager = null;
+  var v5TextureManager = null;
+  var v2GeometryProcessor = null;
+  var v5FxaaPipeline = null;
   var fxaaQuadVAO = null;
   var postNow = 0;
   var postQuadVAO = null;
@@ -393,18 +398,34 @@
   var shadowVPData = new Float32Array(16 * 4);
 
   function createShadowTarget() {
-    shadowTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, shadowTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, SHADOW_SIZE, SHADOW_SIZE, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    shadowFBO = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowTex, 0);
+    if (!window.WebGLCoreV5 || !window.WebGLCoreV5.TextureManager || !window.WebGLCoreV5.FramebufferManager) {
+      throw new Error('WebGLCoreV5 TextureManager/FramebufferManager is required; inline shadow target is removed');
+    }
+    if (!v5TextureManager) v5TextureManager = new window.WebGLCoreV5.TextureManager({ getContext: function () { return gl; } });
+    if (!v5FramebufferManager) v5FramebufferManager = new window.WebGLCoreV5.FramebufferManager({ getContext: function () { return gl; } });
+    var shadowTextureInfo = v5TextureManager.create('world-shadow-depth', {
+      width: SHADOW_SIZE,
+      height: SHADOW_SIZE,
+      internalFormat: gl.DEPTH_COMPONENT24,
+      format: gl.DEPTH_COMPONENT,
+      type: gl.UNSIGNED_INT,
+      minFilter: gl.NEAREST,
+      magFilter: gl.NEAREST,
+      wrapS: gl.CLAMP_TO_EDGE,
+      wrapT: gl.CLAMP_TO_EDGE,
+      generateMipmaps: false
+    });
+    shadowTex = shadowTextureInfo.id;
+    var shadowFramebufferInfo = v5FramebufferManager.create('world-shadow', { width: SHADOW_SIZE, height: SHADOW_SIZE });
+    v5FramebufferManager.attach(shadowFramebufferInfo, {
+      attachmentPoint: gl.DEPTH_ATTACHMENT,
+      texture: shadowTex,
+      textureTarget: gl.TEXTURE_2D
+    });
     gl.drawBuffers([gl.NONE]);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    shadowFBO = shadowFramebufferInfo.id;
+    v5FramebufferManager.unbind();
+    markGraphics('WebGLCoreV5');
   }
 
   function createSceneTarget() {
@@ -423,30 +444,38 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    sceneFBO = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneColorTex, 0);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, sceneDepthTex, 0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (!window.WebGLCoreV5 || !window.WebGLCoreV5.FramebufferManager) {
+      throw new Error('WebGLCoreV5.FramebufferManager is required; inline scene FBO is removed');
+    }
+    if (!v5FramebufferManager) v5FramebufferManager = new window.WebGLCoreV5.FramebufferManager({ getContext: function () { return gl; } });
+    var sceneFramebufferInfo = v5FramebufferManager.create('world-scene', { width: w, height: h });
+    v5FramebufferManager.attach(sceneFramebufferInfo, {
+      attachmentPoint: gl.COLOR_ATTACHMENT0,
+      texture: sceneColorTex,
+      textureTarget: gl.TEXTURE_2D
+    });
+    v5FramebufferManager.attach(sceneFramebufferInfo, {
+      attachmentPoint: gl.DEPTH_ATTACHMENT,
+      texture: sceneDepthTex,
+      textureTarget: gl.TEXTURE_2D
+    });
+    sceneFBO = sceneFramebufferInfo.id;
+    v5FramebufferManager.unbind();
+    markGraphics('WebGLCoreV5');
 
-    postColorTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, postColorTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    postFBO = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, postFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, postColorTex, 0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (!window.OrbPost || !window.OrbPost.RenderTarget) {
+      throw new Error('OrbPost.RenderTarget is required; inline post FBO fallback is removed');
+    }
+    postRenderTarget = new window.OrbPost.RenderTarget(gl, w, h, { depthBuffer: false });
+    postFBO = postRenderTarget.framebuffer;
+    postColorTex = postRenderTarget.texture;
+    markGraphics('OrbPost');
 
     if (!postQuadVAO) {
       postQuadVAO = gl.createVertexArray();
       gl.bindVertexArray(postQuadVAO);
-      var quad = gl.createBuffer();
+      var quad = managedBuffer('world-post-quad', new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.ARRAY_BUFFER);
       gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
       var loc = uniformLocation(postProgram, 'aPos');
       gl.enableVertexAttribArray(loc);
       gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
@@ -455,9 +484,8 @@
     if (!rainVAO) {
       rainVAO = gl.createVertexArray();
       gl.bindVertexArray(rainVAO);
-      rainBuffer = gl.createBuffer();
+      rainBuffer = managedBuffer('world-rain-buffer', rainData, gl.ARRAY_BUFFER, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, rainBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, rainData, gl.DYNAMIC_DRAW);
       var rainLoc = attrib(rainProgram, 'aPos');
       gl.enableVertexAttribArray(rainLoc);
       gl.vertexAttribPointer(rainLoc, 3, gl.FLOAT, false, 0, 0);
@@ -466,9 +494,8 @@
     if (!snowVAO) {
       snowVAO = gl.createVertexArray();
       gl.bindVertexArray(snowVAO);
-      snowBuffer = gl.createBuffer();
+      snowBuffer = managedBuffer('world-snow-buffer', snowData, gl.ARRAY_BUFFER, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, snowBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, snowData, gl.DYNAMIC_DRAW);
       var snowLoc = attrib(snowProgram, 'aPos');
       gl.enableVertexAttribArray(snowLoc);
       gl.vertexAttribPointer(snowLoc, 3, gl.FLOAT, false, 0, 0);
@@ -477,9 +504,8 @@
     if (!fxaaQuadVAO) {
       fxaaQuadVAO = gl.createVertexArray();
       gl.bindVertexArray(fxaaQuadVAO);
-      var fxaaQuad = gl.createBuffer();
+      var fxaaQuad = managedBuffer('world-fxaa-quad', new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.ARRAY_BUFFER);
       gl.bindBuffer(gl.ARRAY_BUFFER, fxaaQuad);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
       var fxaaLoc = attrib(fxaaProgram, 'aPos');
       gl.enableVertexAttribArray(fxaaLoc);
       gl.vertexAttribPointer(fxaaLoc, 2, gl.FLOAT, false, 0, 0);
@@ -622,19 +648,39 @@
   }
 
   function drawFxaa(inputTexture) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, W, H);
-    gl.disable(gl.DEPTH_TEST);
-    gl.useProgram(fxaaProgram);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-    gl.uniform1i(uniformLocation(fxaaProgram, 'uTex'), 0);
-    gl.uniform2f(uniformLocation(fxaaProgram, 'uTexel'), 1.0 / Math.max(1, W), 1.0 / Math.max(1, H));
     var chromatic = world && world.postProcessing ? world.postProcessing.chromaticAberration : null;
-    gl.uniform1f(uniformLocation(fxaaProgram, 'uChroma'), chromatic && chromatic.enabled ? chromatic.amount : 0);
+    if (!window.WebGLCoreV5 || !window.WebGLCoreV5.RenderPipeline) {
+      throw new Error('WebGLCoreV5.RenderPipeline is required; inline FXAA fallback is removed');
+    }
+    if (!v5FxaaPipeline) {
+      v5FxaaPipeline = new window.WebGLCoreV5.RenderPipeline({ getContext: function () { return gl; } });
+      v5FxaaPipeline.addPass('fxaa', {
+        program: fxaaProgram,
+        framebuffer: null,
+        viewport: [0, 0, W, H],
+        clearMask: 0,
+        depthTest: false,
+        depthWrite: false,
+        cullFace: false,
+        blend: false,
+        textures: [],
+        uniforms: {}
+      });
+    }
+    var fxaaPass = v5FxaaPipeline.getPass('fxaa');
+    fxaaPass.viewport = [0, 0, W, H];
+    fxaaPass.textures = [inputTexture];
+    fxaaPass.uniforms.uTexel = [1.0 / Math.max(1, W), 1.0 / Math.max(1, H)];
+    fxaaPass.uniforms.uChroma = chromatic && chromatic.enabled ? chromatic.amount : 0;
+    v5FxaaPipeline.beginPass('fxaa');
+    markGraphics('WebGLCoreV5');
     gl.bindVertexArray(fxaaQuadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
+    if (v5FxaaPipeline) v5FxaaPipeline.endPass();
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
     gl.enable(gl.DEPTH_TEST);
   }
 
@@ -650,34 +696,32 @@
 
 
   function makeSkySphere() {
-    var lat = 18, lon = 36;
-    var positions = [], indices = [];
-    for (var y = 0; y <= lat; y++) {
-      var phi = y / lat * Math.PI;
-      for (var x = 0; x <= lon; x++) {
-        var theta = x / lon * Math.PI * 2;
-        positions.push(
-          Math.cos(theta) * Math.sin(phi),
-          Math.cos(phi),
-          Math.sin(theta) * Math.sin(phi)
-        );
-      }
+    if (!window.WebGLCore || !window.WebGLCore.GeometryGenerator) {
+      throw new Error('WebGLCore.GeometryGenerator is required; inline sky sphere generation is removed');
     }
-    for (var y2 = 0; y2 < lat; y2++) {
-      for (var x2 = 0; x2 < lon; x2++) {
-        var i = y2 * (lon + 1) + x2;
-        indices.push(i, i + lon + 1, i + 1, i + 1, i + lon + 1, i + lon + 2);
-      }
+    var sphere = window.WebGLCore.GeometryGenerator.createSphere(1, 36, 18);
+    if (!sphere || !sphere.vertices || !sphere.indices) throw new Error('GeometryGenerator failed to create sky sphere');
+    var positions = sphere.vertices;
+    var indices = sphere.indices;
+    markGraphics('gl-extensions');
+    if (!window.WebGLCoreV2 || !window.WebGLCoreV2.GeometryProcessor) {
+      throw new Error('WebGLCoreV2.GeometryProcessor is required; inline sky geometry fallback is removed');
     }
+    if (!v2GeometryProcessor) v2GeometryProcessor = new window.WebGLCoreV2.GeometryProcessor();
+    var skyGeometry = v2GeometryProcessor.createGeometry('world-sky-sphere', { vertices: positions, indices: indices });
+    if (!skyGeometry) throw new Error('WebGLCoreV2 failed to create sky geometry');
+    positions = skyGeometry.vertices;
+    indices = skyGeometry.indices;
+    markGraphics('WebGLCoreV2');
     var vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
-    var b = buffer(new Float32Array(positions), gl.ARRAY_BUFFER);
+    var b = managedBuffer('world-sky-position', new Float32Array(positions), gl.ARRAY_BUFFER);
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
     var loc = attrib(skyProgram, 'aPos');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
-    var ibo = gl.createBuffer();
+    var ibo = managedBuffer('world-sky-index', new Uint32Array(indices), gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao: vao, count: indices.length };
   }
@@ -707,9 +751,8 @@
     var loc = attrib(waterProgram, 'aPos');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    var ibo = gl.createBuffer();
+    var ibo = managedBuffer('world-water-index', new Uint32Array(indices), gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao: vao, count: indices.length };
   }
@@ -728,9 +771,8 @@
     var loc = attrib(shadowProgram, 'aPos');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    var ibo = gl.createBuffer();
+    var ibo = managedBuffer('world-shadow-index', new Uint32Array(indices), gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao: vao, count: indices.length };
   }

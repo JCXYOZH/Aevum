@@ -54,9 +54,23 @@
 | `diagnostics/performance-monitor.js` | 732 | 帧时间、历史采样、性能统计 |
 | `toolkit/core-toolkit.js` | 1,235 | 数学、字符串、数组、对象、颜色、时间工具 |
 
-### 2.4 `graphics/`（已移除）
+### 2.4 `graphics/`（14 个，唯一图形 owner）
 
-当前 world/desktop 使用 `interface/web/js/scene/world` 内联实现；仓库内无运行代码引用 `engine/graphics`。原 17 个模块已按职责归并并删除，恢复点 `backup/graphics-before-full-removal-20261120`。
+world/desktop 通过 `world.html` / `desktop.html` 加载以下模块；模块与页面 inline 实现不允许同时存在。
+
+| 文件 | 职责 | 当前调用 |
+|---|---|---|
+| `core/gl-core/math.js` | `OrbMath` 向量/矩阵 | `world-vegetation.js` `normalize3()` |
+| `core/gl-core/shader.js` | `OrbShader.ShaderManager` | `world-context.js` `program()` |
+| `core/gl-core/post.js` | `OrbPost.RenderTarget` | post FBO |
+| `shaders/shader-geometry.js` | V2 `GeometryProcessor` / `PipelineState` | 天空球 geometry |
+| `textures/texture-buffer-pipeline.js` | V5 Buffer/FBO/Texture/RenderPipeline | 全部 buffer、scene/shadow FBO、depth 纹理、FXAA |
+| `extensions/gl-extensions.js` | `GeometryGenerator` 等 | 天空球球体生成 |
+| `post/gl-compute-post.js` | `ComputeSimulator` | 待接入 |
+| `core/gl-core/{skeleton,animation,physics,interaction,behavior,pbr}.js` | 角色/动画/物理/交互/行为/PBR | 待接入 |
+| `core/gl-core/index.js` | `OrbWebGLCore` 入口 | 页面加载 |
+
+world 源码已无 `gl.createBuffer()`、`gl.createFramebuffer()`、`gl.createProgram()`；bundle 由 `world-context.js`、`world-shaders.js`、`world-terrain.js`、`world-vegetation.js`、`world-runtime.js` 顺序拼接。
 
 ### 2.5 `formats/`（8 个，纯解析）
 

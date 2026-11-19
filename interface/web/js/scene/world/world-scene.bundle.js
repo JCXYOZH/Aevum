@@ -53,6 +53,21 @@
   var LAKE = [0, -52];
   var weatherClock = 0;
   var weatherNext = 180 + Math.random() * 120;
+  var orbShaderManager = null;
+  var orbShaderSeq = 0;
+  var graphicsUsage = window.AEVUM_GRAPHICS_USAGE || (window.AEVUM_GRAPHICS_USAGE = {});
+  var graphicsUsageDirty = false;
+  function markGraphics(name) {
+    graphicsUsage[name] = (graphicsUsage[name] || 0) + 1;
+    if (graphicsUsageDirty) return;
+    graphicsUsageDirty = true;
+    setTimeout(function () {
+      graphicsUsageDirty = false;
+      if (document.documentElement) {
+        document.documentElement.setAttribute('data-graphics-usage', JSON.stringify(graphicsUsage));
+      }
+    }, 200);
+  }
 
   function setReady(text) {
     if (!stateEl) return;
@@ -72,32 +87,37 @@
     }
   }
 
-  function compile(type, source) {
-    var sh = gl.createShader(type);
-    gl.shaderSource(sh, source);
-    gl.compileShader(sh);
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-      throw new Error(gl.getShaderInfoLog(sh) + '\n' + source);
-    }
-    return sh;
-  }
   function program(vsSource, fsSource) {
-    var p = gl.createProgram();
-    gl.attachShader(p, compile(gl.VERTEX_SHADER, vsSource));
-    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsSource));
-    gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(p));
+    if (!window.OrbShader || !window.OrbShader.ShaderManager) {
+      throw new Error('OrbShader.ShaderManager is required; inline shader compiler is removed');
     }
-    return p;
+    if (!orbShaderManager) orbShaderManager = new window.OrbShader.ShaderManager(gl);
+    var orbProgram = orbShaderManager.createProgram('world-' + (orbShaderSeq++), vsSource, fsSource);
+    if (!orbProgram) throw new Error('OrbShader failed to create program');
+    markGraphics('OrbShader');
+    return orbProgram;
   }
   function uniformLocation(p, name) { return gl.getUniformLocation(p, name); }
   function attrib(p, name) { return gl.getAttribLocation(p, name); }
+  var bufferSeq = 0;
+  var meshSeq = 0;
   function buffer(data, target) {
-    var b = gl.createBuffer();
-    gl.bindBuffer(target || gl.ARRAY_BUFFER, b);
-    gl.bufferData(target || gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-    return b;
+    return managedBuffer('world-buffer-' + (bufferSeq++), data, target);
+  }
+  var v5BufferManager = null;
+  function managedBuffer(name, data, target, usage) {
+    if (!window.WebGLCoreV5 || !window.WebGLCoreV5.BufferManager) {
+      throw new Error('WebGLCoreV5.BufferManager is required; inline buffer fallback is removed');
+    }
+    if (!v5BufferManager) v5BufferManager = new window.WebGLCoreV5.BufferManager({ getContext: function () { return gl; } });
+    var info = v5BufferManager.create(name, {
+      target: target || gl.ARRAY_BUFFER,
+      data: data,
+      usage: usage || gl.STATIC_DRAW,
+      count: 0
+    });
+    markGraphics('WebGLCoreV5');
+    return info.id;
   }
   function bindAttrib(p, name, b, size, stride, offset) {
     var loc = attrib(p, name);
@@ -120,14 +140,14 @@
     if (normals) bindAttrib(programRef, 'aNormal', buffer(normals, gl.ARRAY_BUFFER), 3, 0, 0);
     if (colors) bindAttrib(programRef, 'aColor', buffer(colors, gl.ARRAY_BUFFER), 3, 0, 0);
     if (flex) bindAttrib(programRef, 'aFlex', buffer(flex, gl.ARRAY_BUFFER), 1, 0, 0);
-    var ibo = gl.createBuffer();
+    var ibo = managedBuffer('world-mesh-index-' + (meshSeq++), indices, gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao: vao, count: indices.length, ibo: ibo, posBuffer: posBuffer };
   }
 
   
+
 // ---- programs ---------------------------------------------------------
   var terrainProgram = program(
     '#version 300 es\n' +
@@ -515,6 +535,11 @@
   var sceneDepthTex = null;
   var postFBO = null;
   var postColorTex = null;
+  var postRenderTarget = null;
+  var v5FramebufferManager = null;
+  var v5TextureManager = null;
+  var v2GeometryProcessor = null;
+  var v5FxaaPipeline = null;
   var fxaaQuadVAO = null;
   var postNow = 0;
   var postQuadVAO = null;
@@ -523,18 +548,34 @@
   var shadowVPData = new Float32Array(16 * 4);
 
   function createShadowTarget() {
-    shadowTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, shadowTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, SHADOW_SIZE, SHADOW_SIZE, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    shadowFBO = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowTex, 0);
+    if (!window.WebGLCoreV5 || !window.WebGLCoreV5.TextureManager || !window.WebGLCoreV5.FramebufferManager) {
+      throw new Error('WebGLCoreV5 TextureManager/FramebufferManager is required; inline shadow target is removed');
+    }
+    if (!v5TextureManager) v5TextureManager = new window.WebGLCoreV5.TextureManager({ getContext: function () { return gl; } });
+    if (!v5FramebufferManager) v5FramebufferManager = new window.WebGLCoreV5.FramebufferManager({ getContext: function () { return gl; } });
+    var shadowTextureInfo = v5TextureManager.create('world-shadow-depth', {
+      width: SHADOW_SIZE,
+      height: SHADOW_SIZE,
+      internalFormat: gl.DEPTH_COMPONENT24,
+      format: gl.DEPTH_COMPONENT,
+      type: gl.UNSIGNED_INT,
+      minFilter: gl.NEAREST,
+      magFilter: gl.NEAREST,
+      wrapS: gl.CLAMP_TO_EDGE,
+      wrapT: gl.CLAMP_TO_EDGE,
+      generateMipmaps: false
+    });
+    shadowTex = shadowTextureInfo.id;
+    var shadowFramebufferInfo = v5FramebufferManager.create('world-shadow', { width: SHADOW_SIZE, height: SHADOW_SIZE });
+    v5FramebufferManager.attach(shadowFramebufferInfo, {
+      attachmentPoint: gl.DEPTH_ATTACHMENT,
+      texture: shadowTex,
+      textureTarget: gl.TEXTURE_2D
+    });
     gl.drawBuffers([gl.NONE]);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    shadowFBO = shadowFramebufferInfo.id;
+    v5FramebufferManager.unbind();
+    markGraphics('WebGLCoreV5');
   }
 
   function createSceneTarget() {
@@ -553,30 +594,38 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    sceneFBO = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneColorTex, 0);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, sceneDepthTex, 0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (!window.WebGLCoreV5 || !window.WebGLCoreV5.FramebufferManager) {
+      throw new Error('WebGLCoreV5.FramebufferManager is required; inline scene FBO is removed');
+    }
+    if (!v5FramebufferManager) v5FramebufferManager = new window.WebGLCoreV5.FramebufferManager({ getContext: function () { return gl; } });
+    var sceneFramebufferInfo = v5FramebufferManager.create('world-scene', { width: w, height: h });
+    v5FramebufferManager.attach(sceneFramebufferInfo, {
+      attachmentPoint: gl.COLOR_ATTACHMENT0,
+      texture: sceneColorTex,
+      textureTarget: gl.TEXTURE_2D
+    });
+    v5FramebufferManager.attach(sceneFramebufferInfo, {
+      attachmentPoint: gl.DEPTH_ATTACHMENT,
+      texture: sceneDepthTex,
+      textureTarget: gl.TEXTURE_2D
+    });
+    sceneFBO = sceneFramebufferInfo.id;
+    v5FramebufferManager.unbind();
+    markGraphics('WebGLCoreV5');
 
-    postColorTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, postColorTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    postFBO = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, postFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, postColorTex, 0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (!window.OrbPost || !window.OrbPost.RenderTarget) {
+      throw new Error('OrbPost.RenderTarget is required; inline post FBO fallback is removed');
+    }
+    postRenderTarget = new window.OrbPost.RenderTarget(gl, w, h, { depthBuffer: false });
+    postFBO = postRenderTarget.framebuffer;
+    postColorTex = postRenderTarget.texture;
+    markGraphics('OrbPost');
 
     if (!postQuadVAO) {
       postQuadVAO = gl.createVertexArray();
       gl.bindVertexArray(postQuadVAO);
-      var quad = gl.createBuffer();
+      var quad = managedBuffer('world-post-quad', new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.ARRAY_BUFFER);
       gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
       var loc = uniformLocation(postProgram, 'aPos');
       gl.enableVertexAttribArray(loc);
       gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
@@ -585,9 +634,8 @@
     if (!rainVAO) {
       rainVAO = gl.createVertexArray();
       gl.bindVertexArray(rainVAO);
-      rainBuffer = gl.createBuffer();
+      rainBuffer = managedBuffer('world-rain-buffer', rainData, gl.ARRAY_BUFFER, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, rainBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, rainData, gl.DYNAMIC_DRAW);
       var rainLoc = attrib(rainProgram, 'aPos');
       gl.enableVertexAttribArray(rainLoc);
       gl.vertexAttribPointer(rainLoc, 3, gl.FLOAT, false, 0, 0);
@@ -596,9 +644,8 @@
     if (!snowVAO) {
       snowVAO = gl.createVertexArray();
       gl.bindVertexArray(snowVAO);
-      snowBuffer = gl.createBuffer();
+      snowBuffer = managedBuffer('world-snow-buffer', snowData, gl.ARRAY_BUFFER, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, snowBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, snowData, gl.DYNAMIC_DRAW);
       var snowLoc = attrib(snowProgram, 'aPos');
       gl.enableVertexAttribArray(snowLoc);
       gl.vertexAttribPointer(snowLoc, 3, gl.FLOAT, false, 0, 0);
@@ -607,9 +654,8 @@
     if (!fxaaQuadVAO) {
       fxaaQuadVAO = gl.createVertexArray();
       gl.bindVertexArray(fxaaQuadVAO);
-      var fxaaQuad = gl.createBuffer();
+      var fxaaQuad = managedBuffer('world-fxaa-quad', new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.ARRAY_BUFFER);
       gl.bindBuffer(gl.ARRAY_BUFFER, fxaaQuad);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
       var fxaaLoc = attrib(fxaaProgram, 'aPos');
       gl.enableVertexAttribArray(fxaaLoc);
       gl.vertexAttribPointer(fxaaLoc, 2, gl.FLOAT, false, 0, 0);
@@ -752,19 +798,39 @@
   }
 
   function drawFxaa(inputTexture) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, W, H);
-    gl.disable(gl.DEPTH_TEST);
-    gl.useProgram(fxaaProgram);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-    gl.uniform1i(uniformLocation(fxaaProgram, 'uTex'), 0);
-    gl.uniform2f(uniformLocation(fxaaProgram, 'uTexel'), 1.0 / Math.max(1, W), 1.0 / Math.max(1, H));
     var chromatic = world && world.postProcessing ? world.postProcessing.chromaticAberration : null;
-    gl.uniform1f(uniformLocation(fxaaProgram, 'uChroma'), chromatic && chromatic.enabled ? chromatic.amount : 0);
+    if (!window.WebGLCoreV5 || !window.WebGLCoreV5.RenderPipeline) {
+      throw new Error('WebGLCoreV5.RenderPipeline is required; inline FXAA fallback is removed');
+    }
+    if (!v5FxaaPipeline) {
+      v5FxaaPipeline = new window.WebGLCoreV5.RenderPipeline({ getContext: function () { return gl; } });
+      v5FxaaPipeline.addPass('fxaa', {
+        program: fxaaProgram,
+        framebuffer: null,
+        viewport: [0, 0, W, H],
+        clearMask: 0,
+        depthTest: false,
+        depthWrite: false,
+        cullFace: false,
+        blend: false,
+        textures: [],
+        uniforms: {}
+      });
+    }
+    var fxaaPass = v5FxaaPipeline.getPass('fxaa');
+    fxaaPass.viewport = [0, 0, W, H];
+    fxaaPass.textures = [inputTexture];
+    fxaaPass.uniforms.uTexel = [1.0 / Math.max(1, W), 1.0 / Math.max(1, H)];
+    fxaaPass.uniforms.uChroma = chromatic && chromatic.enabled ? chromatic.amount : 0;
+    v5FxaaPipeline.beginPass('fxaa');
+    markGraphics('WebGLCoreV5');
     gl.bindVertexArray(fxaaQuadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
+    if (v5FxaaPipeline) v5FxaaPipeline.endPass();
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
     gl.enable(gl.DEPTH_TEST);
   }
 
@@ -780,34 +846,32 @@
 
 
   function makeSkySphere() {
-    var lat = 18, lon = 36;
-    var positions = [], indices = [];
-    for (var y = 0; y <= lat; y++) {
-      var phi = y / lat * Math.PI;
-      for (var x = 0; x <= lon; x++) {
-        var theta = x / lon * Math.PI * 2;
-        positions.push(
-          Math.cos(theta) * Math.sin(phi),
-          Math.cos(phi),
-          Math.sin(theta) * Math.sin(phi)
-        );
-      }
+    if (!window.WebGLCore || !window.WebGLCore.GeometryGenerator) {
+      throw new Error('WebGLCore.GeometryGenerator is required; inline sky sphere generation is removed');
     }
-    for (var y2 = 0; y2 < lat; y2++) {
-      for (var x2 = 0; x2 < lon; x2++) {
-        var i = y2 * (lon + 1) + x2;
-        indices.push(i, i + lon + 1, i + 1, i + 1, i + lon + 1, i + lon + 2);
-      }
+    var sphere = window.WebGLCore.GeometryGenerator.createSphere(1, 36, 18);
+    if (!sphere || !sphere.vertices || !sphere.indices) throw new Error('GeometryGenerator failed to create sky sphere');
+    var positions = sphere.vertices;
+    var indices = sphere.indices;
+    markGraphics('gl-extensions');
+    if (!window.WebGLCoreV2 || !window.WebGLCoreV2.GeometryProcessor) {
+      throw new Error('WebGLCoreV2.GeometryProcessor is required; inline sky geometry fallback is removed');
     }
+    if (!v2GeometryProcessor) v2GeometryProcessor = new window.WebGLCoreV2.GeometryProcessor();
+    var skyGeometry = v2GeometryProcessor.createGeometry('world-sky-sphere', { vertices: positions, indices: indices });
+    if (!skyGeometry) throw new Error('WebGLCoreV2 failed to create sky geometry');
+    positions = skyGeometry.vertices;
+    indices = skyGeometry.indices;
+    markGraphics('WebGLCoreV2');
     var vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
-    var b = buffer(new Float32Array(positions), gl.ARRAY_BUFFER);
+    var b = managedBuffer('world-sky-position', new Float32Array(positions), gl.ARRAY_BUFFER);
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
     var loc = attrib(skyProgram, 'aPos');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
-    var ibo = gl.createBuffer();
+    var ibo = managedBuffer('world-sky-index', new Uint32Array(indices), gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao: vao, count: indices.length };
   }
@@ -837,9 +901,8 @@
     var loc = attrib(waterProgram, 'aPos');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    var ibo = gl.createBuffer();
+    var ibo = managedBuffer('world-water-index', new Uint32Array(indices), gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao: vao, count: indices.length };
   }
@@ -858,14 +921,141 @@
     var loc = attrib(shadowProgram, 'aPos');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    var ibo = gl.createBuffer();
+    var ibo = managedBuffer('world-shadow-index', new Uint32Array(indices), gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao: vao, count: indices.length };
   }
 
   
+
+// ---- terrain shaping --------------------------------------------------
+  function smoothstep(a, b, x) {
+    var t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  }
+  function shapeTerrain(t) {
+    var seg = t.segments + 1;
+    for (var i = 0; i < seg * seg; i++) {
+      var x = t.vertices[i * 3];
+      var z = t.vertices[i * 3 + 2];
+      var h = t.heightMap[i];
+      var ds = Math.sqrt((x - SPAWN[0]) * (x - SPAWN[0]) + (z - SPAWN[1]) * (z - SPAWN[1]));
+      var spawnBlend = 1 - smoothstep(7.5, 20.0, ds);
+      h = h * (1 - spawnBlend) + 0.0 * spawnBlend;
+      var dl = Math.sqrt((x - LAKE[0]) * (x - LAKE[0]) + (z - LAKE[1]) * (z - LAKE[1]));
+      var lakeBlend = 1 - smoothstep(13.0, 26.0, dl);
+      h = h * (1 - lakeBlend) + (-9.5) * lakeBlend;
+      var ridge = smoothstep(58.0, 96.0, -z);
+      h += ridge * (10.0 + 8.0 * Math.sin(x * 0.12 + 1.2));
+      t.heightMap[i] = h;
+      t.vertices[i * 3 + 1] = h;
+    }
+    t._computeNormals();
+    for (var j = 0; j < seg * seg; j++) {
+      var hh = t.heightMap[j];
+      var ny = t.normals[j * 3 + 1];
+      var c0 = 0.16, c1 = 0.22, c2 = 0.10;
+      if (hh < WATER_LEVEL - 0.5) { c0 = 0.04; c1 = 0.07; c2 = 0.07; }
+      else if (hh < WATER_LEVEL + 0.80) { c0 = 0.32; c1 = 0.28; c2 = 0.18; }
+      else if (hh < 6.0) { c0 = 0.16; c1 = 0.22; c2 = 0.10; }
+      else if (hh < 13.0) { c0 = 0.22; c1 = 0.21; c2 = 0.17; }
+      else { c0 = 0.40; c1 = 0.43; c2 = 0.47; }
+      if (ny < 0.56) {
+        c0 = c0 * 0.68 + 0.20;
+        c1 = c1 * 0.68 + 0.19;
+        c2 = c2 * 0.68 + 0.17;
+      }
+      var patch = 0.5 + 0.5 * Math.sin(x * 0.23 + Math.cos(z * 0.17) * 1.8);
+      var patch2 = 0.5 + 0.5 * Math.sin(x * 0.07 - z * 0.11);
+      if (hh >= WATER_LEVEL + 0.8 && hh < 6.0) {
+        c0 = c0 * (0.76 + 0.26 * patch) + 0.035 * patch2;
+        c1 = c1 * (0.86 + 0.18 * patch);
+        c2 = c2 * (0.74 + 0.14 * patch) + 0.012 * patch2;
+      }
+      t.colors[j * 3] = c0;
+      t.colors[j * 3 + 1] = c1;
+      t.colors[j * 3 + 2] = c2;
+    }
+    t.built = true;
+  }
+
+  // Split the terrain into chunks so TerrainSystem's LOD levels can actually
+  // be selected per visible region instead of being generated and ignored.
+  function makeTerrainChunkMeshes(terrain, chunkCount) {
+    var chunks = [];
+    var seg = terrain.segments;
+    var srcSeg = seg + 1;
+    var cellsPerChunk = seg / chunkCount;
+    var chunkWorld = TERRAIN_SIZE / chunkCount;
+    var lodDefs = terrain.lodLevels && terrain.lodLevels.length
+      ? terrain.lodLevels
+      : [{ factor: 1 }, { factor: 2 }, { factor: 4 }, { factor: 8 }];
+
+    for (var cz = 0; cz < chunkCount; cz++) {
+      for (var cx = 0; cx < chunkCount; cx++) {
+        var x0 = cx * cellsPerChunk;
+        var z0 = cz * cellsPerChunk;
+        var midX = -TERRAIN_SIZE * 0.5 + (x0 + cellsPerChunk * 0.5) / seg * TERRAIN_SIZE;
+        var midZ = -TERRAIN_SIZE * 0.5 + (z0 + cellsPerChunk * 0.5) / seg * TERRAIN_SIZE;
+        var center = [midX, terrain.getHeight(midX, midZ), midZ];
+        var radius = Math.sqrt(2) * chunkWorld * 0.5 + 18;
+        var levels = [];
+
+        for (var li = 0; li < lodDefs.length; li++) {
+          var step = lodDefs[li].factor || (1 << li);
+          var nx = Math.ceil(cellsPerChunk / step);
+          var vertCount = (nx + 1) * (nx + 1);
+          var positions = new Float32Array(vertCount * 3);
+          var normals = new Float32Array(vertCount * 3);
+          var colors = new Float32Array(vertCount * 3);
+          var indices = new Uint32Array(nx * nx * 6);
+          var vi = 0;
+
+          for (var j = 0; j <= nx; j++) {
+            var srcZ = z0 + Math.min(j * step, cellsPerChunk);
+            for (var i = 0; i <= nx; i++) {
+              var srcX = x0 + Math.min(i * step, cellsPerChunk);
+              var src = srcZ * srcSeg + srcX;
+              positions[vi * 3] = terrain.vertices[src * 3];
+              positions[vi * 3 + 1] = terrain.vertices[src * 3 + 1];
+              positions[vi * 3 + 2] = terrain.vertices[src * 3 + 2];
+              normals[vi * 3] = terrain.normals[src * 3];
+              normals[vi * 3 + 1] = terrain.normals[src * 3 + 1];
+              normals[vi * 3 + 2] = terrain.normals[src * 3 + 2];
+              colors[vi * 3] = terrain.colors[src * 3];
+              colors[vi * 3 + 1] = terrain.colors[src * 3 + 1];
+              colors[vi * 3 + 2] = terrain.colors[src * 3 + 2];
+              vi++;
+            }
+          }
+
+          var ii = 0;
+          for (var z = 0; z < nx; z++) {
+            for (var x = 0; x < nx; x++) {
+              var a = z * (nx + 1) + x;
+              var b = a + nx + 1;
+              indices[ii++] = a; indices[ii++] = b; indices[ii++] = a + 1;
+              indices[ii++] = a + 1; indices[ii++] = b; indices[ii++] = b + 1;
+            }
+          }
+
+          programRef = terrainProgram;
+          levels.push({
+            mesh: createMesh(positions, normals, colors, indices),
+            factor: step,
+            distance: lodDefs[li].distance || step * 50
+          });
+        }
+
+        chunks.push({ center: center, radius: radius, levels: levels });
+      }
+    }
+    return chunks;
+  }
+
+  
+
 // ---- tree / grass meshes ---------------------------------------------
   function pushCone(out, cx, cy, cz, radius, height, color, segments) {
     var base = out.pos.length / 3;
@@ -925,8 +1115,12 @@
     }
   }
   function normalize3(v) {
-    var l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]) || 1;
-    return [v[0]/l, v[1]/l, v[2]/l];
+    if (!window.OrbMath || !window.OrbMath.Vec3) {
+      throw new Error('OrbMath.Vec3 is required; inline normalize3 is removed');
+    }
+    var ov = new window.OrbMath.Vec3(v[0], v[1], v[2]).normalize();
+    if (window.AEVUM_GRAPHICS_USAGE) window.AEVUM_GRAPHICS_USAGE.OrbMath = (window.AEVUM_GRAPHICS_USAGE.OrbMath || 0) + 1;
+    return [ov.x, ov.y, ov.z];
   }
   function makeTreeMesh(trees) {
     var out = { pos: [], nor: [], col: [], idx: [] };
@@ -1059,132 +1253,7 @@
   }
 
   
-// ---- terrain shaping --------------------------------------------------
-  function smoothstep(a, b, x) {
-    var t = Math.max(0, Math.min(1, (x - a) / (b - a)));
-    return t * t * (3 - 2 * t);
-  }
-  function shapeTerrain(t) {
-    var seg = t.segments + 1;
-    for (var i = 0; i < seg * seg; i++) {
-      var x = t.vertices[i * 3];
-      var z = t.vertices[i * 3 + 2];
-      var h = t.heightMap[i];
-      var ds = Math.sqrt((x - SPAWN[0]) * (x - SPAWN[0]) + (z - SPAWN[1]) * (z - SPAWN[1]));
-      var spawnBlend = 1 - smoothstep(7.5, 20.0, ds);
-      h = h * (1 - spawnBlend) + 0.0 * spawnBlend;
-      var dl = Math.sqrt((x - LAKE[0]) * (x - LAKE[0]) + (z - LAKE[1]) * (z - LAKE[1]));
-      var lakeBlend = 1 - smoothstep(13.0, 26.0, dl);
-      h = h * (1 - lakeBlend) + (-9.5) * lakeBlend;
-      var ridge = smoothstep(58.0, 96.0, -z);
-      h += ridge * (10.0 + 8.0 * Math.sin(x * 0.12 + 1.2));
-      t.heightMap[i] = h;
-      t.vertices[i * 3 + 1] = h;
-    }
-    t._computeNormals();
-    for (var j = 0; j < seg * seg; j++) {
-      var hh = t.heightMap[j];
-      var ny = t.normals[j * 3 + 1];
-      var c0 = 0.16, c1 = 0.22, c2 = 0.10;
-      if (hh < WATER_LEVEL - 0.5) { c0 = 0.04; c1 = 0.07; c2 = 0.07; }
-      else if (hh < WATER_LEVEL + 0.80) { c0 = 0.32; c1 = 0.28; c2 = 0.18; }
-      else if (hh < 6.0) { c0 = 0.16; c1 = 0.22; c2 = 0.10; }
-      else if (hh < 13.0) { c0 = 0.22; c1 = 0.21; c2 = 0.17; }
-      else { c0 = 0.40; c1 = 0.43; c2 = 0.47; }
-      if (ny < 0.56) {
-        c0 = c0 * 0.68 + 0.20;
-        c1 = c1 * 0.68 + 0.19;
-        c2 = c2 * 0.68 + 0.17;
-      }
-      var patch = 0.5 + 0.5 * Math.sin(x * 0.23 + Math.cos(z * 0.17) * 1.8);
-      var patch2 = 0.5 + 0.5 * Math.sin(x * 0.07 - z * 0.11);
-      if (hh >= WATER_LEVEL + 0.8 && hh < 6.0) {
-        c0 = c0 * (0.76 + 0.26 * patch) + 0.035 * patch2;
-        c1 = c1 * (0.86 + 0.18 * patch);
-        c2 = c2 * (0.74 + 0.14 * patch) + 0.012 * patch2;
-      }
-      t.colors[j * 3] = c0;
-      t.colors[j * 3 + 1] = c1;
-      t.colors[j * 3 + 2] = c2;
-    }
-    t.built = true;
-  }
 
-  // Split the terrain into chunks so TerrainSystem's LOD levels can actually
-  // be selected per visible region instead of being generated and ignored.
-  function makeTerrainChunkMeshes(terrain, chunkCount) {
-    var chunks = [];
-    var seg = terrain.segments;
-    var srcSeg = seg + 1;
-    var cellsPerChunk = seg / chunkCount;
-    var chunkWorld = TERRAIN_SIZE / chunkCount;
-    var lodDefs = terrain.lodLevels && terrain.lodLevels.length
-      ? terrain.lodLevels
-      : [{ factor: 1 }, { factor: 2 }, { factor: 4 }, { factor: 8 }];
-
-    for (var cz = 0; cz < chunkCount; cz++) {
-      for (var cx = 0; cx < chunkCount; cx++) {
-        var x0 = cx * cellsPerChunk;
-        var z0 = cz * cellsPerChunk;
-        var midX = -TERRAIN_SIZE * 0.5 + (x0 + cellsPerChunk * 0.5) / seg * TERRAIN_SIZE;
-        var midZ = -TERRAIN_SIZE * 0.5 + (z0 + cellsPerChunk * 0.5) / seg * TERRAIN_SIZE;
-        var center = [midX, terrain.getHeight(midX, midZ), midZ];
-        var radius = Math.sqrt(2) * chunkWorld * 0.5 + 18;
-        var levels = [];
-
-        for (var li = 0; li < lodDefs.length; li++) {
-          var step = lodDefs[li].factor || (1 << li);
-          var nx = Math.ceil(cellsPerChunk / step);
-          var vertCount = (nx + 1) * (nx + 1);
-          var positions = new Float32Array(vertCount * 3);
-          var normals = new Float32Array(vertCount * 3);
-          var colors = new Float32Array(vertCount * 3);
-          var indices = new Uint32Array(nx * nx * 6);
-          var vi = 0;
-
-          for (var j = 0; j <= nx; j++) {
-            var srcZ = z0 + Math.min(j * step, cellsPerChunk);
-            for (var i = 0; i <= nx; i++) {
-              var srcX = x0 + Math.min(i * step, cellsPerChunk);
-              var src = srcZ * srcSeg + srcX;
-              positions[vi * 3] = terrain.vertices[src * 3];
-              positions[vi * 3 + 1] = terrain.vertices[src * 3 + 1];
-              positions[vi * 3 + 2] = terrain.vertices[src * 3 + 2];
-              normals[vi * 3] = terrain.normals[src * 3];
-              normals[vi * 3 + 1] = terrain.normals[src * 3 + 1];
-              normals[vi * 3 + 2] = terrain.normals[src * 3 + 2];
-              colors[vi * 3] = terrain.colors[src * 3];
-              colors[vi * 3 + 1] = terrain.colors[src * 3 + 1];
-              colors[vi * 3 + 2] = terrain.colors[src * 3 + 2];
-              vi++;
-            }
-          }
-
-          var ii = 0;
-          for (var z = 0; z < nx; z++) {
-            for (var x = 0; x < nx; x++) {
-              var a = z * (nx + 1) + x;
-              var b = a + nx + 1;
-              indices[ii++] = a; indices[ii++] = b; indices[ii++] = a + 1;
-              indices[ii++] = a + 1; indices[ii++] = b; indices[ii++] = b + 1;
-            }
-          }
-
-          programRef = terrainProgram;
-          levels.push({
-            mesh: createMesh(positions, normals, colors, indices),
-            factor: step,
-            distance: lodDefs[li].distance || step * 50
-          });
-        }
-
-        chunks.push({ center: center, radius: radius, levels: levels });
-      }
-    }
-    return chunks;
-  }
-
-  
   // ---- runtime -----------------------------------------------------------
   var world = null;
   var fog = null;
@@ -1836,6 +1905,8 @@
     sunColor = [1.0, 0.84, 0.63];
     world.shadows.setQuality('high');
     world.shadows.setShadowDistance(180);
+    document.documentElement.setAttribute('data-world3dext', String(!!window.World3DExt));
+    document.documentElement.setAttribute('data-ext-core', String(!!(window.WebGLCore && window.WebGLCore.ShaderCompiler)));
     if (window.World3DExt) {
       fog = new window.World3DExt.VolumetricFog({ getContext: function () { return gl; } }, null);
       fog.setFogColor(0.62, 0.69, 0.76);
@@ -1845,16 +1916,52 @@
       fog.setSunScatterIntensity(0.55);
       fog.setSunDirection(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
 
-      extShaderCompiler = {
-        compile: function (vs, fs) { return program(vs, fs); },
-        use: function (p) { gl.useProgram(p); },
-        getAttributeLocation: function (p, name) { return attrib(p, name); },
-        setUniformMatrix4fv: function (p, name, value) { gl.uniformMatrix4fv(uniformLocation(p, name), false, value); },
-        setUniform1f: function (p, name, value) { gl.uniform1f(uniformLocation(p, name), value); },
-        setUniform1i: function (p, name, value) { gl.uniform1i(uniformLocation(p, name), value); },
-        setUniform2f: function (p, name, a, b) { gl.uniform2f(uniformLocation(p, name), a, b); },
-        setUniform3f: function (p, name, a, b, c) { gl.uniform3f(uniformLocation(p, name), a, b, c); }
-      };
+      if (window.WebGLCore && window.WebGLCore.ShaderCompiler) {
+        extShaderCompiler = new window.WebGLCore.ShaderCompiler({ getContext: function () { return gl; } });
+        var rawExtCompile = extShaderCompiler.compile.bind(extShaderCompiler);
+        extShaderCompiler.compile = function (vs, fs, defines) {
+          markGraphics('gl-extensions');
+          document.documentElement.setAttribute('data-ext-compile', '1');
+          return rawExtCompile(
+            String(vs || '').replace(/^#version\s+300\s+es\s*/, ''),
+            String(fs || '').replace(/^#version\s+300\s+es\s*/, ''),
+            defines
+          );
+        };
+        extShaderCompiler.use = function (p) { gl.useProgram(p); };
+        extShaderCompiler.getAttributeLocation = function (p, name) { return attrib(p, name); };
+        extShaderCompiler.setUniformMatrix4fv = function (p, name, value) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniformMatrix4fv(loc, false, value);
+        };
+        extShaderCompiler.setUniform1f = function (p, name, value) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniform1f(loc, value);
+        };
+        extShaderCompiler.setUniform1i = function (p, name, value) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniform1i(loc, value);
+        };
+        extShaderCompiler.setUniform2f = function (p, name, a, b) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniform2f(loc, a, b);
+        };
+        extShaderCompiler.setUniform3f = function (p, name, a, b, c) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniform3f(loc, a, b, c);
+        };
+      } else {
+        extShaderCompiler = {
+          compile: function (vs, fs) { return program(vs, fs); },
+          use: function (p) { gl.useProgram(p); },
+          getAttributeLocation: function (p, name) { return attrib(p, name); },
+          setUniformMatrix4fv: function (p, name, value) { gl.uniformMatrix4fv(uniformLocation(p, name), false, value); },
+          setUniform1f: function (p, name, value) { gl.uniform1f(uniformLocation(p, name), value); },
+          setUniform1i: function (p, name, value) { gl.uniform1i(uniformLocation(p, name), value); },
+          setUniform2f: function (p, name, a, b) { gl.uniform2f(uniformLocation(p, name), a, b); },
+          setUniform3f: function (p, name, a, b, c) { gl.uniform3f(uniformLocation(p, name), a, b, c); }
+        };
+      }
 
       advancedWater = new window.World3DExt.AdvancedWaterSystem(
         { getContext: function () { return gl; } }, extShaderCompiler
@@ -1877,11 +1984,14 @@
       advancedWater.setFoamThreshold(0.5);
       advancedWater.setCausticIntensity(0.38);
       advancedWater.setNormalStrength(1.0);
+      advancedWater.init();
       advancedWater.update(0);
       if (systemsEl) {
         systemsEl.textContent = 'TERRAIN ' + TERRAIN_SIZE + '×' + TERRAIN_SIZE + ' · WATER ' +
           advancedWater.getWaveCount() + ' WAVES · ' + world.weather.getCurrentWeather().toUpperCase();
       }
+      document.documentElement.setAttribute('data-world3dext', String(!!window.World3DExt));
+      document.documentElement.setAttribute('data-advanced-water', String(!!advancedWater));
     }
     setupWorldCamera();
 
@@ -1977,9 +2087,16 @@
             gl.deleteTexture(sceneColorTex);
             gl.deleteTexture(sceneDepthTex);
           }
-          if (postFBO) {
+          if (postRenderTarget) {
+            postRenderTarget.dispose();
+            postRenderTarget = null;
+            postFBO = null;
+            postColorTex = null;
+          } else if (postFBO) {
             gl.deleteFramebuffer(postFBO);
             gl.deleteTexture(postColorTex);
+            postFBO = null;
+            postColorTex = null;
           }
           createSceneTarget();
         },
@@ -2133,5 +2250,5 @@
 
 
 
-})();
 
+})();

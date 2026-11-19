@@ -649,6 +649,8 @@
     sunColor = [1.0, 0.84, 0.63];
     world.shadows.setQuality('high');
     world.shadows.setShadowDistance(180);
+    document.documentElement.setAttribute('data-world3dext', String(!!window.World3DExt));
+    document.documentElement.setAttribute('data-ext-core', String(!!(window.WebGLCore && window.WebGLCore.ShaderCompiler)));
     if (window.World3DExt) {
       fog = new window.World3DExt.VolumetricFog({ getContext: function () { return gl; } }, null);
       fog.setFogColor(0.62, 0.69, 0.76);
@@ -658,16 +660,52 @@
       fog.setSunScatterIntensity(0.55);
       fog.setSunDirection(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
 
-      extShaderCompiler = {
-        compile: function (vs, fs) { return program(vs, fs); },
-        use: function (p) { gl.useProgram(p); },
-        getAttributeLocation: function (p, name) { return attrib(p, name); },
-        setUniformMatrix4fv: function (p, name, value) { gl.uniformMatrix4fv(uniformLocation(p, name), false, value); },
-        setUniform1f: function (p, name, value) { gl.uniform1f(uniformLocation(p, name), value); },
-        setUniform1i: function (p, name, value) { gl.uniform1i(uniformLocation(p, name), value); },
-        setUniform2f: function (p, name, a, b) { gl.uniform2f(uniformLocation(p, name), a, b); },
-        setUniform3f: function (p, name, a, b, c) { gl.uniform3f(uniformLocation(p, name), a, b, c); }
-      };
+      if (window.WebGLCore && window.WebGLCore.ShaderCompiler) {
+        extShaderCompiler = new window.WebGLCore.ShaderCompiler({ getContext: function () { return gl; } });
+        var rawExtCompile = extShaderCompiler.compile.bind(extShaderCompiler);
+        extShaderCompiler.compile = function (vs, fs, defines) {
+          markGraphics('gl-extensions');
+          document.documentElement.setAttribute('data-ext-compile', '1');
+          return rawExtCompile(
+            String(vs || '').replace(/^#version\s+300\s+es\s*/, ''),
+            String(fs || '').replace(/^#version\s+300\s+es\s*/, ''),
+            defines
+          );
+        };
+        extShaderCompiler.use = function (p) { gl.useProgram(p); };
+        extShaderCompiler.getAttributeLocation = function (p, name) { return attrib(p, name); };
+        extShaderCompiler.setUniformMatrix4fv = function (p, name, value) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniformMatrix4fv(loc, false, value);
+        };
+        extShaderCompiler.setUniform1f = function (p, name, value) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniform1f(loc, value);
+        };
+        extShaderCompiler.setUniform1i = function (p, name, value) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniform1i(loc, value);
+        };
+        extShaderCompiler.setUniform2f = function (p, name, a, b) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniform2f(loc, a, b);
+        };
+        extShaderCompiler.setUniform3f = function (p, name, a, b, c) {
+          var loc = uniformLocation(p, name);
+          if (loc) gl.uniform3f(loc, a, b, c);
+        };
+      } else {
+        extShaderCompiler = {
+          compile: function (vs, fs) { return program(vs, fs); },
+          use: function (p) { gl.useProgram(p); },
+          getAttributeLocation: function (p, name) { return attrib(p, name); },
+          setUniformMatrix4fv: function (p, name, value) { gl.uniformMatrix4fv(uniformLocation(p, name), false, value); },
+          setUniform1f: function (p, name, value) { gl.uniform1f(uniformLocation(p, name), value); },
+          setUniform1i: function (p, name, value) { gl.uniform1i(uniformLocation(p, name), value); },
+          setUniform2f: function (p, name, a, b) { gl.uniform2f(uniformLocation(p, name), a, b); },
+          setUniform3f: function (p, name, a, b, c) { gl.uniform3f(uniformLocation(p, name), a, b, c); }
+        };
+      }
 
       advancedWater = new window.World3DExt.AdvancedWaterSystem(
         { getContext: function () { return gl; } }, extShaderCompiler
@@ -690,11 +728,14 @@
       advancedWater.setFoamThreshold(0.5);
       advancedWater.setCausticIntensity(0.38);
       advancedWater.setNormalStrength(1.0);
+      advancedWater.init();
       advancedWater.update(0);
       if (systemsEl) {
         systemsEl.textContent = 'TERRAIN ' + TERRAIN_SIZE + '×' + TERRAIN_SIZE + ' · WATER ' +
           advancedWater.getWaveCount() + ' WAVES · ' + world.weather.getCurrentWeather().toUpperCase();
       }
+      document.documentElement.setAttribute('data-world3dext', String(!!window.World3DExt));
+      document.documentElement.setAttribute('data-advanced-water', String(!!advancedWater));
     }
     setupWorldCamera();
 
@@ -790,9 +831,16 @@
             gl.deleteTexture(sceneColorTex);
             gl.deleteTexture(sceneDepthTex);
           }
-          if (postFBO) {
+          if (postRenderTarget) {
+            postRenderTarget.dispose();
+            postRenderTarget = null;
+            postFBO = null;
+            postColorTex = null;
+          } else if (postFBO) {
             gl.deleteFramebuffer(postFBO);
             gl.deleteTexture(postColorTex);
+            postFBO = null;
+            postColorTex = null;
           }
           createSceneTarget();
         },

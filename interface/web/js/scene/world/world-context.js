@@ -50,6 +50,21 @@
   var LAKE = [0, -52];
   var weatherClock = 0;
   var weatherNext = 180 + Math.random() * 120;
+  var orbShaderManager = null;
+  var orbShaderSeq = 0;
+  var graphicsUsage = window.AEVUM_GRAPHICS_USAGE || (window.AEVUM_GRAPHICS_USAGE = {});
+  var graphicsUsageDirty = false;
+  function markGraphics(name) {
+    graphicsUsage[name] = (graphicsUsage[name] || 0) + 1;
+    if (graphicsUsageDirty) return;
+    graphicsUsageDirty = true;
+    setTimeout(function () {
+      graphicsUsageDirty = false;
+      if (document.documentElement) {
+        document.documentElement.setAttribute('data-graphics-usage', JSON.stringify(graphicsUsage));
+      }
+    }, 200);
+  }
 
   function setReady(text) {
     if (!stateEl) return;
@@ -69,32 +84,37 @@
     }
   }
 
-  function compile(type, source) {
-    var sh = gl.createShader(type);
-    gl.shaderSource(sh, source);
-    gl.compileShader(sh);
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-      throw new Error(gl.getShaderInfoLog(sh) + '\n' + source);
-    }
-    return sh;
-  }
   function program(vsSource, fsSource) {
-    var p = gl.createProgram();
-    gl.attachShader(p, compile(gl.VERTEX_SHADER, vsSource));
-    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsSource));
-    gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(p));
+    if (!window.OrbShader || !window.OrbShader.ShaderManager) {
+      throw new Error('OrbShader.ShaderManager is required; inline shader compiler is removed');
     }
-    return p;
+    if (!orbShaderManager) orbShaderManager = new window.OrbShader.ShaderManager(gl);
+    var orbProgram = orbShaderManager.createProgram('world-' + (orbShaderSeq++), vsSource, fsSource);
+    if (!orbProgram) throw new Error('OrbShader failed to create program');
+    markGraphics('OrbShader');
+    return orbProgram;
   }
   function uniformLocation(p, name) { return gl.getUniformLocation(p, name); }
   function attrib(p, name) { return gl.getAttribLocation(p, name); }
+  var bufferSeq = 0;
+  var meshSeq = 0;
   function buffer(data, target) {
-    var b = gl.createBuffer();
-    gl.bindBuffer(target || gl.ARRAY_BUFFER, b);
-    gl.bufferData(target || gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-    return b;
+    return managedBuffer('world-buffer-' + (bufferSeq++), data, target);
+  }
+  var v5BufferManager = null;
+  function managedBuffer(name, data, target, usage) {
+    if (!window.WebGLCoreV5 || !window.WebGLCoreV5.BufferManager) {
+      throw new Error('WebGLCoreV5.BufferManager is required; inline buffer fallback is removed');
+    }
+    if (!v5BufferManager) v5BufferManager = new window.WebGLCoreV5.BufferManager({ getContext: function () { return gl; } });
+    var info = v5BufferManager.create(name, {
+      target: target || gl.ARRAY_BUFFER,
+      data: data,
+      usage: usage || gl.STATIC_DRAW,
+      count: 0
+    });
+    markGraphics('WebGLCoreV5');
+    return info.id;
   }
   function bindAttrib(p, name, b, size, stride, offset) {
     var loc = attrib(p, name);
@@ -117,9 +137,8 @@
     if (normals) bindAttrib(programRef, 'aNormal', buffer(normals, gl.ARRAY_BUFFER), 3, 0, 0);
     if (colors) bindAttrib(programRef, 'aColor', buffer(colors, gl.ARRAY_BUFFER), 3, 0, 0);
     if (flex) bindAttrib(programRef, 'aFlex', buffer(flex, gl.ARRAY_BUFFER), 1, 0, 0);
-    var ibo = gl.createBuffer();
+    var ibo = managedBuffer('world-mesh-index-' + (meshSeq++), indices, gl.ELEMENT_ARRAY_BUFFER);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao: vao, count: indices.length, ibo: ibo, posBuffer: posBuffer };
   }

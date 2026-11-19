@@ -57,8 +57,12 @@
     }
   }
   function normalize3(v) {
-    var l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]) || 1;
-    return [v[0]/l, v[1]/l, v[2]/l];
+    if (!window.OrbMath || !window.OrbMath.Vec3) {
+      throw new Error('OrbMath.Vec3 is required; inline normalize3 is removed');
+    }
+    var ov = new window.OrbMath.Vec3(v[0], v[1], v[2]).normalize();
+    if (window.AEVUM_GRAPHICS_USAGE) window.AEVUM_GRAPHICS_USAGE.OrbMath = (window.AEVUM_GRAPHICS_USAGE.OrbMath || 0) + 1;
+    return [ov.x, ov.y, ov.z];
   }
   function makeTreeMesh(trees) {
     var out = { pos: [], nor: [], col: [], idx: [] };
