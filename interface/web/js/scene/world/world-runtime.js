@@ -515,15 +515,38 @@
     }
   }
 
+  function drawProxyAvatar(x, y, z, yaw, color, scale) {
+    var avatarScale = scale === undefined ? 0.8 : scale;
+    var m = M4.fromTRS(M4.create(), [x, y, z],
+      math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], yaw + Math.PI),
+      [avatarScale, avatarScale, avatarScale]);
+    gl.uniformMatrix4fv(uniformLocation(objectProgram, 'uModel'), false, m);
+    gl.uniform1f(uniformLocation(objectProgram, 'uGlow'), 0.12);
+    gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.10, 0.14, 0.18]));
+    gl.bindVertexArray(avatarParts.body.vao);
+    gl.drawElements(gl.TRIANGLES, avatarParts.body.count, gl.UNSIGNED_INT, 0);
+    gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array(color));
+    gl.bindVertexArray(avatarParts.torso.vao);
+    gl.drawElements(gl.TRIANGLES, avatarParts.torso.count, gl.UNSIGNED_INT, 0);
+    gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.82, 0.66, 0.52]));
+    gl.bindVertexArray(avatarParts.head.vao);
+    gl.drawElements(gl.TRIANGLES, avatarParts.head.count, gl.UNSIGNED_INT, 0);
+    gl.uniform1f(uniformLocation(objectProgram, 'uGlow'), 0.55);
+    gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.86, 0.94, 0.62]));
+    gl.bindVertexArray(avatarParts.core.vao);
+    gl.drawElements(gl.TRIANGLES, avatarParts.core.count, gl.UNSIGNED_INT, 0);
+  }
+
   function drawRemotePlayers() {
     if (!avatarParts) return;
-    var ids = Object.keys(remotePlayers);
-    if (!ids.length) return;
     gl.useProgram(objectProgram);
     gl.uniformMatrix4fv(uniformLocation(objectProgram, 'uViewProj'), false, viewProj);
     gl.uniform3fv(uniformLocation(objectProgram, 'uSunDir'), new Float32Array(normalize3(world.lights.directionalLight.direction)));
     gl.uniform3fv(uniformLocation(objectProgram, 'uSunColor'), new Float32Array(world.lights.directionalLight.color));
     gl.uniform3fv(uniformLocation(objectProgram, 'uAmbient'), new Float32Array(world.lights.ambientLight.color));
+    // 本地没有 VRM 时也画占位小人，避免“能走但屏幕里没人”。
+    drawProxyAvatar(charPos[0], charPos[1], charPos[2], charYawCurrent, [0.22, 0.40, 0.62], 0.8);
+    var ids = Object.keys(remotePlayers);
     for (var i = 0; i < ids.length; i++) {
       var r = remotePlayers[ids[i]];
       var dx = r.x - charPos[0], dz = r.z - charPos[2];
@@ -535,25 +558,7 @@
       var cameraInside = cameraDist < 0.9 ||
         (cdx * cdx + cdz * cdz < 0.45 * 0.45 && cdy > -1.4 && cdy < 1.4);
       if (dist2 > 90 * 90 || cameraInside) continue;
-      var avatarScale = 0.8;
-      var m = M4.fromTRS(M4.create(), [r.x, r.y, r.z],
-        math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], r.yaw + Math.PI),
-        [avatarScale, avatarScale, avatarScale]);
-      gl.uniformMatrix4fv(uniformLocation(objectProgram, 'uModel'), false, m);
-      gl.uniform1f(uniformLocation(objectProgram, 'uGlow'), 0.12);
-      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.10, 0.14, 0.18]));
-      gl.bindVertexArray(avatarParts.body.vao);
-      gl.drawElements(gl.TRIANGLES, avatarParts.body.count, gl.UNSIGNED_INT, 0);
-      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array(r.color));
-      gl.bindVertexArray(avatarParts.torso.vao);
-      gl.drawElements(gl.TRIANGLES, avatarParts.torso.count, gl.UNSIGNED_INT, 0);
-      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.82, 0.66, 0.52]));
-      gl.bindVertexArray(avatarParts.head.vao);
-      gl.drawElements(gl.TRIANGLES, avatarParts.head.count, gl.UNSIGNED_INT, 0);
-      gl.uniform1f(uniformLocation(objectProgram, 'uGlow'), 0.55);
-      gl.uniform3fv(uniformLocation(objectProgram, 'uColor'), new Float32Array([0.86, 0.94, 0.62]));
-      gl.bindVertexArray(avatarParts.core.vao);
-      gl.drawElements(gl.TRIANGLES, avatarParts.core.count, gl.UNSIGNED_INT, 0);
+      drawProxyAvatar(r.x, r.y, r.z, r.yaw, r.color, 0.8);
     }
     gl.bindVertexArray(null);
   }
@@ -2159,14 +2164,14 @@
       }
     });
 
-    var vrmRes = await fetch('/engine/assets/models/furina/f%E8%8A%99%E5%AE%81%E5%A8%9C.vrm', { cache: 'no-store' });
-    if (!vrmRes.ok) throw new Error('VRM HTTP ' + vrmRes.status);
-    bootStage('LOADING / VRM RECEIVED');
-    vrm = window.AEVUM.formats.parseVRM(await vrmRes.arrayBuffer());
-    await modelRenderer.loadVRM(vrm);
-    bootStage('LOADING / VRM READY');
+    document.documentElement.setAttribute('data-model', JSON.stringify({
+      name: '占位小人', format: 'none', bones: 0, height: 0
+    }));
+    if (roomEls && roomEls.state) roomEls.state.textContent = '未加载角色';
+    bootStage('LOADING / EMPTY CHARACTER SLOT');
 
-    var actionRes = await fetch('/engine/assets/all_animations.glb', { cache: 'no-store' });    if (!actionRes.ok) throw new Error('GLB HTTP ' + actionRes.status);
+    var actionRes = await fetch('/engine/assets/all_animations.glb', { cache: 'no-store' });
+    if (!actionRes.ok) throw new Error('GLB HTTP ' + actionRes.status);
     bootStage('LOADING / MOTION RECEIVED');
     motionData = window.AEVUM.formats.parseGLB(await actionRes.arrayBuffer());
     player = window.AEVUM.formats.GLTFAnimation.createPlayer(motionData);
@@ -2179,23 +2184,25 @@
 
     retarget = window.AEVUM.render.AnimationRetarget.retargetPose;
 
-    var bounds = modelRenderer.bounds;
-    var modelHeight = bounds.max[1] - bounds.min[1];
-    modelBoundsMinY = bounds.min[1];
-    charScale = 2.55 / Math.max(0.001, modelHeight);
-    var ground = world.terrain.getHeight(SPAWN[0], SPAWN[1]);
-    M4.fromTRS(modelMatrix, [SPAWN[0], ground - bounds.min[1] * charScale, SPAWN[1]], math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], 0), [charScale, charScale, charScale]);
-    modelBaseY = modelMatrix[13];
-    if (!window.OrbSkeleton || !window.OrbAnimation || !window.OrbAnimation.ProceduralMotion || !window.OrbAnimation.BreathingMotion) {
-      throw new Error('OrbSkeleton/OrbAnimation is required; inline character breathing is removed');
-    }
-    proceduralSkeleton = new window.OrbSkeleton.Skeleton();
-    proceduralChestBone = proceduralSkeleton.addBone('UpperBody', -1);
-    proceduralMotion = new window.OrbAnimation.ProceduralMotion(proceduralSkeleton);
-    proceduralMotion.register('breathing', window.OrbAnimation.BreathingMotion);
-    proceduralMotion.play('breathing', { loop: true, weight: 1, fadeIn: 0.4 });
+    if (vrm) {
+      var bounds = modelRenderer.bounds;
+      var modelHeight = bounds.max[1] - bounds.min[1];
+      modelBoundsMinY = bounds.min[1];
+      charScale = 2.55 / Math.max(0.001, modelHeight);
+      var ground = world.terrain.getHeight(SPAWN[0], SPAWN[1]);
+      M4.fromTRS(modelMatrix, [SPAWN[0], ground - bounds.min[1] * charScale, SPAWN[1]], math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], 0), [charScale, charScale, charScale]);
+      modelBaseY = modelMatrix[13];
+      if (!window.OrbSkeleton || !window.OrbAnimation || !window.OrbAnimation.ProceduralMotion || !window.OrbAnimation.BreathingMotion) {
+        throw new Error('OrbSkeleton/OrbAnimation is required; inline character breathing is removed');
+      }
+      proceduralSkeleton = new window.OrbSkeleton.Skeleton();
+      proceduralChestBone = proceduralSkeleton.addBone('UpperBody', -1);
+      proceduralMotion = new window.OrbAnimation.ProceduralMotion(proceduralSkeleton);
+      proceduralMotion.register('breathing', window.OrbAnimation.BreathingMotion);
+      proceduralMotion.play('breathing', { loop: true, weight: 1, fadeIn: 0.4 });
 
-    statEl.textContent = clip.toUpperCase() + ' / ' + (vrm.humanBones || []).length + ' BONES';
+      statEl.textContent = clip.toUpperCase() + ' / ' + (vrm.humanBones || []).length + ' BONES';
+    }
     systemsEl.textContent = 'TERRAIN ' + TERRAIN_SIZE + '×' + TERRAIN_SIZE + ' · TREES ' + trees.length + ' · GRASS ' + grass.length + ' · WATER 8 · ' + world.weather.getCurrentWeather().toUpperCase() + ' · SHADOW ' + world.shadows.shadowMapSize + ' · POST FX';
 
     start = performance.now();
@@ -2350,6 +2357,9 @@
       } else if (modelRenderer && vrm) {
         var idlePose = window.AEVUM.render.makeVRMIdlePose(vrm, now / 1000);
         drawRemoteCharacters(now, { rotation: idlePose, translation: null }, viewProj, eye, charLighting, dt);
+      } else if (!vrm) {
+        // 没有加载 VRM 时，本地和远端都退回几何占位小人。
+        drawRemotePlayers();
       }
       requestAnimationFrame(frame);
     }

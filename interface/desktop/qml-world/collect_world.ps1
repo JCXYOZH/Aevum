@@ -32,10 +32,9 @@ foreach ($dir in @("math", "character", "graphics", "world", "formats", "render"
   Copy-Item -LiteralPath (Join-Path $engine $dir) -Destination (Join-Path $engineTarget $dir) -Recurse
 }
 
-$modelSource = Join-Path $engine "assets\models\furina"
-$modelTarget = Join-Path $engineTarget "assets\models\furina"
-New-Item -ItemType Directory -Path $modelTarget -Force | Out-Null
-Copy-Item -Path (Join-Path $modelSource "*") -Destination $modelTarget -Recurse
+# Character models are intentionally excluded: the portable package must not
+# ship third-party avatars. Players load their own .vrm from the page.
+New-Item -ItemType Directory -Path (Join-Path $engineTarget "assets") -Force | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $engine "assets\all_animations.glb") `
   -Destination (Join-Path $engineTarget "assets\all_animations.glb")
