@@ -48,6 +48,13 @@ u32 task_yield(void);
 u32 task_block(void);
 u32 task_wake(int pid);
 
+/*
+ * 统一的当前任务状态入口：
+ * TASK_RUNNING 无副作用；TASK_READY 等价 yield；TASK_BLOCKED 等价 block；
+ * TASK_ZOMBIE 不返回。非 RUNNING 的当前任务或其他状态返回 ERR_TASK_BAD_STATE。
+ */
+u32 task_set_current_state(int state);
+
 /* 监视器接口：按槽位读任务快照；返回 0 表示该槽未使用。 */
 int task_snapshot(int slot, struct task_info *out);
 int task_trace_len(void);

@@ -75,6 +75,11 @@
 | `RUNNING` | 任务退出 | `ZOMBIE` | `task_exit()` |
 | `ZOMBIE` | 调度器下一次进入 | `UNUSED` | `task_reap()` 释放 PID |
 
+`RUNNING` 的三种离开方式现在统一走 `task_set_current_state(state)`：
+`TASK_READY` 等价 `task_yield()`，`TASK_BLOCKED` 等价 `task_block()`，`TASK_ZOMBIE` 等价
+`task_exit()`。设置 `TASK_RUNNING` 是无副作用 no-op；非 `RUNNING` 的当前任务传其他状态返回
+`ERR_TASK_BAD_STATE`。这样 `state` 仍只有 `task.c` 一个写者，不会出现应用直接改状态后不切调度的情况。
+
 `task_pick_next()` 只选择 `READY`，因此 `BLOCKED` 和 `ZOMBIE` 不会被调度。
 PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x40` 两条入口上做同一套调度；
 `px` 是 IRQ0 实际造成的抢占切换数，`sw` 是全部切换数（含主动 `task_yield`）。
@@ -99,14 +104,26 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 
 当前 `BLOCKED` 仍没有超时和 sleep，`task_wake()` 必须由另一个任务显式调用。
 
+### 3.3 当前任务状态写入口
+
+`task_set_current_state(state)` 不是“改一个字段就返回”，而是立刻触发调度：
+
+- `TASK_RUNNING`：当前任务已是 RUNNING，直接返回 0，不产生切换。
+- `TASK_READY`：以 `SCHED_YIELD` 进入 `int 0x40`，调度器把 `prev` 置 READY 并选择下一个任务。
+- `TASK_BLOCKED`：以 `SCHED_BLOCK` 进入调度；若无其他 READY 任务，调度器恢复 `RUNNING` 并返回错误，和原 `task_block()` 一致。
+- `TASK_ZOMBIE`：以 `SCHED_EXIT` 进入调度，`prev` 置 ZOMBIE，`task_reap()` 释放 PID，调用永不返回。
+
+`task_yield()`、`task_block()`、`task_exit()` 都改为调用这个入口，B 键演示因此实际走的就是
+`RUNNING -> BLOCKED -> READY -> RUNNING` 的同一套状态写入路径。
+
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
 | `0x1000` | 内核镜像起点 |
 | `0x1000..0x5FFF` | boot 读取的 40 扇区（20KB）窗口 |
-| `0x5EC0..0x641F` | `.bss`，由 loader 的 `rep stosb` 清零 |
-| `0x6420..0x6FFF` | BSS 尾部到任务栈的保护空隙 |
+| `0x5F40..0x649F` | `.bss`，由 loader 的 `rep stosb` 清零 |
+| `0x64A0..0x6FFF` | BSS 尾部到任务栈的保护空隙 |
 | `0x7000..0x7FFF` | `control` 任务栈（栈顶 `0x8000`） |
 | `0x8000..0x8FFF` | `render` 任务栈（栈顶 `0x9000`） |
 | `0x9000..0x9FFF` | `idle` 任务栈（栈顶 `0xA000`） |
@@ -122,7 +139,7 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 读 40 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 20480 字节。
-当前构建 20,148 字节，BSS 结束于 `0x6420`；镜像余量 332 字节，BSS 距 `0x7000` 任务栈还有 3,040 字节。
+当前构建 20,276 字节，BSS 结束于 `0x64A0`；镜像余量 204 字节，BSS 距 `0x7000` 任务栈还有 2,912 字节。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 不越过 `0x7000`。`AEVUM_TASK_STACK_MIN=0x7000`，
 `AEVUM_TASK_STACK_MAX=0xE000`。

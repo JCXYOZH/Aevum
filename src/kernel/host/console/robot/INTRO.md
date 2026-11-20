@@ -15,7 +15,7 @@
 - **引导**：`boot.asm` 读 40 个扇区到 `0x1000`，建立 GDT、0~4MB 恒等页表，跳到内核入口；`loader.asm` 把 GDT 搬到 `0x12800`，避免被任务栈覆盖。
 - **多任务**：`task.c` 管理 6 个任务槽，三个常驻任务按 READY/RUNNING 状态轮转；PIT 通道 0 以 100Hz 触发 IRQ0，CPU 密集型任务也会被定时抢占；主动让出统一走 `int 0x40`，调度策略归 `task.c`，应用层不再指定“下一个是谁”。
 - **任务描述符**：每个任务保存 PID、状态、优先级、栈底/栈顶、上下文、切出次数、`cpu_ticks` 和 `vruntime`；栈底填魔数，运行时扫描得到真实栈水位。**PID 由 `task.c` 的 31 位位图自动分配**，`task_create` 不再接收显式 PID，应用层也不写 1/2/3；任务 `task_exit()` 后置为 ZOMBIE，调度器下一次进入时回收 PID。
-- **状态链路**：`UNUSED -> READY -> RUNNING`；`RUNNING -> READY` 由 `task_yield()` 或 PIT IRQ0；`RUNNING -> BLOCKED` 由 `task_block()`，`BLOCKED -> READY` 由 `task_wake(pid)`；`RUNNING -> ZOMBIE` 由 `task_exit()`，`ZOMBIE -> UNUSED` 由 `task_reap()`。`B` 键演示阻塞/唤醒，`P` 键演示 PID 分配/回收，`T` 键演示 PIT 抢占下的双任务同时推进，`C` 键查看每任务 CPU 时间。
+- **状态链路**：`UNUSED -> READY -> RUNNING`；`RUNNING -> READY` 由 `task_yield()` 或 PIT IRQ0；`RUNNING -> BLOCKED` 由 `task_block()`，`BLOCKED -> READY` 由 `task_wake(pid)`；`RUNNING -> ZOMBIE` 由 `task_exit()`，`ZOMBIE -> UNUSED` 由 `task_reap()`。这三种 `RUNNING` 离开方式都收敛到 `task_set_current_state(state)`，状态字段只由 `task.c` 写入；`B` 键演示阻塞/唤醒，`P` 键演示 PID 分配/回收，`T` 键演示 PIT 抢占下的双任务同时推进，`C` 键查看每任务 CPU 时间。
 - **抢占决斗**：按 `T` 创建 `spinA` / `spinB` 两个 CPU 密集型任务，两个循环都不调用 `task_yield()`；全屏显示各自的实时 `STEP`、进度条、运行历史，以及 80 格 IRQ0 抢占磁带。只有 PIT 100Hz 真的打断 CPU，两条 lane 才会同时前进，磁带才会出现青/洋红交替条纹；再按 `T` 停止。
 - **CPU 统计**：按 `C` 打开全屏 `AEVUM / CPU TIME ACCOUNTING`，三行任务显示 PID、TASK、PRI、WT、STATE、CPU%、TICKS、SHARE，底部是 PIT TICKS、SWITCHES、PREEMPTIONS。百分比来自每个任务的 `cpu_ticks`，并随 PIT 持续变化。
 - **机械臂**：三自由度平面臂，Q16.16 定点运算；阻尼最小范数控制、零空间投影、2×2 雅可比奇异值面板。
@@ -57,7 +57,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 20480 字节（`boot.asm` 读 40 个扇区）；当前构建 20,148 字节，BSS 结束于 `0x6420`，镜像余量 332 字节。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 20480 字节（`boot.asm` 读 40 个扇区）；当前构建 20,276 字节，BSS 结束于 `0x64A0`，镜像余量 204 字节。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 

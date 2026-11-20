@@ -31,6 +31,7 @@
   每个进程各自拥有栈和计数器，互不影响。
 - **上下文切换**：IDT 门 + 统一中断帧保存 `eax/ebx/ecx/edx/esi/edi/ebp/eip/cs/eflags`；PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq` 在 IRQ0 与 `int 0x40` 两条入口上做同一套调度；若选中的仍是当前任务，必须恢复 `RUNNING`，否则一次 yield 会让任务永久停在 `READY`、PIT 不再给它计费。
   `task_yield()` / `task_block()` / `task_exit()` / `task_start()` 都走 `int 0x40`；`task_exit()` 置 ZOMBIE 后由调度器回收 PID；`task_block()` / `task_wake()` 已打通 BLOCKED 与 READY。
+  `task_set_current_state(state)` 是当前任务状态的统一写入口：`RUNNING` 无副作用，`READY` / `BLOCKED` / `ZOMBIE` 分别等价于让出、阻塞、退出；`task_yield()` / `task_block()` / `task_exit()` 都只是它的薄封装。
 - **显示输出**：直接写显存 `0xB8000`（80×25 文本模式），`render` 每帧在影子显存 `0x20000`
   画三自由度机械臂、目标点、轨迹和右侧数值面板，再整块搬到 VGA；同一帧通过 COM1
   把变化的文本单元发给 QEMU 串口，供桌面「内核实况」窗口实时显示。
@@ -140,7 +141,7 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `drivers/input/keyboard/keyboard.c` | PS/2 扫描码读取。 |
 | `lib/fixed/`、`lib/math/`、`lib/format/` | 定点、三角、格式化。 |
 | `app/arm/kinematics/`、`control/`、`render/`、`app/` | 机械臂纯运动学、控制状态、渲染、任务装配。 |
-| `kernel.ld` | 链接脚本。加载窗口从 `0x1000` 起；BSS 可到 `0x6420`，由 loader 清零；任务栈从 `0x7000` 起，避免与页目录/页表冲突。 |
+| `kernel.ld` | 链接脚本。加载窗口从 `0x1000` 起；BSS 可到 `0x64A0`，由 loader 清零；任务栈从 `0x7000` 起，避免与页目录/页表冲突。 |
 | `Makefile` | 构建脚本：汇编、编译、链接、打包镜像，以及运行 / 调试 / 清理。 |
 
 ### 生成的文件（`make clean` 会全部删除）
@@ -160,8 +161,8 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | 物理地址 | 用途 |
 | --- | --- |
 | `0x00001000` – `0x00005FFF` | boot 读取的 20KB 内核窗口（`.text` / `.rodata` / `.data`） |
-| `0x00005EC0` – `0x0000641F` | `.bss`：loader 载入后由 `rep stosb` 清零 |
-| `0x00006420` – `0x00006FFF` | BSS 尾部到任务栈之间的保护空隙 |
+| `0x00005F40` – `0x0000649F` | `.bss`：loader 载入后由 `rep stosb` 清零 |
+| `0x000064A0` – `0x00006FFF` | BSS 尾部到任务栈之间的保护空隙 |
 | `0x00007000` – `0x00007FFF` | `control` 任务栈（栈顶 `0x8000`，向下增长） |
 | `0x00008000` – `0x00008FFF` | `render` 任务栈（栈顶 `0x9000`，向下增长） |
 | `0x00009000` – `0x00009FFF` | `idle` 任务栈（栈顶 `0xA000`，向下增长） |
@@ -182,7 +183,7 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 ## 六、注意事项
 
 1. **内核镜像必须小于 20KB**：`boot.asm` 一次只读 40 个扇区（20KB）到 `0x1000`。
-   当前 `kernel.bin` 为 20,148 字节，BSS 结束于 `0x6420`；BSS 落在 20KB 窗口之外的部分由 loader 清零，
+   当前 `kernel.bin` 为 20,276 字节，BSS 结束于 `0x64A0`；BSS 落在 20KB 窗口之外的部分由 loader 清零，
    镜像数据本身不超过 20,480 字节。若继续增长，先加 `boot.asm` 的扇区数，并确认 BSS 不越过 `0x7000`。
 2. 页目录 / 页表固定在 `0x10000` / `0x11000`，IDT 固定在 `0x12000..0x127FF`，GDT 固定在 `0x12800..0x12817`；不要和内核段或任务栈重叠。
 3. 按 `B`（扫描码 `0x30`）可把 `idle` 任务阻塞成 `3id B`，再按一次唤醒；这是 `BLOCKED` 状态的可控演示。

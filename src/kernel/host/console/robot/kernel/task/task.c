@@ -334,23 +334,45 @@ u32 task_schedule_irq(struct irq_frame *frame)
     return next->ctx.esp;
 }
 
-void task_exit(void)
+/*
+ * 当前任务状态的唯一写入口。状态不是随便赋值：
+ * READY/BLOCKED/ZOMBIE 都必须立刻进入调度器，否则 RUNNING 位会失真。
+ */
+u32 task_set_current_state(int state)
 {
-    sched_reason = SCHED_EXIT;
+    struct task_struct *prev = current_task;
+
+    if (!prev || prev->state != TASK_RUNNING) return ERR_TASK_BAD_STATE;
+    if (state == TASK_RUNNING) return 0;
+
+    if (state == TASK_READY) {
+        sched_reason = SCHED_YIELD;
+    } else if (state == TASK_BLOCKED) {
+        sched_reason = SCHED_BLOCK;
+    } else if (state == TASK_ZOMBIE) {
+        sched_reason = SCHED_EXIT;
+    } else {
+        return ERR_TASK_BAD_STATE;
+    }
+
     sched_failed = 0;
     __asm__ __volatile__("int $0x40");
+
+    if (state == TASK_ZOMBIE)
+        for (;;) __asm__ __volatile__("cli; hlt");
+
+    return sched_failed ? ERR_TASK_BAD_STATE : 0;
+}
+
+void task_exit(void)
+{
+    (void)task_set_current_state(TASK_ZOMBIE);
     for (;;) __asm__ __volatile__("cli; hlt");
 }
 
 u32 task_block(void)
 {
-    struct task_struct *prev = current_task;
-
-    if (!prev || prev->state != TASK_RUNNING) return ERR_TASK_BAD_STATE;
-    sched_reason = SCHED_BLOCK;
-    sched_failed = 0;
-    __asm__ __volatile__("int $0x40");
-    return sched_failed ? ERR_TASK_BAD_STATE : 0;
+    return task_set_current_state(TASK_BLOCKED);
 }
 
 u32 task_wake(int pid)
@@ -367,13 +389,7 @@ u32 task_wake(int pid)
 
 u32 task_yield(void)
 {
-    struct task_struct *prev = current_task;
-
-    if (!prev) return ERR_TASK_BAD_STATE;
-    sched_reason = SCHED_YIELD;
-    sched_failed = 0;
-    __asm__ __volatile__("int $0x40");
-    return sched_failed ? ERR_TASK_BAD_STATE : 0;
+    return task_set_current_state(TASK_READY);
 }
 
 void task_start(struct task_struct *first)
