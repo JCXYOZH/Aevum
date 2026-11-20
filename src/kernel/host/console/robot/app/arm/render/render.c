@@ -93,6 +93,7 @@ static u8 task_pid_color(u32 pid)
     if (pid == 1) return C_CYAN;
     if (pid == 2) return C_MAG;
     if (pid == 3) return C_YELLOW;
+    if (pid == 4) return C_BLUE;
     return C_GRAY;
 }
 
@@ -106,11 +107,18 @@ static void task_panel(void)
     u32 now;
 
     vga_text(45, 18, "TASK SCHED", C_CYAN);
-    vga_text(56, 18, "sw", C_GRAY);
+    p = 0;
+    p += fmt_dec(buf, (u32)task_pid_used());
+    buf[p++] = '/';
+    p += fmt_dec(buf + p, (u32)task_pid_capacity());
+    buf[p] = 0;
+    vga_text(56, 18, "P", C_GRAY);
+    vga_text(57, 18, buf, C_WHITE);
+    vga_text(63, 18, "sw", C_GRAY);
     p = 0;
     p += fmt_dec(buf, total);
     buf[p] = 0;
-    vga_text(59, 18, buf, C_WHITE);
+    vga_text(66, 18, buf, C_WHITE);
 
     count = 0;
     for (slot = 0; slot < TASK_MAX; slot++) {
@@ -190,7 +198,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Planar Arm  |  Jacobian live demo ", C_WHITE);
+    vga_text(1, 0, " 3-DOF Planar Arm | P=pid probe ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;

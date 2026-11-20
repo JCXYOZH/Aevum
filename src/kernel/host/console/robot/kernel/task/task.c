@@ -6,6 +6,7 @@
 #define CTX_SLOTS     8
 #define TASK_TRACE_N  64
 #define TASK_TRACE_DIV 32
+#define PID_MAX       31
 #define STACK_MAGIC   0xA5A5A5A5u
 
 struct context {
@@ -32,6 +33,25 @@ static u32 switch_trace[TASK_TRACE_N];
 static int switch_i;
 static u32 switch_total;
 static u32 trace_total;
+static u32 pid_map;
+
+static int pid_alloc(void)
+{
+    int i;
+    for (i = 0; i < PID_MAX; i++) {
+        u32 mask = 1u << i;
+        if (!(pid_map & mask)) {
+            pid_map |= mask;
+            return i + 1;
+        }
+    }
+    return 0;
+}
+
+static void pid_free(int pid)
+{
+    if (pid >= 1 && pid <= PID_MAX) pid_map &= ~(1u << (pid - 1));
+}
 
 static void task_zero(struct task_struct *task)
 {
@@ -64,16 +84,17 @@ void task_boot(void)
     boot_task.comm[2] = 'i';
     boot_task.comm[3] = 't';
     current_task = &boot_task;
+    pid_map = 0;
 }
 
-u32 task_create(int pid, int priority, const char *name,
+u32 task_create(int priority, const char *name,
                 void (*entry)(void), u32 stack_top, struct task_struct **out)
 {
     struct task_struct *task;
     u32 *sp;
     u32 *p;
     u32 stack_base;
-    int i;
+    int i, pid;
 
     if (!out) return ERR_TASK_OUT_MISSING;
     *out = 0;
@@ -86,10 +107,6 @@ u32 task_create(int pid, int priority, const char *name,
     stack_base = stack_top - AEVUM_TASK_STACK_SIZE;
     if (stack_base < AEVUM_TASK_STACK_MIN) return ERR_TASK_STACK_INVALID;
 
-    for (i = 0; i < TASK_MAX; i++)
-        if (tasks[i].state != TASK_UNUSED && tasks[i].pid == pid)
-            return ERR_TASK_PID_DUP;
-
     task = 0;
     for (i = 0; i < TASK_MAX; i++) {
         if (tasks[i].state == TASK_UNUSED) {
@@ -98,6 +115,9 @@ u32 task_create(int pid, int priority, const char *name,
         }
     }
     if (!task) return ERR_TASK_SLOT_FULL;
+
+    pid = pid_alloc();
+    if (!pid) return ERR_TASK_PID_EXHAUSTED;
 
     task_zero(task);
     task->pid = pid;
@@ -134,6 +154,24 @@ u32 task_set_state(struct task_struct *task, int state)
 struct task_struct *task_current(void)
 {
     return current_task;
+}
+
+int task_current_pid(void)
+{
+    return current_task ? current_task->pid : 0;
+}
+
+int task_pid_used(void)
+{
+    int i, n = 0;
+    for (i = 0; i < PID_MAX; i++)
+        if (pid_map & (1u << i)) n++;
+    return n;
+}
+
+int task_pid_capacity(void)
+{
+    return PID_MAX;
 }
 
 static void task_note_switch(struct task_struct *next)
@@ -177,6 +215,31 @@ static struct task_struct *task_pick_next(struct task_struct *prev)
     return prev;
 }
 
+static void task_reap(void)
+{
+    int i;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state == TASK_ZOMBIE) {
+            pid_free(tasks[i].pid);
+            task_zero(&tasks[i]);
+        }
+    }
+}
+
+void task_exit(void)
+{
+    struct task_struct *prev = current_task;
+    struct task_struct *next;
+
+    if (!prev) for (;;) __asm__ __volatile__("cli; hlt");
+    prev->state = TASK_ZOMBIE;
+    next = task_pick_next(prev);
+    if (!next || next == prev) for (;;) __asm__ __volatile__("cli; hlt");
+    next->state = TASK_RUNNING;
+    (void)task_switch_to(next);
+    for (;;) __asm__ __volatile__("cli; hlt");
+}
+
 u32 task_yield(void)
 {
     struct task_struct *prev = current_task;
@@ -184,6 +247,7 @@ u32 task_yield(void)
     u32 rc;
 
     if (!prev) return ERR_TASK_BAD_STATE;
+    task_reap();
     if (prev->state == TASK_RUNNING) prev->state = TASK_READY;
     next = task_pick_next(prev);
     if (next == prev) {
@@ -247,3 +311,4 @@ u32 task_switch_total(void)
 {
     return switch_total;
 }
+

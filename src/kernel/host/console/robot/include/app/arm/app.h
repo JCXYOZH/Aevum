@@ -7,5 +7,6 @@
 u32 arm_app_init(void);
 void arm_app_start(void);
 u32 arm_app_dep_code(void);
+u32 arm_app_spawn_probe(void);
 
 #endif

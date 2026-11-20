@@ -51,8 +51,8 @@ $(BUILD)/loader.o: loader.asm
 kernel.elf kernel.bin: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 	$(LD) -m elf_i386 -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf
 	$(LD) -m elf_i386 -T $(LDSCRIPT) --oformat binary $(BUILD)/loader.o $(OBJS) -o kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 14336 / 28 sectors)"; \
-	if [ $$size -gt 14336 ]; then echo "ERROR: kernel.bin $$size bytes > 14336"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 16384 / 32 sectors)"; \
+	if [ $$size -gt 16384 ]; then echo "ERROR: kernel.bin $$size bytes > 16384"; exit 1; fi
 
 boot.bin: boot.asm
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin

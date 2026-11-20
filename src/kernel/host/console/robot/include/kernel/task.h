@@ -29,8 +29,12 @@ struct task_info {
 
 /* 任务模块是 task_struct 字段的唯一写者；调用方只拿不透明句柄。 */
 void task_boot(void);
-u32 task_create(int pid, int priority, const char *name,
+u32 task_create(int priority, const char *name,
                 void (*entry)(void), u32 stack_top, struct task_struct **out);
+void task_exit(void) __attribute__((noreturn));
+int task_current_pid(void);
+int task_pid_used(void);
+int task_pid_capacity(void);
 u32 task_set_state(struct task_struct *task, int state);
 struct task_struct *task_current(void);
 u32 task_switch_to(struct task_struct *next);

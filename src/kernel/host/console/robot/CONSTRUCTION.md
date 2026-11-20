@@ -12,7 +12,7 @@
 | 内存布局 | `config/memory.h` | 物理地址常量 | 只读宏 |
 | 基础类型 | `include/kernel/types.h` | `i32/u32/u16/u8/i64/u64` | 只读类型 |
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
-| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、切换轨迹 `switch_trace[]` | `task_boot/task_create/task_set_state/task_current/task_switch_to/task_yield/task_snapshot/task_trace_*` |
+| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹 | `task_boot/task_create/task_set_state/task_current/task_switch_to/task_exit/task_yield/task_pid_used` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
 | 上下文 | `arch/x86/cpu/context/context.c` | 寄存器保存/恢复 | `cpu_switch()` |
 | VGA | `drivers/video/vga/text/vga.c` | 影子显存 `0x20000`、`0xB8000` 刷新 | `vga_*` |
@@ -24,7 +24,7 @@
 | 运动学 | `app/arm/kinematics/kinematics.c` | 纯函数，无状态 | `arm_fk/arm_jacobian/arm_solve` |
 | 控制 | `app/arm/control/control.c` | `q/dq/points/target/...` 与 `arm_status` 快照 | `arm_control_init/step/toggle_nullspace/status` |
 | 渲染 | `app/arm/render/render.c` | 轨迹环形缓冲 `trace[]`；只读 `arm_status` | `arm_render_init/frame/trace_push` |
-| 应用装配 | `app/arm/app/app.c` | `p_control/p_render/p_idle/app_dep_code`；只创建任务，不决定下一个任务 | `arm_app_init/start/dep_code` |
+| 应用装配 | `app/arm/app/app.c` | `p_control/p_render/app_dep_code`；两进程调度 | `arm_app_init/start/dep_code` |
 | 组合根 | `kernel/main/main.c` | 只做初始化编排 | `kernel_main()` |
 
 约束：
@@ -34,32 +34,12 @@
 - VGA 只通过 `vga.c` 写；串口只通过 `uart.c` 写。
 - `kernel_main` 不持有业务状态，只按依赖顺序装配并处理装配失败。
 
-### 任务描述符
-
-`struct task_struct` 只存在于 `task.c` 内，字段为：
-
-| 字段 | 用途 |
-| --- | --- |
-| `pid` | 任务号 |
-| `state` | `TASK_UNUSED/READY/RUNNING/BLOCKED/ZOMBIE` |
-| `priority` | 0..3，当前只保存，轮转暂未按优先级加权 |
-| `comm[16]` | 任务名 |
-| `entry` | 入口地址 |
-| `stack_base/stack_top` | 任务栈边界；创建时校验 16 字节对齐和 4KB 大小 |
-| `switches` | 被切出次数 |
-| `ctx` | 上下文：7 个通用寄存器 + `esp/eip` 槽位 |
-
-创建任务时从 `stack_base` 到 `stack_top` 填 `0xA5A5A5A5`，`task_snapshot` 从栈底向上扫描，
-得到真实栈水位；`task_trace_*` 每 32 次切换采样一次，供渲染层画滚动调度条。
-
-当前 `TASK_MAX=6`，已用 3 个槽（`control/render/idle`）。
-
 ## 二、错误码
 
 格式 `0xRRFFTT`：
 
 - `RR`：职责号
-- `FF`：职责内字段号（`0x00` 通用，`0x01` 入口，`0x02` 栈，`0x03` PID，`0x04` 状态，`0x05` 出参，`0x06` 优先级）
+- `FF`：职责内字段号（`0x00` 通用，`0x01` 入口，`0x02` 栈，`0x03` PID，`0x04` 状态，`0x05` 出参，`0x06` 优先级，`0x08` PID 池）
 - `TT`：错误类型（`0x01` 字段缺失，`0x02` 字段冲突，`0x03` 依赖未满足，`0x04` 外部操作失败）
 
 | 代码 | 常量 | 场景 |
@@ -68,10 +48,10 @@
 | `0x210004` | `ERR_TASK_SLOT_FULL` | 任务槽满 |
 | `0x210101` | `ERR_TASK_ENTRY_MISSING` | 入口为空 |
 | `0x210203` | `ERR_TASK_STACK_INVALID` | 栈顶越界或未 16 字节对齐 |
-| `0x210302` | `ERR_TASK_PID_DUP` | PID 重复 |
+| `0x210302` | `ERR_TASK_PID_DUP` | 旧 PID 重复模板，`task_create` 已不再使用 |
+| `0x210803` | `ERR_TASK_PID_EXHAUSTED` | PID 位图 1..31 已耗尽 |
 | `0x210403` | `ERR_TASK_BAD_STATE` | 状态非法或任务指针为空 |
 | `0x210501` | `ERR_TASK_OUT_MISSING` | 出参为空 |
-| `0x210602` | `ERR_TASK_PRIORITY` | 优先级不在 0..3 |
 | `0x220004` | `ERR_ARM_APP_TASK_CREATE` | 应用创建任务失败 |
 | `0x220003` | `ERR_ARM_APP_SWITCH` | 应用任务切换失败 |
 
@@ -86,25 +66,27 @@
 | 地址 | 用途 |
 | --- | --- |
 | `0x1000` | 内核镜像起点 |
-| `0x1000..0x47FF` | boot 读取的 28 扇区（14KB）窗口 |
-| `0x5000..0x5FFF` | `control` 任务栈（栈顶 `0x6000`，向下增长） |
-| `0x6000..0x6FFF` | `render` 任务栈（栈顶 `0x7000`，向下增长） |
-| `0x7000..0x7FFF` | `idle` 任务栈（栈顶 `0x8000`，向下增长） |
-| `0x8000..0x8FFF` | 内核主线程栈（栈顶 `0x9000`） |
+| `0x1000..0x4FFF` | boot 读取的 32 扇区（16KB）窗口 |
+| `0x5000..0x5FFF` | 内核 BSS 尾部与保留区（不放置任务栈） |
+| `0x7000` | `control` 任务栈顶（向下增长） |
+| `0x8000` | `render` 任务栈顶（向下增长） |
+| `0x9000` | `idle` 任务栈顶（向下增长） |
+| `0xA000` | 内核主线程栈顶 |
+| `0xB000` | `probe` 任务栈顶（按 `P` 创建） |
 | `0x10000 / 0x11000` | 页目录 / 页表 |
 | `0x20000` | VGA 影子显存 |
 | `0x30000` | 串口帧快照 |
 | `0xB8000` | VGA 文本显存 |
 
-`boot.asm` 读 28 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 14336 字节。
-当前构建约 13.6KB，保留约 0.4KB 余量。若继续增长，先加 `boot.asm` 扇区数，
-同时把所有任务栈和主栈整体上移，不要覆盖任务栈。
+`boot.asm` 读 32 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 16384 字节。
+当前构建 15,444 字节，保留约 940 字节余量。若继续增长，先加 `boot.asm` 扇区数，
+同时把 `control`/`render` 栈和主栈整体上移，不要覆盖任务栈。
 
 ## 四、验收
 
 ```sh
 make clean && make all
-wc -c kernel.bin          # 必须 <= 14336
+wc -c kernel.bin          # 必须 <= 16384
 timeout 6 qemu-system-i386 -accel tcg -drive format=raw,file=disk.img \
   -display none -serial file:/tmp/robot-serial.bin -no-reboot
 xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
@@ -112,8 +94,8 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 通过标准：
 
-- `kernel.bin` 不超过 14336 字节，链接无 undefined symbol。
+- `kernel.bin` 不超过 16384 字节，链接无 undefined symbol。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
-- 屏幕出现机械臂、目标点、轨迹、右侧 `ARM STATUS` 面板和 `TASK SCHED` 任务监视器。
-- `TASK SCHED` 能看到 `1co / 2re / 3id` 三个任务、状态、栈水位条和底部滚动调度时间轴。
+- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
+- 按 `P`（扫描码 `0x19`）创建 `probe` 任务，画面显示 PID（首次为 4）；任务退出后 `P3/31` 回到 3，再按 `P` 仍分配 PID 4，证明 ZOMBIE 回收与 PID 复用。
