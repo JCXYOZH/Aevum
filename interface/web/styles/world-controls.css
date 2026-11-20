@@ -73,6 +73,29 @@ html[data-world="1"] .world-controls--desktop { display: block; }
 .control-chips button:hover { color: var(--paper, #efe7d6); border-color: rgba(121,229,228,.58); }
 .control-chips button.is-active { color: var(--lime, #d8f37a); border-color: rgba(216,243,122,.60); background: rgba(216,243,122,.10); }
 html.embed .world-controls { top: 14px; right: 14px; }
+
+.identity-row {
+  display: flex; align-items: center; gap: 7px; padding: 8px 0 9px;
+  border-bottom: 1px solid rgba(239,231,214,.12);
+  font: 10px/1.4 Consolas, "Microsoft YaHei", monospace;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.identity-row label { color: rgba(239,231,214,.48); }
+.identity-row input {
+  min-width: 0; flex: 1; height: 26px; padding: 0 8px;
+  color: var(--paper, #efe7d6); background: rgba(239,231,214,.06);
+  border: 1px solid rgba(239,231,214,.20); outline: none;
+  font: 11px/1 "Microsoft YaHei", sans-serif; letter-spacing: .02em;
+}
+.identity-row input:focus { border-color: rgba(121,229,228,.58); }
+.identity-row button {
+  height: 26px; padding: 0 9px; cursor: pointer;
+  color: var(--lime, #d8f37a); background: rgba(216,243,122,.08);
+  border: 1px solid rgba(216,243,122,.40);
+  font: 10px/1 Consolas, "Microsoft YaHei", monospace; letter-spacing: .06em;
+}
+.identity-row button:hover { background: rgba(216,243,122,.16); }
+
 @media (max-width: 900px) {
   .world-controls, .world-controls--desktop { width: 250px; right: 12px; top: 76px; }
 }

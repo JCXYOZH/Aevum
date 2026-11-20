@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aevum / World Capture</title>
-  <link rel="stylesheet" href="styles/world-controls.css?v=20261119x">
+  <link rel="stylesheet" href="styles/world-controls.css?v=20261119y">
   <link rel="stylesheet" href="styles/world-social.css?v=20261120g9p">
   <link rel="stylesheet" href="styles/scene-world.css?v=20261120g9p">
   <script>if(new URLSearchParams(location.search||"").get("embed")==="1")document.documentElement.classList.add("embed");</script>
@@ -77,6 +77,11 @@
       </div>
       <span class="social-online" id="roomOnline">0 ONLINE</span>
     </div>
+    <div class="identity-row">
+      <label for="nameInput">NAME</label>
+      <input id="nameInput" maxlength="20" placeholder="你的名字" autocomplete="off" aria-label="玩家名字">
+      <button type="button" id="nameApply">应用</button>
+    </div>
     <div class="chat-log" id="chatLog" aria-live="polite"></div>
     <form class="chat-form" id="chatForm" autocomplete="off">
       <input id="chatInput" maxlength="200" placeholder="说点什么…" aria-label="世界聊天输入">
@@ -87,7 +92,7 @@
       <span id="modelState">默认 VRM</span>
       <input type="file" id="modelFile" accept=".vrm,.zip,application/zip,application/octet-stream" hidden>
     </div>
-    <div class="social-foot">ZIP 自动识别其中的 .vrm · 房间最后一人离开后自动销毁</div>
+    <div class="social-foot">ZIP 自动识别其中的 .vrm · 聊天只发给当前在线的人，不存档</div>
   </div>
 
   <div class="roam-hint" id="roamHint">
@@ -118,10 +123,11 @@
 <script src="/engine/formats/gltf/gltf-accessor.js"></script>
 <script src="/engine/formats/gltf/gltf-animation.js"></script>
 <script src="/engine/formats/vrm/vrm.js"></script>
-<script src="/engine/render/vrm/vrm-renderer.js?v=20261120g9r"></script>
+<script src="/engine/render/vrm/vrm-renderer.js?v=20261120g9t"></script>
 <script src="/engine/render/retarget/animation-retarget.js"></script>
 <script src="/engine/world/pipeline/world-pipeline.js?v=20261120g9p"></script>
-<script src="js/scene/world/world-scene.bundle.js?v=20261120g9q"></script>
+<script src="js/scene/world/world-mqtt.js?v=20261120g9y"></script>
+<script src="js/scene/world/world-scene.bundle.js?v=20261120g9y"></script>
 <script src="js/scene/world-controls.js?v=20261119x"></script>
 </body>
 </html>

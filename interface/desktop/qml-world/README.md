@@ -7,14 +7,14 @@
 
 ```powershell
 cd D:\Aevum\interface\desktop\qml-world
-D:\venv\Scripts\python.exe qml_world.py --name 甲 --room world-lobby
+D:\venv\Scripts\python.exe qml_world.py --room my_era
 ```
 
 外壳会：
 
 1. 如果 `8799` 没有服务，起一个只读静态服，挂 `web/` 与 `/engine/`；
-2. 如果 `8790` 没有中继，起 `control/relay`（打包后是 `memoria-relay.exe`）；
-3. 打开 `world.html`，把 `name`、`room`、`relay` 作为查询参数传给页面。
+2. 不再启动本地 relay，页面直接连接 `broker.hivemq.com` 的 `my_era` 房间；
+3. 打开 `world.html`，只把 `room`、`relay` 作为查询参数传给页面；玩家名字在页面左侧 `NAME` 输入框里设置。
 
 已有 8799 服务时直接复用，不会抢端口。
 
@@ -42,8 +42,12 @@ cd D:\Aevum\interface\desktop\qml-world
 .\build_world_shell.ps1
 ```
 
-PyInstaller 输出 `dist/AevumWorld/`，其中包含 `web/`、`engine/`、`relay/` 和 QML 入口。
+PyInstaller 输出 `dist/AevumWorld/`，其中包含 `web/`、`engine/` 和 QML 入口，不再带 `relay/`。
 启动 exe 后窗口尺寸变化时，WebGL canvas 与 QML `WebEngineView` 都按窗口实时重算，不再固定 1600×900。
+
+这是免安装目录版：直接双击 `dist/AevumWorld/AevumWorld.exe`，不需要安装器。
+版本号写在 `VERSION`，同时显示在窗口标题；当前测试版本为 `0.2.0-preview.1`。
+
 
 ## 操作
 

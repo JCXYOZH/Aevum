@@ -434,8 +434,10 @@
       const height = this.canvas.height;
       const clear = (override && override.clearColor) || this.options.clearColor;
       gl.viewport(0, 0, width, height);
-      gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      if (!(override && override.noClear)) {
+        gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      }
       gl.enable(gl.DEPTH_TEST);
       gl.disable(gl.CULL_FACE);
 

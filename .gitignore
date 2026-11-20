@@ -16,6 +16,9 @@ interface/desktop/node_modules/
 interface/desktop/dist-app/
 interface/desktop/dist/
 interface/desktop/dist-run*/
+interface/desktop/qml-world/dist/
+interface/desktop/qml-world/build/
+interface/desktop/qml-world/*.spec
 archive/backend-python/monitor/dist/
 archive/backend-python/monitor/build/
 *.obj

@@ -224,7 +224,7 @@
     waterLevel: function () { return WATER_LEVEL; }
   };
 
-  // ---- 联机位置通道（HTTP 状态中继，8Hz 上报） --------------------------
+  // ---- 联机位置通道（HiveMQ MQTT；本地 HTTP relay 仅作开发回退） ----------
   var relayBase = '';
   var netId = '';
   var netName = '';
@@ -233,10 +233,12 @@
   var netClock = 0;
   var netBroadcast = 0;
   var netInFlight = false;
+  var mqttClient = null;
+  var mqttMode = false;
   var remotePlayers = Object.create(null);
   var avatarParts = null;
   var playerTagEls = Object.create(null);
-  var roomId = 'world-lobby';
+  var roomId = 'my_era';
   var roomMembers = [];
   var roomMessages = [];
   var roomStatus = 'connecting';
@@ -259,13 +261,18 @@
 
   function initNetwork() {
     var query = new URLSearchParams(window.location.search);
-    relayBase = query.get('relay') || '';
-    if (!relayBase) {
-      relayBase = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
-        ? 'http://' + location.hostname + ':8790'
-        : location.origin + '/relay';
+    relayBase = query.get('relay') || 'broker.hivemq.com';
+    mqttMode = /^wss?:\/\//i.test(relayBase) || /^mqtt/i.test(relayBase) || /broker\.hivemq\.com/i.test(relayBase);
+    if (mqttMode) {
+      relayBase = String(relayBase).replace(/\/+$/, '');
+    } else {
+      if (!relayBase) {
+        relayBase = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
+          ? 'http://' + location.hostname + ':8790'
+          : location.origin + '/relay';
+      }
+      relayBase = relayBase.replace(/\/+$/, '');
     }
-    relayBase = relayBase.replace(/\/+$/, '');
     try {
       netId = window.sessionStorage.getItem('aevum.world.netId') || '';
       if (!netId) {
@@ -277,7 +284,9 @@
     } catch (e) {
       netId = 'p' + Math.random().toString(36).slice(2, 10);
     }
-    netName = query.get('name') || ('旅人-' + netId.slice(0, 4));
+    var savedName = '';
+    try { savedName = window.localStorage.getItem('aevum.world.name') || ''; } catch (e) { savedName = ''; }
+    netName = query.get('name') || savedName || ('旅人-' + netId.slice(0, 4));
     document.documentElement.setAttribute('data-net',
       JSON.stringify({ status: 'connecting', id: netId, relay: relayBase, online: 0, remote: 0 }));
   }
@@ -347,7 +356,7 @@
           id: p.id, name: p.name || '旅人',
           x: p.x, y: p.y, z: p.z, yaw: p.yaw,
           tx: p.x, ty: p.y, tz: p.z, tyaw: p.yaw,
-          clip: p.clip || 'walk', color: netColorFor(p.id), last: now
+          clip: p.clip || 'idle', color: netColorFor(p.id), last: now
         };
       } else {
         r.tx = p.x; r.ty = p.y; r.tz = p.z; r.tyaw = p.yaw;
@@ -361,19 +370,99 @@
     netOnline = list.length;
   }
 
+  function ingestRemoteState(p) {
+    if (!p || p.id === netId) return;
+    var now = performance.now();
+    var r = remotePlayers[p.id];
+    if (!r) {
+      r = remotePlayers[p.id] = {
+        id: p.id, name: p.name || '旅人',
+        x: p.x, y: p.y, z: p.z, yaw: p.yaw,
+        tx: p.x, ty: p.y, tz: p.z, tyaw: p.yaw,
+        clip: p.clip || 'idle', color: netColorFor(p.id), last: now
+      };
+    } else {
+      r.tx = p.x; r.ty = p.y; r.tz = p.z; r.tyaw = p.yaw;
+      r.name = p.name || r.name;
+      r.clip = p.clip || r.clip;
+      r.last = now;
+    }
+    netOnline = Object.keys(remotePlayers).length + 1;
+    roomMembers = [{ id: netId, name: netName }].concat(Object.keys(remotePlayers).map(function (id) {
+      return { id: id, name: remotePlayers[id].name };
+    }));
+    if (roomEls && roomEls.online) roomEls.online.textContent = roomMembers.length + ' ONLINE';
+  }
+
+  function startMqtt() {
+    if (!window.AevumMqtt || mqttClient) return;
+    mqttClient = window.AevumMqtt.connect({
+      broker: relayBase,
+      room: roomId,
+      id: netId,
+      onStatus: function (status) {
+        netStatus = status;
+        roomStatus = status === 'online' ? 'online' : status;
+        if (roomEls && roomEls.online) {
+          roomEls.online.textContent = status === 'online'
+            ? (Object.keys(remotePlayers).length + 1) + ' ONLINE'
+            : (status === 'connecting' ? 'CONNECTING' : 'OFFLINE');
+        }
+        document.documentElement.setAttribute('data-net', JSON.stringify({
+          status: status, id: netId, name: netName, relay: relayBase,
+          online: Object.keys(remotePlayers).length + 1,
+          remote: Object.keys(remotePlayers).length
+        }));
+        document.documentElement.setAttribute('data-room', JSON.stringify({
+          room: roomId, status: status,
+          online: Object.keys(remotePlayers).length + 1
+        }));
+        if (status === 'online') {
+          addSystemLine('已连接 ' + relayBase + ' · 房间 ' + roomId);
+        }
+      },
+      onState: function (payload) { ingestRemoteState(payload); },
+      onChat: function (msg) {
+        if (!msg || !msg.text || msg.id === netId) return;
+        roomMessages.push({ id: msg.id, name: msg.name || '旅人', text: String(msg.text).slice(0, 240), ts: msg.ts || Date.now() });
+        if (roomMessages.length > 120) roomMessages.shift();
+        renderChat();
+      },
+      onBye: function (msg) {
+        if (!msg || !msg.id || msg.id === netId || !remotePlayers[msg.id]) return;
+        delete remotePlayers[msg.id];
+        netOnline = Object.keys(remotePlayers).length + 1;
+        roomMembers = [{ id: netId, name: netName }].concat(Object.keys(remotePlayers).map(function (rid) {
+          return { id: rid, name: remotePlayers[rid].name };
+        }));
+        if (roomEls && roomEls.online) roomEls.online.textContent = netOnline + ' ONLINE';
+      }
+    });
+    addSystemLine('正在连接德国中继 ' + relayBase + ' · 房间 ' + roomId + '…');
+  }
+
   function sendNetState() {
-    if (netInFlight || !world || !modelRenderer) return;
+    if (!world || !modelRenderer) return;
+    var payload = {
+      id: netId, name: netName,
+      room: roomId,
+      x: +charPos[0].toFixed(3), y: +charPos[1].toFixed(3), z: +charPos[2].toFixed(3),
+      yaw: +charYawCurrent.toFixed(3), clip: clip,
+      ts: Date.now()
+    };
+    if (mqttMode) {
+      if (!mqttClient || !mqttClient.isConnected()) return;
+      mqttClient.publish('state', payload);
+      netStatus = 'online';
+      return;
+    }
+    if (netInFlight) return;
     netInFlight = true;
     fetch(relayBase + '/v1/world/state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
-      body: JSON.stringify({
-        id: netId, name: netName,
-        room: roomId,
-        x: +charPos[0].toFixed(3), y: +charPos[1].toFixed(3), z: +charPos[2].toFixed(3),
-        yaw: +charYawCurrent.toFixed(3), clip: clip
-      })
+      body: JSON.stringify(payload)
     }).then(function (res) { return res.json(); }).then(function (data) {
       if (!data || !data.ok) throw new Error('relay error');
       netStatus = 'online';
@@ -394,13 +483,24 @@
       sendNetState();
     }
     var k = Math.min(1, dt * 12);
+    var now = performance.now();
     for (var id in remotePlayers) {
       var r = remotePlayers[id];
+      if (mqttMode && now - r.last > 90000) { delete remotePlayers[id]; continue; }
       r.x += (r.tx - r.x) * k;
       r.y += (r.ty - r.y) * k;
       r.z += (r.tz - r.z) * k;
       var dy = ((r.tyaw - r.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       r.yaw += dy * k;
+    }
+    if (mqttMode) {
+      netOnline = Object.keys(remotePlayers).length + 1;
+      roomMembers = [{ id: netId, name: netName }].concat(Object.keys(remotePlayers).map(function (rid) {
+        return { id: rid, name: remotePlayers[rid].name };
+      }));
+      if (roomEls && roomEls.online && netStatus === 'online') {
+        roomEls.online.textContent = netOnline + ' ONLINE';
+      }
     }
     if (netBroadcast >= 0.5) {
       netBroadcast = 0;
@@ -409,7 +509,7 @@
         online: netOnline,
         remote: Object.keys(remotePlayers).length,
         players: Object.keys(remotePlayers).map(function (rid) {
-          return { name: remotePlayers[rid].name, x: remotePlayers[rid].x, z: remotePlayers[rid].z };
+          return { name: remotePlayers[rid].name, x: remotePlayers[rid].x, z: remotePlayers[rid].z, clip: remotePlayers[rid].clip, anim: remotePlayers[rid].animClip || 'fallback' };
         })
       }));
     }
@@ -430,9 +530,12 @@
       var dist2 = dx * dx + dz * dz;
       var cdx = r.x - cameraPos[0], cdy = r.y + 1.2 - cameraPos[1], cdz = r.z - cameraPos[2];
       var cameraDist = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz);
-      var nearFade = Math.min(1, Math.max(0, (cameraDist - 5.0) / 3.0));
-      if (dist2 > 90 * 90 || dist2 < 2.4 * 2.4 || nearFade < 0.08) continue;
-      var avatarScale = 0.8 * (0.5 + nearFade * 0.5);
+      // 只在相机真的钻进代理体内部时跳过，避免近裁剪面把整个身体糊成黑墙。
+      // 不能按“离本地角色近”来隐藏：两个人碰面时对方会直接凭空消失。
+      var cameraInside = cameraDist < 0.9 ||
+        (cdx * cdx + cdz * cdz < 0.45 * 0.45 && cdy > -1.4 && cdy < 1.4);
+      if (dist2 > 90 * 90 || cameraInside) continue;
+      var avatarScale = 0.8;
       var m = M4.fromTRS(M4.create(), [r.x, r.y, r.z],
         math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], r.yaw + Math.PI),
         [avatarScale, avatarScale, avatarScale]);
@@ -455,6 +558,98 @@
     gl.bindVertexArray(null);
   }
 
+  function remotePhaseOf(r) {
+    var text = String(r.id || '');
+    var hash = 0;
+    for (var i = 0; i < text.length; i++) hash = ((hash * 31) + text.charCodeAt(i)) | 0;
+    return (Math.abs(hash) % 2500) / 1000;
+  }
+
+  function remoteAnimation(r, dt) {
+    if (!motionData || !window.AEVUM.formats.GLTFAnimation || !retarget) return null;
+    if (!r.anim) {
+      try {
+        r.anim = window.AEVUM.formats.GLTFAnimation.createPlayer(motionData);
+        r.animOffset = remotePhaseOf(r);
+        r.animClip = '';
+        r.poseAcc = 0;
+        r.remotePose = null;
+      } catch (e) {
+        r.anim = null;
+        return null;
+      }
+    }
+    var name = r.clip || 'idle';
+    var valid = r.anim.clips.some(function (c) { return c.name === name; });
+    if (!valid) name = r.anim.clips.some(function (c) { return c.name === 'idle'; }) ? 'idle' : 'walk';
+    if (r.animClip !== name) {
+      r.animClip = name;
+      r.anim.setClip(name).reset().setLoop(true).play();
+      if (r.animOffset) r.anim.update(r.animOffset);
+      r.poseAcc = 1;
+    }
+    r.anim.update(dt);
+    r.poseAcc += dt;
+    if (!r.remotePose || r.poseAcc >= 0.05) {
+      r.poseAcc = 0;
+      try {
+        r.remotePose = retarget(vrm, motionData.json, r.anim.getPose(), {
+          neutralStance: false,
+          symmetricArms: false,
+          footClearance: true,
+          runPose: name === 'run',
+          greetPose: false,
+          dt: dt
+        });
+      } catch (e) {
+        r.remotePose = null;
+      }
+    }
+    return r.remotePose;
+  }
+
+  function drawRemoteCharacters(now, localPose, viewProj, eye, lighting, dt) {
+    if (!modelRenderer || !vrm) return;
+    var ids = Object.keys(remotePlayers);
+    if (!ids.length) return;
+    var remoteMatrix = M4.create();
+    var quat = math.Q.create();
+    var time = now / 1000;
+    for (var i = 0; i < ids.length; i++) {
+      var r = remotePlayers[ids[i]];
+      var dx = r.x - charPos[0], dz = r.z - charPos[2];
+      if (dx * dx + dz * dz > 70 * 70) continue;
+      var cdx = r.x - cameraPos[0], cdy = r.y + 1.2 - cameraPos[1], cdz = r.z - cameraPos[2];
+      var cameraInside = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz) < 0.9 ||
+        (cdx * cdx + cdz * cdz < 0.45 * 0.45 && cdy > -1.4 && cdy < 1.4);
+      if (cameraInside) continue;
+      var remotePose = remoteAnimation(r, dt);
+      var rotation = remotePose && remotePose.rotation;
+      var translation = remotePose && remotePose.translation;
+      if (!rotation) {
+        if (window.AEVUM.render && window.AEVUM.render.makeVRMIdlePose) {
+          rotation = window.AEVUM.render.makeVRMIdlePose(vrm, time + (r.animOffset || remotePhaseOf(r)));
+        } else if (localPose) {
+          rotation = localPose.rotation;
+          translation = localPose.translation;
+        }
+      }
+      if (!rotation) continue;
+      M4.fromTRS(remoteMatrix,
+        [r.x, r.y - modelBoundsMinY * charScale, r.z],
+        math.Q.fromAxisAngle(quat, [0, 1, 0], (r.yaw || 0) + Math.PI),
+        [charScale, charScale, charScale]);
+      // 每个远端玩家用自己的动作时钟和 clip，不再共用本地角色的姿势。
+      modelRenderer.render(time, rotation, translation ? { translation: translation } : null, {
+        noClear: true,
+        viewProjection: viewProj,
+        modelMatrix: remoteMatrix,
+        cameraPosition: eye,
+        lighting: lighting
+      });
+    }
+  }
+
   function updatePlayerTags() {
     var root = document.getElementById('playerTags');
     if (!root) return;
@@ -471,7 +666,7 @@
         root.appendChild(tag);
         playerTagEls[id] = tag;
       }
-      var tx = r.x, ty = r.y + 2.4, tz = r.z;
+      var tx = r.x, ty = r.y + 1.95, tz = r.z;
       var cw = viewProj[3] * tx + viewProj[7] * ty + viewProj[11] * tz + viewProj[15];
       if (cw <= 0.05) { tag.style.display = 'none'; continue; }
       var cx = (viewProj[0] * tx + viewProj[4] * ty + viewProj[8] * tz + viewProj[12]) / cw;
@@ -479,10 +674,7 @@
       var sx = (cx * 0.5 + 0.5) * rect.width;
       var sy = (1 - (cy * 0.5 + 0.5)) * rect.height;
       var ddx = r.x - charPos[0], ddz = r.z - charPos[2];
-      var near = ddx * ddx + ddz * ddz < 2.4 * 2.4;
-      var cdx = r.x - cameraPos[0], cdy = r.y + 1.2 - cameraPos[1], cdz = r.z - cameraPos[2];
-      if (cdx * cdx + cdy * cdy + cdz * cdz < 7 * 7) near = true;
-      if (near || ddx * ddx + ddz * ddz > 70 * 70 || sx < -40 || sx > rect.width + 40 || sy < -20 || sy > rect.height + 20) {
+      if (ddx * ddx + ddz * ddz > 70 * 70 || sx < -40 || sx > rect.width + 40 || sy < -20 || sy > rect.height + 20) {
         tag.style.display = 'none';
         continue;
       }
@@ -499,8 +691,8 @@
 
   function initWorldUI() {
     var query = new URLSearchParams(window.location.search);
-    var requestedRoom = (query.get('room') || 'world-lobby').trim();
-    roomId = /^[A-Za-z0-9_-]{1,32}$/.test(requestedRoom) ? requestedRoom : 'world-lobby';
+    var requestedRoom = (query.get('room') || 'my_era').trim();
+    roomId = /^[A-Za-z0-9_-]{1,32}$/.test(requestedRoom) ? requestedRoom : 'my_era';
     roomEls = {
       panel: document.getElementById('socialPanel'),
       log: document.getElementById('chatLog'),
@@ -510,9 +702,35 @@
       online: document.getElementById('roomOnline'),
       state: document.getElementById('modelState'),
       pick: document.getElementById('modelPick'),
-      file: document.getElementById('modelFile')
+      file: document.getElementById('modelFile'),
+      nameInput: document.getElementById('nameInput'),
+      nameApply: document.getElementById('nameApply')
     };
     if (roomEls.room) roomEls.room.textContent = 'ROOM · ' + roomId;
+    function applyName(value) {
+      var next = String(value || '').trim().replace(/[<>]/g, '').slice(0, 20);
+      if (!next) next = '旅人-' + netId.slice(0, 4);
+      netName = next;
+      try { window.localStorage.setItem('aevum.world.name', next); } catch (e) { /* ignore */ }
+      if (roomEls.nameInput) roomEls.nameInput.value = next;
+      roomMembers = roomMembers.filter(function (m) { return m.id !== netId; });
+      roomMembers.unshift({ id: netId, name: netName });
+      addSystemLine('你的名字：' + netName);
+      document.documentElement.setAttribute('data-net', JSON.stringify({
+        status: netStatus, id: netId, name: netName, relay: relayBase,
+        online: Object.keys(remotePlayers).length + 1,
+        remote: Object.keys(remotePlayers).length
+      }));
+    }
+    if (roomEls.nameInput) {
+      roomEls.nameInput.value = netName;
+      roomEls.nameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); applyName(roomEls.nameInput.value); roomEls.nameInput.blur(); }
+      });
+    }
+    if (roomEls.nameApply) {
+      roomEls.nameApply.addEventListener('click', function () { applyName(roomEls.nameInput && roomEls.nameInput.value); });
+    }
     if (roomEls.form) {
       roomEls.form.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -529,7 +747,11 @@
     }
     document.documentElement.setAttribute('data-room', JSON.stringify({ room: roomId, status: 'connecting' }));
     window.addEventListener('pagehide', leaveRoom);
-    addSystemLine('正在连接房间 ' + roomId + '…');
+    if (mqttMode) {
+      startMqtt();
+    } else {
+      addSystemLine('正在连接房间 ' + roomId + '…');
+    }
     window.AevumWorldRuntime = {
       loadCharacterFile: loadCharacterFile,
       loadCharacterBuffer: applyCharacterBuffer,
@@ -627,6 +849,7 @@
   }
 
   function joinRoom() {
+    if (mqttMode) return;
     if (roomInFlight) return;
     roomInFlight = true;
     fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/join', {
@@ -644,6 +867,7 @@
   }
 
   function pollRoom() {
+    if (mqttMode) return;
     if (roomInFlight) return;
     roomInFlight = true;
     fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId), { cache: 'no-store' })
@@ -659,7 +883,7 @@
   }
 
   function updateRoom(dt) {
-    if (!relayBase) return;
+    if (mqttMode || !relayBase) return;
     roomClock += dt;
     roomPollClock += dt;
     if (roomClock >= 2.5) {
@@ -677,6 +901,19 @@
     var text = roomEls.input.value.trim();
     if (!text) return;
     roomEls.input.value = '';
+    if (mqttMode) {
+      var msg = { id: netId, name: netName, text: text.slice(0, 240), ts: Date.now() };
+      if (!mqttClient || !mqttClient.isConnected()) {
+        addSystemLine('还没连上中继，消息没发出去');
+        return;
+      }
+      mqttClient.publish('chat', msg);
+      roomMessages.push(msg);
+      if (roomMessages.length > 120) roomMessages.shift();
+      renderChat();
+      roomEls.input.focus();
+      return;
+    }
     fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/messages', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
       body: JSON.stringify({ id: netId, text: text })
@@ -690,6 +927,13 @@
   }
 
   function leaveRoom() {
+    if (mqttMode) {
+      if (mqttClient) {
+        mqttClient.close(false);
+        mqttClient = null;
+      }
+      return;
+    }
     if (!relayBase || !netId) return;
     var url = relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/leave';
     var body = JSON.stringify({ id: netId });
@@ -1545,7 +1789,7 @@
     drawGrass(now / 1000);
     drawWater();
     drawObjects();
-    drawRemotePlayers();
+    if (!vrm || !modelRenderer) drawRemotePlayers();
     drawRain();
     drawSnow();
     drawContactShadow();
@@ -2085,21 +2329,27 @@
         chunks: terrainChunks.length,
         farTrees: 0
       };
+      var charLighting = {
+        direction: world.lights.directionalLight.direction,
+        color: world.lights.directionalLight.color,
+        ambient: world.lights.ambientLight.color,
+        rim: [0.48, 0.86, 1.0],
+        rimStrength: 0.52,
+        specular: 0.12
+      };
       if (modelRenderer && pose) {
         if (window.AevumMarkGraphics) window.AevumMarkGraphics('SpiritSkin');
         modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
           viewProjection: viewProj,
           modelMatrix: modelMatrix,
           cameraPosition: eye,
-          lighting: {
-            direction: world.lights.directionalLight.direction,
-            color: world.lights.directionalLight.color,
-            ambient: world.lights.ambientLight.color,
-            rim: [0.48, 0.86, 1.0],
-            rimStrength: 0.52,
-            specular: 0.12
-          }
+          lighting: charLighting
         });
+        var remotePose = pose;
+        drawRemoteCharacters(now, remotePose, viewProj, eye, charLighting, dt);
+      } else if (modelRenderer && vrm) {
+        var idlePose = window.AEVUM.render.makeVRMIdlePose(vrm, now / 1000);
+        drawRemoteCharacters(now, { rotation: idlePose, translation: null }, viewProj, eye, charLighting, dt);
       }
       requestAnimationFrame(frame);
     }

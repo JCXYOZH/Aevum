@@ -10,7 +10,7 @@ Window {
     minimumHeight: 700
     visible: true
     visibility: Window.Maximized
-    title: "Aevum World"
+    title: "Aevum World " + worldConfig.version
     color: "#050b12"
 
     property string sceneUrl: worldConfig.url

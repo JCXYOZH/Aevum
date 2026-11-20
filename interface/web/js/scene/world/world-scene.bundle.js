@@ -931,6 +931,203 @@
   }
 
   
+// ---- tree / grass meshes ---------------------------------------------
+  function pushCone(out, cx, cy, cz, radius, height, color, segments) {
+    var base = out.pos.length / 3;
+    for (var i = 0; i < segments; i++) {
+      var a0 = i / segments * Math.PI * 2;
+      var a1 = (i + 1) / segments * Math.PI * 2;
+      var p0 = [cx + Math.cos(a0) * radius, cy, cz + Math.sin(a0) * radius];
+      var p1 = [cx + Math.cos(a1) * radius, cy, cz + Math.sin(a1) * radius];
+      var tip = [cx, cy + height, cz];
+      var n0 = normalize3([Math.cos(a0), 0.45, Math.sin(a0)]);
+      var n1 = normalize3([Math.cos(a1), 0.45, Math.sin(a1)]);
+      var nTip = [0, 1, 0];
+      out.pos.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], tip[0], tip[1], tip[2]);
+      out.nor.push(n0[0], n0[1], n0[2], n1[0], n1[1], n1[2], nTip[0], nTip[1], nTip[2]);
+      for (var k = 0; k < 3; k++) out.col.push(color[0], color[1], color[2]);
+      out.idx.push(base + i * 3, base + i * 3 + 1, base + i * 3 + 2);
+    }
+  }
+  function pushEllipsoid(out, cx, cy, cz, rx, ry, rz, color, segments, rings) {
+    var base = out.pos.length / 3;
+    for (var y = 0; y <= rings; y++) {
+      var phi = y / rings * Math.PI;
+      for (var x = 0; x <= segments; x++) {
+        var theta = x / segments * Math.PI * 2;
+        var px = Math.sin(phi) * Math.cos(theta);
+        var py = Math.cos(phi);
+        var pz = Math.sin(phi) * Math.sin(theta);
+        out.pos.push(cx + px * rx, cy + py * ry, cz + pz * rz);
+        var n = normalize3([px / rx, py / ry, pz / rz]);
+        out.nor.push(n[0], n[1], n[2]);
+        out.col.push(color[0], color[1], color[2]);
+      }
+    }
+    for (var y2 = 0; y2 < rings; y2++) {
+      for (var x2 = 0; x2 < segments; x2++) {
+        var a = base + y2 * (segments + 1) + x2;
+        var b = a + segments + 1;
+        out.idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    }
+  }
+
+  function pushCylinder(out, cx, cy, cz, radius, height, color, segments) {
+    var base = out.pos.length / 3;
+    for (var i = 0; i < segments; i++) {
+      var a0 = i / segments * Math.PI * 2;
+      var a1 = (i + 1) / segments * Math.PI * 2;
+      var p0 = [cx + Math.cos(a0) * radius, cy, cz + Math.sin(a0) * radius];
+      var p1 = [cx + Math.cos(a1) * radius, cy, cz + Math.sin(a1) * radius];
+      var p2 = [p1[0], cy + height, p1[2]];
+      var p3 = [p0[0], cy + height, p0[2]];
+      var n0 = [Math.cos(a0), 0, Math.sin(a0)], n1 = [Math.cos(a1), 0, Math.sin(a1)];
+      out.pos.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2]);
+      out.nor.push(n0[0], n0[1], n0[2], n1[0], n1[1], n1[2], n1[0], n1[1], n1[2], n0[0], n0[1], n0[2]);
+      for (var k = 0; k < 4; k++) out.col.push(color[0], color[1], color[2]);
+      out.idx.push(base + i * 4, base + i * 4 + 1, base + i * 4 + 2, base + i * 4, base + i * 4 + 2, base + i * 4 + 3);
+    }
+  }
+  function normalize3(v) {
+    if (!window.OrbMath || !window.OrbMath.Vec3) {
+      throw new Error('OrbMath.Vec3 is required; inline normalize3 is removed');
+    }
+    var ov = new window.OrbMath.Vec3(v[0], v[1], v[2]).normalize();
+    if (window.AEVUM_GRAPHICS_USAGE) window.AEVUM_GRAPHICS_USAGE.OrbMath = (window.AEVUM_GRAPHICS_USAGE.OrbMath || 0) + 1;
+    return [ov.x, ov.y, ov.z];
+  }
+  function makeTreeMesh(trees) {
+    var out = { pos: [], nor: [], col: [], idx: [] };
+    for (var i = 0; i < trees.length; i++) {
+      var t = trees[i];
+      var s = t.scale || 1;
+      var kind = t.type || 'pine';
+      var bark = kind === 'birch' ? [0.46, 0.42, 0.34] : [0.20, 0.15, 0.10];
+      var leaf = t.color || [0.18, 0.34, 0.12];
+      var crown = [leaf[0] * 0.38, leaf[1] * 0.52, leaf[2] * 0.28];
+      var light = [leaf[0] * 0.52, leaf[1] * 0.68, leaf[2] * 0.38];
+      if (kind === 'pine') {
+        pushCylinder(out, t.x, t.y, t.z, 0.10 * s, 1.55 * s, bark, 6);
+        pushCone(out, t.x, t.y + 0.95 * s, t.z, 1.05 * s, 1.65 * s, crown, 9);
+        pushCone(out, t.x, t.y + 1.72 * s, t.z, 0.82 * s, 1.45 * s, light, 9);
+        pushCone(out, t.x, t.y + 2.42 * s, t.z, 0.55 * s, 1.18 * s, light, 9);
+      } else {
+        pushCylinder(out, t.x, t.y, t.z, kind === 'birch' ? 0.065 * s : 0.11 * s, 2.05 * s, bark, 6);
+        pushEllipsoid(out, t.x, t.y + 1.86 * s, t.z, 0.92 * s, 0.76 * s, 0.88 * s, crown, 8, 5);
+        pushEllipsoid(out, t.x - 0.48 * s, t.y + 1.55 * s, t.z + 0.18 * s, 0.58 * s, 0.52 * s, 0.58 * s, light, 7, 4);
+        pushEllipsoid(out, t.x + 0.42 * s, t.y + 1.52 * s, t.z - 0.16 * s, 0.54 * s, 0.48 * s, 0.56 * s, crown, 7, 4);
+      }
+    }
+    programRef = terrainProgram;
+    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
+  }
+  function makeFlowerMesh(flowers) {
+    var out = { pos: [], nor: [], col: [], idx: [] };
+    var base = 0;
+    for (var i = 0; i < flowers.length; i++) {
+      var f = flowers[i];
+      var c = i % 5 === 0 ? [0.92, 0.88, 0.70] : (i % 3 === 0 ? [0.82, 0.72, 0.32] : [0.88, 0.82, 0.52]);
+      var h = 0.14 + (i % 3) * 0.03, w = 0.045;
+      for (var a = 0; a < 3; a++) {
+        var ang = a * 1.047;
+        var dx = Math.cos(ang) * w, dz = Math.sin(ang) * w;
+        out.pos.push(f.x - dx, f.y, f.z - dz, f.x + dx, f.y, f.z + dz, f.x + dx, f.y + h, f.z + dz, f.x - dx, f.y + h, f.z - dz);
+        for (var n = 0; n < 4; n++) { out.nor.push(0, 1, 0); out.col.push(c[0], c[1], c[2]); }
+        out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        base += 4;
+      }
+    }
+    return out.pos.length ? createMesh(out.pos, out.nor, out.col, out.idx, null) : null;
+  }
+
+  function makeGrassMesh(grass) {
+    var out = { pos: [], nor: [], col: [], flex: [], idx: [] };
+    for (var i = 0; i < grass.length; i++) {
+      var g = grass[i];
+      var y0 = g.y + 0.01;
+      var h = Math.max(0.09, g.height * 0.62);
+      var w = Math.max(0.008, g.width * 0.48);
+      var c = g.color || [0.18, 0.38, 0.10];
+      c = [0.07 + (c[0] - 0.20) * 0.08, 0.17 + (c[1] - 0.45) * 0.10, 0.035 + (c[2] - 0.10) * 0.05];
+      for (var q = 0; q < 4; q++) {
+        var ang = g.rotation + q * 0.62 + 0.3;
+        var ox = Math.cos(g.rotation + q * 1.8) * 0.075;
+        var oz = Math.sin(g.rotation + q * 1.8) * 0.075;
+        var hq = h * (0.66 + ((q * 17) % 9) * 0.045);
+        var dx = Math.cos(ang) * w, dz = Math.sin(ang) * w;
+        var base = out.pos.length / 3;
+        out.pos.push(g.x - dx + ox, y0, g.z - dz + oz, g.x + dx + ox, y0, g.z + dz + oz, g.x + dx + ox, y0 + hq, g.z + dz + oz, g.x - dx + ox, y0 + hq, g.z - dz + oz);
+        out.nor.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+        out.col.push(c[0]*0.88, c[1]*0.92, c[2]*0.88, c[0]*0.88, c[1]*0.92, c[2]*0.88, c[0]*1.18, c[1]*1.22, c[2]*1.08, c[0]*1.18, c[1]*1.22, c[2]*1.08);
+        out.flex.push(0, 0, 1, 1);
+        out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
+    }
+    programRef = grassProgram;
+    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx), new Float32Array(out.flex));
+  }
+
+  function makeBirdMesh() {
+    // A distant bird needs a readable silhouette, not four large polygons.
+    // Wings sweep back from the shoulders; the tail closes the body.
+    var verts = [
+      [0, 0.00, -0.56],       // 0 head / front
+      [0, 0.05, 0.48],        // 1 tail
+      [-0.20, 0.04, -0.06],   // 2 left shoulder
+      [-1.16, 0.12, 0.30],    // 3 left wing tip
+      [-0.54, 0.06, 0.52],    // 4 left trailing edge
+      [0.20, 0.04, -0.06],    // 5 right shoulder
+      [1.16, 0.12, 0.30],     // 6 right wing tip
+      [0.54, 0.06, 0.52]      // 7 right trailing edge
+    ];
+    var tris = [
+      [0, 2, 3], [0, 3, 4], [0, 4, 1],
+      [0, 5, 6], [0, 6, 7], [0, 7, 1]
+    ];
+    var out = { pos: [], nor: [], col: [], idx: [] };
+    var base = 0;
+    for (var t = 0; t < tris.length; t++) {
+      for (var v = 0; v < 3; v++) {
+        var p = verts[tris[t][v]];
+        out.pos.push(p[0], p[1], p[2]);
+        var n = normalize3([p[0] * 0.12, 1, p[2] * 0.12]);
+        out.nor.push(n[0], n[1], n[2]);
+        out.col.push(0.12, 0.15, 0.19);
+      }
+      out.idx.push(base, base + 1, base + 2);
+      base += 3;
+    }
+    programRef = objectProgram;
+    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
+  }
+
+  function makeFireflyMesh() {
+    var points = [
+      [0, 0.5, 0], [0, -0.5, 0],
+      [0.45, 0, 0], [-0.45, 0, 0],
+      [0, 0, 0.45], [0, 0, -0.45]
+    ];
+    var faces = [
+      [0, 2, 4], [0, 4, 3], [0, 3, 5], [0, 5, 2],
+      [1, 4, 2], [1, 3, 4], [1, 5, 3], [1, 2, 5]
+    ];
+    var out = { pos: [], nor: [], col: [], idx: [] };
+    for (var i = 0; i < points.length; i++) {
+      var p = points[i];
+      out.pos.push(p[0], p[1], p[2]);
+      var n = normalize3(p);
+      out.nor.push(n[0], n[1], n[2]);
+      out.col.push(0.9, 0.85, 0.45);
+    }
+    for (var f = 0; f < faces.length; f++) {
+      out.idx.push(faces[f][0], faces[f][1], faces[f][2]);
+    }
+    programRef = objectProgram;
+    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
+  }
+
+  
 // ---- terrain shaping --------------------------------------------------
   function smoothstep(a, b, x) {
     var t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -1296,203 +1493,6 @@
   }
 
 
-// ---- tree / grass meshes ---------------------------------------------
-  function pushCone(out, cx, cy, cz, radius, height, color, segments) {
-    var base = out.pos.length / 3;
-    for (var i = 0; i < segments; i++) {
-      var a0 = i / segments * Math.PI * 2;
-      var a1 = (i + 1) / segments * Math.PI * 2;
-      var p0 = [cx + Math.cos(a0) * radius, cy, cz + Math.sin(a0) * radius];
-      var p1 = [cx + Math.cos(a1) * radius, cy, cz + Math.sin(a1) * radius];
-      var tip = [cx, cy + height, cz];
-      var n0 = normalize3([Math.cos(a0), 0.45, Math.sin(a0)]);
-      var n1 = normalize3([Math.cos(a1), 0.45, Math.sin(a1)]);
-      var nTip = [0, 1, 0];
-      out.pos.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], tip[0], tip[1], tip[2]);
-      out.nor.push(n0[0], n0[1], n0[2], n1[0], n1[1], n1[2], nTip[0], nTip[1], nTip[2]);
-      for (var k = 0; k < 3; k++) out.col.push(color[0], color[1], color[2]);
-      out.idx.push(base + i * 3, base + i * 3 + 1, base + i * 3 + 2);
-    }
-  }
-  function pushEllipsoid(out, cx, cy, cz, rx, ry, rz, color, segments, rings) {
-    var base = out.pos.length / 3;
-    for (var y = 0; y <= rings; y++) {
-      var phi = y / rings * Math.PI;
-      for (var x = 0; x <= segments; x++) {
-        var theta = x / segments * Math.PI * 2;
-        var px = Math.sin(phi) * Math.cos(theta);
-        var py = Math.cos(phi);
-        var pz = Math.sin(phi) * Math.sin(theta);
-        out.pos.push(cx + px * rx, cy + py * ry, cz + pz * rz);
-        var n = normalize3([px / rx, py / ry, pz / rz]);
-        out.nor.push(n[0], n[1], n[2]);
-        out.col.push(color[0], color[1], color[2]);
-      }
-    }
-    for (var y2 = 0; y2 < rings; y2++) {
-      for (var x2 = 0; x2 < segments; x2++) {
-        var a = base + y2 * (segments + 1) + x2;
-        var b = a + segments + 1;
-        out.idx.push(a, b, a + 1, a + 1, b, b + 1);
-      }
-    }
-  }
-
-  function pushCylinder(out, cx, cy, cz, radius, height, color, segments) {
-    var base = out.pos.length / 3;
-    for (var i = 0; i < segments; i++) {
-      var a0 = i / segments * Math.PI * 2;
-      var a1 = (i + 1) / segments * Math.PI * 2;
-      var p0 = [cx + Math.cos(a0) * radius, cy, cz + Math.sin(a0) * radius];
-      var p1 = [cx + Math.cos(a1) * radius, cy, cz + Math.sin(a1) * radius];
-      var p2 = [p1[0], cy + height, p1[2]];
-      var p3 = [p0[0], cy + height, p0[2]];
-      var n0 = [Math.cos(a0), 0, Math.sin(a0)], n1 = [Math.cos(a1), 0, Math.sin(a1)];
-      out.pos.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2]);
-      out.nor.push(n0[0], n0[1], n0[2], n1[0], n1[1], n1[2], n1[0], n1[1], n1[2], n0[0], n0[1], n0[2]);
-      for (var k = 0; k < 4; k++) out.col.push(color[0], color[1], color[2]);
-      out.idx.push(base + i * 4, base + i * 4 + 1, base + i * 4 + 2, base + i * 4, base + i * 4 + 2, base + i * 4 + 3);
-    }
-  }
-  function normalize3(v) {
-    if (!window.OrbMath || !window.OrbMath.Vec3) {
-      throw new Error('OrbMath.Vec3 is required; inline normalize3 is removed');
-    }
-    var ov = new window.OrbMath.Vec3(v[0], v[1], v[2]).normalize();
-    if (window.AEVUM_GRAPHICS_USAGE) window.AEVUM_GRAPHICS_USAGE.OrbMath = (window.AEVUM_GRAPHICS_USAGE.OrbMath || 0) + 1;
-    return [ov.x, ov.y, ov.z];
-  }
-  function makeTreeMesh(trees) {
-    var out = { pos: [], nor: [], col: [], idx: [] };
-    for (var i = 0; i < trees.length; i++) {
-      var t = trees[i];
-      var s = t.scale || 1;
-      var kind = t.type || 'pine';
-      var bark = kind === 'birch' ? [0.46, 0.42, 0.34] : [0.20, 0.15, 0.10];
-      var leaf = t.color || [0.18, 0.34, 0.12];
-      var crown = [leaf[0] * 0.38, leaf[1] * 0.52, leaf[2] * 0.28];
-      var light = [leaf[0] * 0.52, leaf[1] * 0.68, leaf[2] * 0.38];
-      if (kind === 'pine') {
-        pushCylinder(out, t.x, t.y, t.z, 0.10 * s, 1.55 * s, bark, 6);
-        pushCone(out, t.x, t.y + 0.95 * s, t.z, 1.05 * s, 1.65 * s, crown, 9);
-        pushCone(out, t.x, t.y + 1.72 * s, t.z, 0.82 * s, 1.45 * s, light, 9);
-        pushCone(out, t.x, t.y + 2.42 * s, t.z, 0.55 * s, 1.18 * s, light, 9);
-      } else {
-        pushCylinder(out, t.x, t.y, t.z, kind === 'birch' ? 0.065 * s : 0.11 * s, 2.05 * s, bark, 6);
-        pushEllipsoid(out, t.x, t.y + 1.86 * s, t.z, 0.92 * s, 0.76 * s, 0.88 * s, crown, 8, 5);
-        pushEllipsoid(out, t.x - 0.48 * s, t.y + 1.55 * s, t.z + 0.18 * s, 0.58 * s, 0.52 * s, 0.58 * s, light, 7, 4);
-        pushEllipsoid(out, t.x + 0.42 * s, t.y + 1.52 * s, t.z - 0.16 * s, 0.54 * s, 0.48 * s, 0.56 * s, crown, 7, 4);
-      }
-    }
-    programRef = terrainProgram;
-    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
-  }
-  function makeFlowerMesh(flowers) {
-    var out = { pos: [], nor: [], col: [], idx: [] };
-    var base = 0;
-    for (var i = 0; i < flowers.length; i++) {
-      var f = flowers[i];
-      var c = i % 5 === 0 ? [0.92, 0.88, 0.70] : (i % 3 === 0 ? [0.82, 0.72, 0.32] : [0.88, 0.82, 0.52]);
-      var h = 0.14 + (i % 3) * 0.03, w = 0.045;
-      for (var a = 0; a < 3; a++) {
-        var ang = a * 1.047;
-        var dx = Math.cos(ang) * w, dz = Math.sin(ang) * w;
-        out.pos.push(f.x - dx, f.y, f.z - dz, f.x + dx, f.y, f.z + dz, f.x + dx, f.y + h, f.z + dz, f.x - dx, f.y + h, f.z - dz);
-        for (var n = 0; n < 4; n++) { out.nor.push(0, 1, 0); out.col.push(c[0], c[1], c[2]); }
-        out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-        base += 4;
-      }
-    }
-    return out.pos.length ? createMesh(out.pos, out.nor, out.col, out.idx, null) : null;
-  }
-
-  function makeGrassMesh(grass) {
-    var out = { pos: [], nor: [], col: [], flex: [], idx: [] };
-    for (var i = 0; i < grass.length; i++) {
-      var g = grass[i];
-      var y0 = g.y + 0.01;
-      var h = Math.max(0.09, g.height * 0.62);
-      var w = Math.max(0.008, g.width * 0.48);
-      var c = g.color || [0.18, 0.38, 0.10];
-      c = [0.07 + (c[0] - 0.20) * 0.08, 0.17 + (c[1] - 0.45) * 0.10, 0.035 + (c[2] - 0.10) * 0.05];
-      for (var q = 0; q < 4; q++) {
-        var ang = g.rotation + q * 0.62 + 0.3;
-        var ox = Math.cos(g.rotation + q * 1.8) * 0.075;
-        var oz = Math.sin(g.rotation + q * 1.8) * 0.075;
-        var hq = h * (0.66 + ((q * 17) % 9) * 0.045);
-        var dx = Math.cos(ang) * w, dz = Math.sin(ang) * w;
-        var base = out.pos.length / 3;
-        out.pos.push(g.x - dx + ox, y0, g.z - dz + oz, g.x + dx + ox, y0, g.z + dz + oz, g.x + dx + ox, y0 + hq, g.z + dz + oz, g.x - dx + ox, y0 + hq, g.z - dz + oz);
-        out.nor.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
-        out.col.push(c[0]*0.88, c[1]*0.92, c[2]*0.88, c[0]*0.88, c[1]*0.92, c[2]*0.88, c[0]*1.18, c[1]*1.22, c[2]*1.08, c[0]*1.18, c[1]*1.22, c[2]*1.08);
-        out.flex.push(0, 0, 1, 1);
-        out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-      }
-    }
-    programRef = grassProgram;
-    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx), new Float32Array(out.flex));
-  }
-
-  function makeBirdMesh() {
-    // A distant bird needs a readable silhouette, not four large polygons.
-    // Wings sweep back from the shoulders; the tail closes the body.
-    var verts = [
-      [0, 0.00, -0.56],       // 0 head / front
-      [0, 0.05, 0.48],        // 1 tail
-      [-0.20, 0.04, -0.06],   // 2 left shoulder
-      [-1.16, 0.12, 0.30],    // 3 left wing tip
-      [-0.54, 0.06, 0.52],    // 4 left trailing edge
-      [0.20, 0.04, -0.06],    // 5 right shoulder
-      [1.16, 0.12, 0.30],     // 6 right wing tip
-      [0.54, 0.06, 0.52]      // 7 right trailing edge
-    ];
-    var tris = [
-      [0, 2, 3], [0, 3, 4], [0, 4, 1],
-      [0, 5, 6], [0, 6, 7], [0, 7, 1]
-    ];
-    var out = { pos: [], nor: [], col: [], idx: [] };
-    var base = 0;
-    for (var t = 0; t < tris.length; t++) {
-      for (var v = 0; v < 3; v++) {
-        var p = verts[tris[t][v]];
-        out.pos.push(p[0], p[1], p[2]);
-        var n = normalize3([p[0] * 0.12, 1, p[2] * 0.12]);
-        out.nor.push(n[0], n[1], n[2]);
-        out.col.push(0.12, 0.15, 0.19);
-      }
-      out.idx.push(base, base + 1, base + 2);
-      base += 3;
-    }
-    programRef = objectProgram;
-    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
-  }
-
-  function makeFireflyMesh() {
-    var points = [
-      [0, 0.5, 0], [0, -0.5, 0],
-      [0.45, 0, 0], [-0.45, 0, 0],
-      [0, 0, 0.45], [0, 0, -0.45]
-    ];
-    var faces = [
-      [0, 2, 4], [0, 4, 3], [0, 3, 5], [0, 5, 2],
-      [1, 4, 2], [1, 3, 4], [1, 5, 3], [1, 2, 5]
-    ];
-    var out = { pos: [], nor: [], col: [], idx: [] };
-    for (var i = 0; i < points.length; i++) {
-      var p = points[i];
-      out.pos.push(p[0], p[1], p[2]);
-      var n = normalize3(p);
-      out.nor.push(n[0], n[1], n[2]);
-      out.col.push(0.9, 0.85, 0.45);
-    }
-    for (var f = 0; f < faces.length; f++) {
-      out.idx.push(faces[f][0], faces[f][1], faces[f][2]);
-    }
-    programRef = objectProgram;
-    return createMesh(new Float32Array(out.pos), new Float32Array(out.nor), new Float32Array(out.col), new Uint32Array(out.idx));
-  }
-
-  
   // ---- runtime -----------------------------------------------------------
   var world = null;
   var fog = null;
@@ -1719,7 +1719,7 @@
     waterLevel: function () { return WATER_LEVEL; }
   };
 
-  // ---- 联机位置通道（HTTP 状态中继，8Hz 上报） --------------------------
+  // ---- 联机位置通道（HiveMQ MQTT；本地 HTTP relay 仅作开发回退） ----------
   var relayBase = '';
   var netId = '';
   var netName = '';
@@ -1728,10 +1728,12 @@
   var netClock = 0;
   var netBroadcast = 0;
   var netInFlight = false;
+  var mqttClient = null;
+  var mqttMode = false;
   var remotePlayers = Object.create(null);
   var avatarParts = null;
   var playerTagEls = Object.create(null);
-  var roomId = 'world-lobby';
+  var roomId = 'my_era';
   var roomMembers = [];
   var roomMessages = [];
   var roomStatus = 'connecting';
@@ -1754,13 +1756,18 @@
 
   function initNetwork() {
     var query = new URLSearchParams(window.location.search);
-    relayBase = query.get('relay') || '';
-    if (!relayBase) {
-      relayBase = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
-        ? 'http://' + location.hostname + ':8790'
-        : location.origin + '/relay';
+    relayBase = query.get('relay') || 'broker.hivemq.com';
+    mqttMode = /^wss?:\/\//i.test(relayBase) || /^mqtt/i.test(relayBase) || /broker\.hivemq\.com/i.test(relayBase);
+    if (mqttMode) {
+      relayBase = String(relayBase).replace(/\/+$/, '');
+    } else {
+      if (!relayBase) {
+        relayBase = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
+          ? 'http://' + location.hostname + ':8790'
+          : location.origin + '/relay';
+      }
+      relayBase = relayBase.replace(/\/+$/, '');
     }
-    relayBase = relayBase.replace(/\/+$/, '');
     try {
       netId = window.sessionStorage.getItem('aevum.world.netId') || '';
       if (!netId) {
@@ -1772,7 +1779,9 @@
     } catch (e) {
       netId = 'p' + Math.random().toString(36).slice(2, 10);
     }
-    netName = query.get('name') || ('旅人-' + netId.slice(0, 4));
+    var savedName = '';
+    try { savedName = window.localStorage.getItem('aevum.world.name') || ''; } catch (e) { savedName = ''; }
+    netName = query.get('name') || savedName || ('旅人-' + netId.slice(0, 4));
     document.documentElement.setAttribute('data-net',
       JSON.stringify({ status: 'connecting', id: netId, relay: relayBase, online: 0, remote: 0 }));
   }
@@ -1842,7 +1851,7 @@
           id: p.id, name: p.name || '旅人',
           x: p.x, y: p.y, z: p.z, yaw: p.yaw,
           tx: p.x, ty: p.y, tz: p.z, tyaw: p.yaw,
-          clip: p.clip || 'walk', color: netColorFor(p.id), last: now
+          clip: p.clip || 'idle', color: netColorFor(p.id), last: now
         };
       } else {
         r.tx = p.x; r.ty = p.y; r.tz = p.z; r.tyaw = p.yaw;
@@ -1856,19 +1865,99 @@
     netOnline = list.length;
   }
 
+  function ingestRemoteState(p) {
+    if (!p || p.id === netId) return;
+    var now = performance.now();
+    var r = remotePlayers[p.id];
+    if (!r) {
+      r = remotePlayers[p.id] = {
+        id: p.id, name: p.name || '旅人',
+        x: p.x, y: p.y, z: p.z, yaw: p.yaw,
+        tx: p.x, ty: p.y, tz: p.z, tyaw: p.yaw,
+        clip: p.clip || 'idle', color: netColorFor(p.id), last: now
+      };
+    } else {
+      r.tx = p.x; r.ty = p.y; r.tz = p.z; r.tyaw = p.yaw;
+      r.name = p.name || r.name;
+      r.clip = p.clip || r.clip;
+      r.last = now;
+    }
+    netOnline = Object.keys(remotePlayers).length + 1;
+    roomMembers = [{ id: netId, name: netName }].concat(Object.keys(remotePlayers).map(function (id) {
+      return { id: id, name: remotePlayers[id].name };
+    }));
+    if (roomEls && roomEls.online) roomEls.online.textContent = roomMembers.length + ' ONLINE';
+  }
+
+  function startMqtt() {
+    if (!window.AevumMqtt || mqttClient) return;
+    mqttClient = window.AevumMqtt.connect({
+      broker: relayBase,
+      room: roomId,
+      id: netId,
+      onStatus: function (status) {
+        netStatus = status;
+        roomStatus = status === 'online' ? 'online' : status;
+        if (roomEls && roomEls.online) {
+          roomEls.online.textContent = status === 'online'
+            ? (Object.keys(remotePlayers).length + 1) + ' ONLINE'
+            : (status === 'connecting' ? 'CONNECTING' : 'OFFLINE');
+        }
+        document.documentElement.setAttribute('data-net', JSON.stringify({
+          status: status, id: netId, name: netName, relay: relayBase,
+          online: Object.keys(remotePlayers).length + 1,
+          remote: Object.keys(remotePlayers).length
+        }));
+        document.documentElement.setAttribute('data-room', JSON.stringify({
+          room: roomId, status: status,
+          online: Object.keys(remotePlayers).length + 1
+        }));
+        if (status === 'online') {
+          addSystemLine('已连接 ' + relayBase + ' · 房间 ' + roomId);
+        }
+      },
+      onState: function (payload) { ingestRemoteState(payload); },
+      onChat: function (msg) {
+        if (!msg || !msg.text || msg.id === netId) return;
+        roomMessages.push({ id: msg.id, name: msg.name || '旅人', text: String(msg.text).slice(0, 240), ts: msg.ts || Date.now() });
+        if (roomMessages.length > 120) roomMessages.shift();
+        renderChat();
+      },
+      onBye: function (msg) {
+        if (!msg || !msg.id || msg.id === netId || !remotePlayers[msg.id]) return;
+        delete remotePlayers[msg.id];
+        netOnline = Object.keys(remotePlayers).length + 1;
+        roomMembers = [{ id: netId, name: netName }].concat(Object.keys(remotePlayers).map(function (rid) {
+          return { id: rid, name: remotePlayers[rid].name };
+        }));
+        if (roomEls && roomEls.online) roomEls.online.textContent = netOnline + ' ONLINE';
+      }
+    });
+    addSystemLine('正在连接德国中继 ' + relayBase + ' · 房间 ' + roomId + '…');
+  }
+
   function sendNetState() {
-    if (netInFlight || !world || !modelRenderer) return;
+    if (!world || !modelRenderer) return;
+    var payload = {
+      id: netId, name: netName,
+      room: roomId,
+      x: +charPos[0].toFixed(3), y: +charPos[1].toFixed(3), z: +charPos[2].toFixed(3),
+      yaw: +charYawCurrent.toFixed(3), clip: clip,
+      ts: Date.now()
+    };
+    if (mqttMode) {
+      if (!mqttClient || !mqttClient.isConnected()) return;
+      mqttClient.publish('state', payload);
+      netStatus = 'online';
+      return;
+    }
+    if (netInFlight) return;
     netInFlight = true;
     fetch(relayBase + '/v1/world/state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
-      body: JSON.stringify({
-        id: netId, name: netName,
-        room: roomId,
-        x: +charPos[0].toFixed(3), y: +charPos[1].toFixed(3), z: +charPos[2].toFixed(3),
-        yaw: +charYawCurrent.toFixed(3), clip: clip
-      })
+      body: JSON.stringify(payload)
     }).then(function (res) { return res.json(); }).then(function (data) {
       if (!data || !data.ok) throw new Error('relay error');
       netStatus = 'online';
@@ -1889,13 +1978,24 @@
       sendNetState();
     }
     var k = Math.min(1, dt * 12);
+    var now = performance.now();
     for (var id in remotePlayers) {
       var r = remotePlayers[id];
+      if (mqttMode && now - r.last > 90000) { delete remotePlayers[id]; continue; }
       r.x += (r.tx - r.x) * k;
       r.y += (r.ty - r.y) * k;
       r.z += (r.tz - r.z) * k;
       var dy = ((r.tyaw - r.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       r.yaw += dy * k;
+    }
+    if (mqttMode) {
+      netOnline = Object.keys(remotePlayers).length + 1;
+      roomMembers = [{ id: netId, name: netName }].concat(Object.keys(remotePlayers).map(function (rid) {
+        return { id: rid, name: remotePlayers[rid].name };
+      }));
+      if (roomEls && roomEls.online && netStatus === 'online') {
+        roomEls.online.textContent = netOnline + ' ONLINE';
+      }
     }
     if (netBroadcast >= 0.5) {
       netBroadcast = 0;
@@ -1904,7 +2004,7 @@
         online: netOnline,
         remote: Object.keys(remotePlayers).length,
         players: Object.keys(remotePlayers).map(function (rid) {
-          return { name: remotePlayers[rid].name, x: remotePlayers[rid].x, z: remotePlayers[rid].z };
+          return { name: remotePlayers[rid].name, x: remotePlayers[rid].x, z: remotePlayers[rid].z, clip: remotePlayers[rid].clip, anim: remotePlayers[rid].animClip || 'fallback' };
         })
       }));
     }
@@ -1925,9 +2025,12 @@
       var dist2 = dx * dx + dz * dz;
       var cdx = r.x - cameraPos[0], cdy = r.y + 1.2 - cameraPos[1], cdz = r.z - cameraPos[2];
       var cameraDist = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz);
-      var nearFade = Math.min(1, Math.max(0, (cameraDist - 5.0) / 3.0));
-      if (dist2 > 90 * 90 || dist2 < 2.4 * 2.4 || nearFade < 0.08) continue;
-      var avatarScale = 0.8 * (0.5 + nearFade * 0.5);
+      // 只在相机真的钻进代理体内部时跳过，避免近裁剪面把整个身体糊成黑墙。
+      // 不能按“离本地角色近”来隐藏：两个人碰面时对方会直接凭空消失。
+      var cameraInside = cameraDist < 0.9 ||
+        (cdx * cdx + cdz * cdz < 0.45 * 0.45 && cdy > -1.4 && cdy < 1.4);
+      if (dist2 > 90 * 90 || cameraInside) continue;
+      var avatarScale = 0.8;
       var m = M4.fromTRS(M4.create(), [r.x, r.y, r.z],
         math.Q.fromAxisAngle(math.Q.create(), [0, 1, 0], r.yaw + Math.PI),
         [avatarScale, avatarScale, avatarScale]);
@@ -1950,6 +2053,98 @@
     gl.bindVertexArray(null);
   }
 
+  function remotePhaseOf(r) {
+    var text = String(r.id || '');
+    var hash = 0;
+    for (var i = 0; i < text.length; i++) hash = ((hash * 31) + text.charCodeAt(i)) | 0;
+    return (Math.abs(hash) % 2500) / 1000;
+  }
+
+  function remoteAnimation(r, dt) {
+    if (!motionData || !window.AEVUM.formats.GLTFAnimation || !retarget) return null;
+    if (!r.anim) {
+      try {
+        r.anim = window.AEVUM.formats.GLTFAnimation.createPlayer(motionData);
+        r.animOffset = remotePhaseOf(r);
+        r.animClip = '';
+        r.poseAcc = 0;
+        r.remotePose = null;
+      } catch (e) {
+        r.anim = null;
+        return null;
+      }
+    }
+    var name = r.clip || 'idle';
+    var valid = r.anim.clips.some(function (c) { return c.name === name; });
+    if (!valid) name = r.anim.clips.some(function (c) { return c.name === 'idle'; }) ? 'idle' : 'walk';
+    if (r.animClip !== name) {
+      r.animClip = name;
+      r.anim.setClip(name).reset().setLoop(true).play();
+      if (r.animOffset) r.anim.update(r.animOffset);
+      r.poseAcc = 1;
+    }
+    r.anim.update(dt);
+    r.poseAcc += dt;
+    if (!r.remotePose || r.poseAcc >= 0.05) {
+      r.poseAcc = 0;
+      try {
+        r.remotePose = retarget(vrm, motionData.json, r.anim.getPose(), {
+          neutralStance: false,
+          symmetricArms: false,
+          footClearance: true,
+          runPose: name === 'run',
+          greetPose: false,
+          dt: dt
+        });
+      } catch (e) {
+        r.remotePose = null;
+      }
+    }
+    return r.remotePose;
+  }
+
+  function drawRemoteCharacters(now, localPose, viewProj, eye, lighting, dt) {
+    if (!modelRenderer || !vrm) return;
+    var ids = Object.keys(remotePlayers);
+    if (!ids.length) return;
+    var remoteMatrix = M4.create();
+    var quat = math.Q.create();
+    var time = now / 1000;
+    for (var i = 0; i < ids.length; i++) {
+      var r = remotePlayers[ids[i]];
+      var dx = r.x - charPos[0], dz = r.z - charPos[2];
+      if (dx * dx + dz * dz > 70 * 70) continue;
+      var cdx = r.x - cameraPos[0], cdy = r.y + 1.2 - cameraPos[1], cdz = r.z - cameraPos[2];
+      var cameraInside = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz) < 0.9 ||
+        (cdx * cdx + cdz * cdz < 0.45 * 0.45 && cdy > -1.4 && cdy < 1.4);
+      if (cameraInside) continue;
+      var remotePose = remoteAnimation(r, dt);
+      var rotation = remotePose && remotePose.rotation;
+      var translation = remotePose && remotePose.translation;
+      if (!rotation) {
+        if (window.AEVUM.render && window.AEVUM.render.makeVRMIdlePose) {
+          rotation = window.AEVUM.render.makeVRMIdlePose(vrm, time + (r.animOffset || remotePhaseOf(r)));
+        } else if (localPose) {
+          rotation = localPose.rotation;
+          translation = localPose.translation;
+        }
+      }
+      if (!rotation) continue;
+      M4.fromTRS(remoteMatrix,
+        [r.x, r.y - modelBoundsMinY * charScale, r.z],
+        math.Q.fromAxisAngle(quat, [0, 1, 0], (r.yaw || 0) + Math.PI),
+        [charScale, charScale, charScale]);
+      // 每个远端玩家用自己的动作时钟和 clip，不再共用本地角色的姿势。
+      modelRenderer.render(time, rotation, translation ? { translation: translation } : null, {
+        noClear: true,
+        viewProjection: viewProj,
+        modelMatrix: remoteMatrix,
+        cameraPosition: eye,
+        lighting: lighting
+      });
+    }
+  }
+
   function updatePlayerTags() {
     var root = document.getElementById('playerTags');
     if (!root) return;
@@ -1966,7 +2161,7 @@
         root.appendChild(tag);
         playerTagEls[id] = tag;
       }
-      var tx = r.x, ty = r.y + 2.4, tz = r.z;
+      var tx = r.x, ty = r.y + 1.95, tz = r.z;
       var cw = viewProj[3] * tx + viewProj[7] * ty + viewProj[11] * tz + viewProj[15];
       if (cw <= 0.05) { tag.style.display = 'none'; continue; }
       var cx = (viewProj[0] * tx + viewProj[4] * ty + viewProj[8] * tz + viewProj[12]) / cw;
@@ -1974,10 +2169,7 @@
       var sx = (cx * 0.5 + 0.5) * rect.width;
       var sy = (1 - (cy * 0.5 + 0.5)) * rect.height;
       var ddx = r.x - charPos[0], ddz = r.z - charPos[2];
-      var near = ddx * ddx + ddz * ddz < 2.4 * 2.4;
-      var cdx = r.x - cameraPos[0], cdy = r.y + 1.2 - cameraPos[1], cdz = r.z - cameraPos[2];
-      if (cdx * cdx + cdy * cdy + cdz * cdz < 7 * 7) near = true;
-      if (near || ddx * ddx + ddz * ddz > 70 * 70 || sx < -40 || sx > rect.width + 40 || sy < -20 || sy > rect.height + 20) {
+      if (ddx * ddx + ddz * ddz > 70 * 70 || sx < -40 || sx > rect.width + 40 || sy < -20 || sy > rect.height + 20) {
         tag.style.display = 'none';
         continue;
       }
@@ -1994,8 +2186,8 @@
 
   function initWorldUI() {
     var query = new URLSearchParams(window.location.search);
-    var requestedRoom = (query.get('room') || 'world-lobby').trim();
-    roomId = /^[A-Za-z0-9_-]{1,32}$/.test(requestedRoom) ? requestedRoom : 'world-lobby';
+    var requestedRoom = (query.get('room') || 'my_era').trim();
+    roomId = /^[A-Za-z0-9_-]{1,32}$/.test(requestedRoom) ? requestedRoom : 'my_era';
     roomEls = {
       panel: document.getElementById('socialPanel'),
       log: document.getElementById('chatLog'),
@@ -2005,9 +2197,35 @@
       online: document.getElementById('roomOnline'),
       state: document.getElementById('modelState'),
       pick: document.getElementById('modelPick'),
-      file: document.getElementById('modelFile')
+      file: document.getElementById('modelFile'),
+      nameInput: document.getElementById('nameInput'),
+      nameApply: document.getElementById('nameApply')
     };
     if (roomEls.room) roomEls.room.textContent = 'ROOM · ' + roomId;
+    function applyName(value) {
+      var next = String(value || '').trim().replace(/[<>]/g, '').slice(0, 20);
+      if (!next) next = '旅人-' + netId.slice(0, 4);
+      netName = next;
+      try { window.localStorage.setItem('aevum.world.name', next); } catch (e) { /* ignore */ }
+      if (roomEls.nameInput) roomEls.nameInput.value = next;
+      roomMembers = roomMembers.filter(function (m) { return m.id !== netId; });
+      roomMembers.unshift({ id: netId, name: netName });
+      addSystemLine('你的名字：' + netName);
+      document.documentElement.setAttribute('data-net', JSON.stringify({
+        status: netStatus, id: netId, name: netName, relay: relayBase,
+        online: Object.keys(remotePlayers).length + 1,
+        remote: Object.keys(remotePlayers).length
+      }));
+    }
+    if (roomEls.nameInput) {
+      roomEls.nameInput.value = netName;
+      roomEls.nameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); applyName(roomEls.nameInput.value); roomEls.nameInput.blur(); }
+      });
+    }
+    if (roomEls.nameApply) {
+      roomEls.nameApply.addEventListener('click', function () { applyName(roomEls.nameInput && roomEls.nameInput.value); });
+    }
     if (roomEls.form) {
       roomEls.form.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -2024,7 +2242,11 @@
     }
     document.documentElement.setAttribute('data-room', JSON.stringify({ room: roomId, status: 'connecting' }));
     window.addEventListener('pagehide', leaveRoom);
-    addSystemLine('正在连接房间 ' + roomId + '…');
+    if (mqttMode) {
+      startMqtt();
+    } else {
+      addSystemLine('正在连接房间 ' + roomId + '…');
+    }
     window.AevumWorldRuntime = {
       loadCharacterFile: loadCharacterFile,
       loadCharacterBuffer: applyCharacterBuffer,
@@ -2122,6 +2344,7 @@
   }
 
   function joinRoom() {
+    if (mqttMode) return;
     if (roomInFlight) return;
     roomInFlight = true;
     fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/join', {
@@ -2139,6 +2362,7 @@
   }
 
   function pollRoom() {
+    if (mqttMode) return;
     if (roomInFlight) return;
     roomInFlight = true;
     fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId), { cache: 'no-store' })
@@ -2154,7 +2378,7 @@
   }
 
   function updateRoom(dt) {
-    if (!relayBase) return;
+    if (mqttMode || !relayBase) return;
     roomClock += dt;
     roomPollClock += dt;
     if (roomClock >= 2.5) {
@@ -2172,6 +2396,19 @@
     var text = roomEls.input.value.trim();
     if (!text) return;
     roomEls.input.value = '';
+    if (mqttMode) {
+      var msg = { id: netId, name: netName, text: text.slice(0, 240), ts: Date.now() };
+      if (!mqttClient || !mqttClient.isConnected()) {
+        addSystemLine('还没连上中继，消息没发出去');
+        return;
+      }
+      mqttClient.publish('chat', msg);
+      roomMessages.push(msg);
+      if (roomMessages.length > 120) roomMessages.shift();
+      renderChat();
+      roomEls.input.focus();
+      return;
+    }
     fetch(relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/messages', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
       body: JSON.stringify({ id: netId, text: text })
@@ -2185,6 +2422,13 @@
   }
 
   function leaveRoom() {
+    if (mqttMode) {
+      if (mqttClient) {
+        mqttClient.close(false);
+        mqttClient = null;
+      }
+      return;
+    }
     if (!relayBase || !netId) return;
     var url = relayBase + '/v1/world/rooms/' + encodeURIComponent(roomId) + '/leave';
     var body = JSON.stringify({ id: netId });
@@ -3040,7 +3284,7 @@
     drawGrass(now / 1000);
     drawWater();
     drawObjects();
-    drawRemotePlayers();
+    if (!vrm || !modelRenderer) drawRemotePlayers();
     drawRain();
     drawSnow();
     drawContactShadow();
@@ -3580,21 +3824,27 @@
         chunks: terrainChunks.length,
         farTrees: 0
       };
+      var charLighting = {
+        direction: world.lights.directionalLight.direction,
+        color: world.lights.directionalLight.color,
+        ambient: world.lights.ambientLight.color,
+        rim: [0.48, 0.86, 1.0],
+        rimStrength: 0.52,
+        specular: 0.12
+      };
       if (modelRenderer && pose) {
         if (window.AevumMarkGraphics) window.AevumMarkGraphics('SpiritSkin');
         modelRenderer.render(now / 1000, pose.rotation, { translation: pose.translation }, {
           viewProjection: viewProj,
           modelMatrix: modelMatrix,
           cameraPosition: eye,
-          lighting: {
-            direction: world.lights.directionalLight.direction,
-            color: world.lights.directionalLight.color,
-            ambient: world.lights.ambientLight.color,
-            rim: [0.48, 0.86, 1.0],
-            rimStrength: 0.52,
-            specular: 0.12
-          }
+          lighting: charLighting
         });
+        var remotePose = pose;
+        drawRemoteCharacters(now, remotePose, viewProj, eye, charLighting, dt);
+      } else if (modelRenderer && vrm) {
+        var idlePose = window.AEVUM.render.makeVRMIdlePose(vrm, now / 1000);
+        drawRemoteCharacters(now, { rotation: idlePose, translation: null }, viewProj, eye, charLighting, dt);
       }
       requestAnimationFrame(frame);
     }

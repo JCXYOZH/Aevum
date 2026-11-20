@@ -2,22 +2,20 @@
 """Aevum World QML shell.
 
 QML only owns the native window and one WebEngineView. The world itself stays
-in the existing JS/WebGL engine; this process adds the local asset server and
-the relay process so the shell can be packaged as one application.
+in the existing JS/WebGL engine; this process adds only the local asset server.
+Networking is handled browser-side through the public HiveMQ MQTT broker, so
+the shell no longer starts a local relay process.
 """
 
 from __future__ import annotations
 
 import argparse
 import atexit
-import json
 import mimetypes
 import os
 import socket
-import subprocess
 import sys
 import threading
-import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlencode, urlsplit
@@ -29,14 +27,25 @@ from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
 
 WEB_PORT = int(os.environ.get("AEVUM_WEB_PORT", "8799"))
-RELAY_PORT = int(os.environ.get("AEVUM_RELAY_PORT", "8790"))
-DEFAULT_RELAY = f"http://127.0.0.1:{RELAY_PORT}"
+DEFAULT_RELAY = os.environ.get("AEVUM_RELAY_URL", "broker.hivemq.com")
+DEFAULT_ROOM = os.environ.get("AEVUM_ROOM", "my_era")
 
 
 def bundle_root() -> Path:
     if getattr(sys, "frozen", False):
         return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
     return Path(__file__).resolve().parents[3]
+
+
+def app_version() -> str:
+    for path in (Path(__file__).resolve().parent / "VERSION", bundle_root() / "VERSION"):
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+            if text:
+                return text
+        except OSError:
+            pass
+    return "dev"
 
 
 def web_root() -> Path:
@@ -104,46 +113,25 @@ def ensure_assets_server() -> ThreadingHTTPServer | None:
     return server
 
 
-def ensure_relay() -> subprocess.Popen | None:
-    if os.environ.get("AEVUM_NO_RELAY") == "1" or port_open(RELAY_PORT):
-        return None
-    base = bundle_root()
-    packaged = base / "relay" / "memoria-relay.exe"
-    relay_dir = base / "control" / "relay"
-    if packaged.exists():
-        command = [str(packaged), "--host", "127.0.0.1", "--port", str(RELAY_PORT)]
-        cwd = packaged.parent
-    elif (relay_dir / "relay").exists():
-        python = os.environ.get("AEVUM_PYTHON", sys.executable)
-        command = [python, "-X", "utf8", "-m", "relay", "--skip-selfcheck",
-                   "--host", "127.0.0.1", "--port", str(RELAY_PORT)]
-        cwd = relay_dir
-    else:
-        return None
-    process = subprocess.Popen(command, cwd=str(cwd), stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL, creationflags=0)
-    for _ in range(100):
-        if port_open(RELAY_PORT):
-            break
-        time.sleep(0.1)
-    return process
-
-
 class WorldConfig(QObject):
-    def __init__(self, url: str, parent: QObject | None = None) -> None:
+    def __init__(self, url: str, version: str, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._url = url
+        self._version = version
 
     @Property(str, constant=True)
     def url(self) -> str:
         return self._url
 
+    @Property(str, constant=True)
+    def version(self) -> str:
+        return self._version
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aevum World QML shell")
-    parser.add_argument("--name", default=os.environ.get("AEVUM_NAME", "旅人"))
-    parser.add_argument("--room", default=os.environ.get("AEVUM_ROOM", "world-lobby"))
-    parser.add_argument("--relay", default=os.environ.get("AEVUM_RELAY_URL", DEFAULT_RELAY))
+    parser.add_argument("--room", default=DEFAULT_ROOM)
+    parser.add_argument("--relay", default=DEFAULT_RELAY)
     parser.add_argument("--url", default=os.environ.get("AEVUM_WORLD_URL", ""))
     return parser.parse_args()
 
@@ -168,20 +156,16 @@ def page_url() -> str:
 def main() -> int:
     args = parse_args()
     server = None
-    relay = None
     if not args.url:
         server = ensure_assets_server()
-        relay = ensure_relay()
         base = page_url()
     else:
         base = args.url
 
     if server is not None:
         atexit.register(server.shutdown)
-    if relay is not None:
-        atexit.register(relay.terminate)
 
-    query = urlencode({"name": args.name, "room": args.room, "relay": args.relay,
+    query = urlencode({"room": args.room, "relay": args.relay,
                        "v": os.environ.get("AEVUM_WORLD_VERSION", "qml")})
     scene_url = base + ("&" if "?" in base else "?") + query
 
@@ -191,7 +175,7 @@ def main() -> int:
     app.setApplicationName("Aevum World")
 
     engine = QQmlApplicationEngine()
-    config = WorldConfig(scene_url)
+    config = WorldConfig(scene_url, app_version())
     engine.rootContext().setContextProperty("worldConfig", config)
     engine._aevum_config = config
 
