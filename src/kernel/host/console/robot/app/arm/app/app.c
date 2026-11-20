@@ -25,6 +25,7 @@ static volatile u32 duel_a;
 static volatile u32 duel_b;
 static volatile int duel_alive;
 static volatile int duel_live;
+static volatile int cpu_live;
 static volatile u8 duel_tape[DUEL_TAPE];
 static volatile u32 duel_tape_head;
 static u32 probe_runs;
@@ -57,12 +58,17 @@ static void proc_render(void)
         struct arm_status status;
         u8 key = keyboard_poll();
 
-        if (key == 0x14) {                 /* T：开始/停止抢占决斗 */
+        if (key == 0x2E && !duel_live && !probe_live) { /* C：CPU 时间统计 */
+            cpu_live = !cpu_live;
+            if (cpu_live) arm_render_cpu_init();
+        }
+
+        if (key == 0x14 && !cpu_live) {    /* T：开始/停止抢占决斗 */
             if (duel_live) duel_stop = 1;
             else if (!probe_live) (void)arm_app_start_duel();
         }
 
-        if (!duel_live) {
+        if (!duel_live && !cpu_live && !probe_live) {
             if (key == 0x39) arm_control_toggle_nullspace();
             if (key == 0x19) (void)arm_app_spawn_probe();
             if (key == 0x30) {
@@ -86,6 +92,19 @@ static void proc_render(void)
                 }
                 continue;
             }
+        }
+
+        /* CPU 统计全屏：只观察，不重绘机械臂。 */
+        if (cpu_live) {
+            arm_render_cpu_frame();
+            vga_flush();
+            if (task_yield()) {
+                struct aevum_error e = app_err_template;
+                e.code = ERR_ARM_APP_SWITCH;
+                e.field = "task_yield(render/cpu)";
+                aevum_fail(&e);
+            }
+            continue;
         }
 
         /* 探针占用全屏时，render 不再抢画，但仍在调度器里正常让出。 */
@@ -146,7 +165,7 @@ static void proc_probe(void)
         vga_text(62, 5, "RUN #", 0x1B);
         vga_text(68, 5, buf, 0x1E);
 
-        vga_text(12, 7, "state RUNNING   stack 0xA000..0xB000", 0x1A);
+        vga_text(12, 7, "state RUNNING   stack 0xB000..0xC000", 0x1A);
         vga_text(12, 9, "kernel PID bitmap 1..31  /  no hard-coded 1,2,3", 0x18);
 
         for (c = 8; c < 72; c++)

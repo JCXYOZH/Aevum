@@ -12,7 +12,7 @@
 | 内存布局 | `config/memory.h` | 物理地址常量 | 只读宏 |
 | 基础类型 | `include/kernel/types.h` | `i32/u32/u16/u8/i64/u64` | 只读类型 |
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
-| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹 | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_preempt_total` |
+| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime` | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_preempt_total/task_cpu_total` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
 | 中断/定时 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC、PIT 100Hz、IRQ0 EOI | `interrupt_init/interrupt_eoi` |
 | VGA | `drivers/video/vga/text/vga.c` | 影子显存 `0x20000`、`0xB8000` 刷新 | `vga_*` |
@@ -76,10 +76,28 @@
 | `ZOMBIE` | 调度器下一次进入 | `UNUSED` | `task_reap()` 释放 PID |
 
 `task_pick_next()` 只选择 `READY`，因此 `BLOCKED` 和 `ZOMBIE` 不会被调度。
-PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x40` 两条入口上做同一套轮转；
+PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x40` 两条入口上做同一套调度；
 `px` 是 IRQ0 实际造成的抢占切换数，`sw` 是全部切换数（含主动 `task_yield`）。
-当前 `BLOCKED` 仍没有超时和 sleep，`task_wake()` 必须由另一个任务显式调用；
-优先级选择和每任务 CPU 时间统计尚未接入。
+
+### 3.1 优先级加权公平选择
+
+- `priority` 取值 `0..3`，权重 `weight = priority + 1`，即 `1..4`。
+- 每个 PIT tick 给正在运行的任务 `vruntime += 64 / weight`。
+- `task_pick_next()` 在 READY 任务中选择 `vruntime` 最小者；同值从 `prev` 之后的槽位轮转，避免固定顺序。
+- 新建任务从 `current_task->vruntime` 起跑，不从 0 值插队。
+- 高优先级任务获得更大 CPU 份额，低优先级任务仍会前进，不会被严格最高优先饿死。
+
+三个常驻任务的权重是 `control=4`、`render=3`、`idle=1`，理论 CPU 份额约 `50% / 37.5% / 12.5%`。
+
+### 3.2 每任务 CPU 时间
+
+- `struct task_struct` 增加 `cpu_ticks` 和 `vruntime`；`struct task_info` 暴露 `cpu_ticks`。
+- 每次 IRQ0 且 `prev->state == RUNNING` 时：`prev->cpu_ticks++`、`prev->vruntime += 64 / weight`。
+- `task_cpu_total()` 汇总仍存活任务的 `cpu_ticks`，所以 CPU 页各行百分比相加为 100%。
+- 调度器选中当前任务自己时，必须把状态恢复为 `RUNNING`；否则一次 yield 会把任务永久留在 READY，PIT 不再给它计费，`vruntime` 不再增长，最终独占 CPU。
+- `C` 键（扫描码 `0x2E`）打开全屏 `AEVUM / CPU TIME ACCOUNTING`：PID、TASK、PRI、WT、STATE、CPU%、TICKS、SHARE，底部 PIT TICKS、SWITCHES、PREEMPTIONS。
+
+当前 `BLOCKED` 仍没有超时和 sleep，`task_wake()` 必须由另一个任务显式调用。
 
 ## 四、内存与构建预算
 
@@ -87,24 +105,27 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 | --- | --- |
 | `0x1000` | 内核镜像起点 |
 | `0x1000..0x5FFF` | boot 读取的 40 扇区（20KB）窗口 |
+| `0x5EC0..0x641F` | `.bss`，由 loader 的 `rep stosb` 清零 |
+| `0x6420..0x6FFF` | BSS 尾部到任务栈的保护空隙 |
+| `0x7000..0x7FFF` | `control` 任务栈（栈顶 `0x8000`） |
+| `0x8000..0x8FFF` | `render` 任务栈（栈顶 `0x9000`） |
+| `0x9000..0x9FFF` | `idle` 任务栈（栈顶 `0xA000`） |
+| `0xA000..0xAFFF` | 内核主线程栈（栈顶 `0xB000`） |
+| `0xB000..0xBFFF` | `probe` 任务栈（栈顶 `0xC000`） |
+| `0xC000..0xCFFF` | `spinA` 任务栈（栈顶 `0xD000`） |
+| `0xD000..0xDFFF` | `spinB` 任务栈（栈顶 `0xE000`） |
+| `0x10000 / 0x11000` | 页目录 / 页表 |
 | `0x12000..0x127FF` | 256 项 IDT（0x20 IRQ0、0x40 软件调度门） |
 | `0x12800..0x12817` | 重定位后的 GDT（3 项） |
-| `0x7000` | `control` 任务栈顶（向下增长） |
-| `0x8000` | `render` 任务栈顶（向下增长） |
-| `0x9000` | `idle` 任务栈顶（向下增长） |
-| `0xA000` | 内核主线程栈顶 |
-| `0xB000` | `probe` 任务栈顶（按 `P` 创建） |
-| `0xC000` | `spinA` 任务栈顶（按 `T` 创建） |
-| `0xD000` | `spinB` 任务栈顶（按 `T` 创建） |
-| `0x10000 / 0x11000` | 页目录 / 页表 |
 | `0x20000` | VGA 影子显存 |
 | `0x30000` | 串口帧快照 |
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 读 40 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 20480 字节。
-当前构建 18,156 字节，BSS 结束于 `0x5BE0`；镜像余量约 2,324 字节，BSS 距 `0x6000` 栈区还有 1,056 字节。
-若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 没有越过 `0x6000` 的栈区。`AEVUM_TASK_STACK_MAX`
-已随抢占决斗栈改为 `0xD000`。
+当前构建 20,148 字节，BSS 结束于 `0x6420`；镜像余量 332 字节，BSS 距 `0x7000` 任务栈还有 3,040 字节。
+`kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
+若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 不越过 `0x7000`。`AEVUM_TASK_STACK_MIN=0x7000`，
+`AEVUM_TASK_STACK_MAX=0xE000`。
 
 ## 五、验收
 
@@ -120,8 +141,9 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 - `kernel.bin` 不超过 20480 字节，链接无 undefined symbol。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
-- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz`，面板出现 `px` 抢占计数。
+- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
 - 按 `P`（扫描码 `0x19`）创建 `probe` 任务，画面显示 PID（首次为 4）和 `PIT PREEMPTIONS` 计数；探针循环不调用 `task_yield`，计数仍持续增长，证明 IRQ0 真的抢占了 CPU 密集型任务。任务退出后 `P3/31` 回到 3，再按 `P` 仍分配 PID 4，证明 ZOMBIE 回收与 PID 复用。
 - 按 `B`（扫描码 `0x30`）让 `idle` 任务执行 `task_block()`，面板第三行从 `3id r` 变成 `3id B` 并出现 `BLOCKED` 提示；再按 `B` 调 `task_wake()`，变回 `3id r`，证明 `RUNNING -> BLOCKED -> READY` 两条边成立。
 - 按 `T`（扫描码 `0x14`）进入全屏 `PREEMPTION DUEL`：创建 `spinA` / `spinB` 两个 CPU 密集型任务，循环里都不调用 `task_yield()`；两条 lane 的 `STEP` 同时增长，80 格抢占磁带出现青/洋红交替条纹，`PIT PREEMPTIONS` 持续增加。再按 `T` 停止，两个任务经 `task_exit()` 退出，画面恢复机械臂，面板回到 `P3/31`。
+- 按 `C`（扫描码 `0x2E`）进入全屏 `AEVUM / CPU TIME ACCOUNTING`：三行任务的 `CPU%` 应稳定在约 `50% / 38% / 12%`，`TICKS` 每秒增长，`PIT TICKS` 等于三行 `TICKS` 之和；再按 `C` 返回机械臂，帧号和 `sw` 继续增长。

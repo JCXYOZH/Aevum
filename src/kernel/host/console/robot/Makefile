@@ -48,9 +48,12 @@ $(BUILD)/loader.o: loader.asm
 	@mkdir -p $(BUILD)
 	$(AS) $(ASFLAGS_ELF32) loader.asm -o $@
 
-kernel.elf kernel.bin: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
+kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 	$(LD) -m elf_i386 -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf
-	$(LD) -m elf_i386 -T $(LDSCRIPT) --oformat binary $(BUILD)/loader.o $(OBJS) -o kernel.bin
+
+# 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
+kernel.bin: kernel.elf
+	objcopy -O binary kernel.elf kernel.bin
 	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 20480 / 40 sectors)"; \
 	if [ $$size -gt 20480 ]; then echo "ERROR: kernel.bin $$size bytes > 20480"; exit 1; fi
 

@@ -12,4 +12,8 @@ void arm_render_duel_init(void);
 void arm_render_duel_lane(int lane, u32 step, int pid);
 void arm_render_duel_status(u32 a_steps, u32 b_steps, const u8 *tape, u32 tape_head);
 
+/* CPU 时间统计全屏：按任务显示 priority/CPU%/PIT ticks。 */
+void arm_render_cpu_init(void);
+void arm_render_cpu_frame(void);
+
 #endif

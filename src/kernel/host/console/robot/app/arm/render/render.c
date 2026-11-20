@@ -115,7 +115,8 @@ static void task_panel(void)
     struct task_info info[TASK_MAX];
     int slot, x, p, i, count, compact;
     int len;
-    u32 total = task_switch_total();
+    u32 switch_count = task_switch_total();
+    u32 cpu_total = task_cpu_total();
     u32 now;
 
     vga_text(45, 18, "TASK SCHED", C_CYAN);
@@ -128,7 +129,7 @@ static void task_panel(void)
     vga_text(57, 18, buf, C_WHITE);
     vga_text(63, 18, "sw", C_GRAY);
     p = 0;
-    p += fmt_compact(buf, total);
+    p += fmt_compact(buf, switch_count);
     buf[p] = 0;
     vga_text(66, 18, buf, C_WHITE);
 
@@ -150,18 +151,25 @@ static void task_panel(void)
     x = 45;
     for (i = 0; i < count; i++) {
         u8 attr;
+        u32 pct = cpu_total
+            ? (info[i].cpu_ticks * 100u + cpu_total / 2u) / cpu_total
+            : 0;
+        if (pct > 100u) pct = 100u;
         p = 0;
         p += fmt_dec(buf + p, (u32)info[i].pid);
         buf[p++] = info[i].comm[0] ? info[i].comm[0] : '?';
         buf[p++] = info[i].comm[1] ? info[i].comm[1] : ' ';
-        buf[p++] = ' ';
+        if (!compact) buf[p++] = ' ';
         buf[p++] = task_state_char(info[i].state);
         if (!compact) {
             buf[p++] = ' ';
-            p += fmt_dec(buf + p, info[i].stack_used);
-            buf[p++] = 'B';
+            p += fmt_dec(buf + p, pct);
+            buf[p++] = '%';
+            buf[p++] = ' ';
+        } else {
+            p += fmt_dec(buf + p, pct);
+            buf[p++] = '%';
         }
-        buf[p++] = ' ';
         buf[p] = 0;
         if ((u32)info[i].pid == now)
             attr = (u8)((task_pid_color(now) << 4) | C_WHITE);
@@ -313,6 +321,100 @@ void arm_render_duel_status(u32 a_steps, u32 b_steps, const u8 *tape, u32 tape_h
     vga_text(49, 17, buf, 0x1F);
 }
 
+void arm_render_cpu_init(void)
+{
+    vga_clear(0x00);
+    vga_flush();
+}
+
+/*
+ * CPU 时间统计全屏。所有数字来自 task_snapshot()：
+ * priority 是创建时写入的优先级，weight = priority + 1；
+ * cpu_ticks 是 PIT/IRQ0 实际落在该任务上的 tick 数。
+ */
+void arm_render_cpu_frame(void)
+{
+    char buf[24];
+    char name[10];
+    struct task_info info;
+    int slot, row = 5, i, p;
+    u32 total = task_cpu_total();
+
+    vga_clear(0x00);
+    vga_text(16, 0, "AEVUM / CPU TIME ACCOUNTING", 0x1F);
+    vga_text(5, 2, "PIT 100Hz / PRIORITY WEIGHTED FAIR SCHEDULER", 0x1B);
+    vga_text(2, 4, "PID TASK      PRI WT STATE CPU% TICKS    SHARE", 0x0F);
+
+    for (slot = 0; slot < TASK_MAX && row < 12; slot++) {
+        u32 pct, n;
+        if (!task_snapshot(slot, &info)) continue;
+
+        for (i = 0; i < 8 && info.comm[i]; i++) name[i] = info.comm[i];
+        if (info.comm[i]) name[i++] = '>';
+        name[i] = 0;
+
+        p = 0;
+        p += fmt_dec(buf, (u32)info.pid);
+        buf[p] = 0;
+        vga_text(2, row, buf, C_GRAY);
+        vga_text(6, row, name, task_pid_color((u32)info.pid));
+
+        p = 0;
+        p += fmt_dec(buf, (u32)info.priority);
+        buf[p] = 0;
+        vga_text(17, row, buf, C_YELLOW);
+
+        p = 0;
+        p += fmt_dec(buf, (u32)(info.priority + 1));
+        buf[p] = 0;
+        vga_text(21, row, buf, C_YELLOW);
+
+        vga_cell(25, row, task_state_char(info.state),
+                 info.state == TASK_RUNNING ? C_GREEN : C_GRAY);
+
+        pct = total ? (info.cpu_ticks * 100u + total / 2u) / total : 0;
+        if (pct > 100u) pct = 100u;
+        p = 0;
+        p += fmt_dec(buf, pct);
+        buf[p] = 0;
+        vga_text(31, row, buf, C_WHITE);
+        vga_cell(34, row, '%', C_GRAY);
+
+        p = 0;
+        p += fmt_dec(buf, info.cpu_ticks);
+        buf[p] = 0;
+        vga_text(37, row, buf, C_WHITE);
+
+        n = pct * 30u / 100u;
+        for (i = 0; i < 30; i++)
+            vga_cell(48 + i, row, i < (int)n ? (char)CH_FULL : (char)CH_LIGHT,
+                     task_pid_color((u32)info.pid));
+        row++;
+    }
+
+    p = 0;
+    p += fmt_dec(buf, total);
+    buf[p] = 0;
+    vga_text(26, 18, "PIT TICKS", C_GRAY);
+    vga_text(36, 18, buf, C_WHITE);
+
+    p = 0;
+    p += fmt_dec(buf, task_switch_total());
+    buf[p] = 0;
+    vga_text(26, 19, "SWITCHES", C_GRAY);
+    vga_text(36, 19, buf, C_WHITE);
+
+    p = 0;
+    p += fmt_dec(buf, task_preempt_total());
+    buf[p] = 0;
+    vga_text(52, 18, "PREEMPTIONS", C_GRAY);
+    vga_text(64, 18, buf, C_WHITE);
+
+    vga_text(2, 20, "C = RETURN TO ARM", 0x1E);
+    vga_text(2, 22, "priority 0..3 -> weight 1..4; smallest vruntime runs next", 0x18);
+    vga_text(2, 23, "CPU% = this task's PIT ticks / total PIT ticks", 0x18);
+}
+
 void arm_render_frame(const struct arm_status *s)
 {
     char buf[40];
@@ -321,7 +423,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T ", C_WHITE);
+    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T/C ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;

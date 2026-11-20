@@ -25,6 +25,7 @@ struct task_info {
     u32 stack_top;
     u32 stack_used;
     u32 switches;
+    u32 cpu_ticks;
 };
 
 /* 任务模块是 task_struct 字段的唯一写者；调用方只拿不透明句柄。 */
@@ -53,5 +54,6 @@ int task_trace_len(void);
 u32 task_trace_pid(int index);
 u32 task_switch_total(void);
 u32 task_preempt_total(void);
+u32 task_cpu_total(void);
 
 #endif

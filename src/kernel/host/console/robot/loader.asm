@@ -18,7 +18,7 @@ start:
     xor eax, eax
     rep stosb
 
-    ; 任务栈从 0x6000 起，会覆盖引导扇区 0x7c97 的 GDT；先搬到 0x12800 再加载。
+    ; 任务栈从 0x7000 起，会覆盖引导扇区 0x7c97 的 GDT；先搬到 0x12800 再加载。
     mov esi, 0x7c97
     mov edi, 0x12800
     mov ecx, 24
@@ -26,7 +26,7 @@ start:
     lgdt [gdtr_new]
 
     ; 设置C代码栈
-    mov esp, 0xA000
+    mov esp, 0xB000
     call kernel_main
 
 ; 死循环，内核返回就停机

@@ -28,6 +28,8 @@ struct task_struct {
     u32  stack_base;
     u32  stack_top;
     u32  switches;
+    u32  cpu_ticks;
+    u64  vruntime;
     struct context ctx;
 };
 
@@ -53,6 +55,12 @@ static u32 switch_total;
 static u32 trace_total;
 static u32 pid_map;
 static u32 preempt_total;
+#define WEIGHT_QUANTUM 64u
+
+static u32 task_weight(const struct task_struct *task)
+{
+    return (u32)(task->priority + 1);
+}
 
 static int pid_alloc(void)
 {
@@ -83,6 +91,8 @@ static void task_zero(struct task_struct *task)
     task->stack_base = 0;
     task->stack_top = 0;
     task->switches = 0;
+    task->cpu_ticks = 0;
+    task->vruntime = 0;
     task->ctx.esp = 0;
 }
 
@@ -133,6 +143,8 @@ u32 task_create(int priority, const char *name,
     task_zero(task);
     task->pid = pid;
     task->priority = priority;
+    /* 新任务从当前虚拟时间起跑，不靠 0 值抢占已运行任务的时间片。 */
+    task->vruntime = current_task ? current_task->vruntime : 0;
     task->entry = entry;
     task->stack_base = stack_base;
     task->stack_top = stack_top;
@@ -200,8 +212,15 @@ static void task_note_switch(struct task_struct *next)
     }
 }
 
+/*
+ * 优先级加权公平选择：priority 0..3 对应权重 1..4，每次 PIT 给运行任务
+ * 的 vruntime 增加 64/weight。选择 READY 中 vruntime 最小者；同值按
+ * prev 之后的槽位轮转，避免严格最高优先把 render/idle 饿死。
+ */
 static struct task_struct *task_pick_next(struct task_struct *prev)
 {
+    struct task_struct *best = 0;
+    u64 best_v = 0;
     int start = 0;
     int i;
 
@@ -214,9 +233,14 @@ static struct task_struct *task_pick_next(struct task_struct *prev)
 
     for (i = 0; i < TASK_MAX; i++) {
         int idx = (start + i) % TASK_MAX;
-        if (tasks[idx].state == TASK_READY) return &tasks[idx];
+        struct task_struct *t = &tasks[idx];
+        if (t->state != TASK_READY) continue;
+        if (!best || t->vruntime < best_v) {
+            best = t;
+            best_v = t->vruntime;
+        }
     }
-    return 0;
+    return best;
 }
 
 static void task_reap(void)
@@ -247,6 +271,10 @@ u32 task_schedule_irq(struct irq_frame *frame)
     if (frame->vector == 0x20) {
         interrupt_eoi();
         reason = SCHED_TICK;
+        if (prev->state == TASK_RUNNING) {
+            prev->cpu_ticks++;
+            prev->vruntime += WEIGHT_QUANTUM / task_weight(prev);
+        }
     }
 
     prev->ctx.esp = (u32)frame;
@@ -294,6 +322,12 @@ u32 task_schedule_irq(struct irq_frame *frame)
         next->state = TASK_RUNNING;
         if (reason == SCHED_TICK) preempt_total++;
         task_note_switch(next);
+    } else {
+        /*
+         * 选中自己时也必须恢复 RUNNING：否则一次 yield 会把当前任务
+         * 永久留在 READY，PIT 不再给它计费，vruntime 也不再增长。
+         */
+        next->state = TASK_RUNNING;
     }
     current_task = next;
     sched_reason = SCHED_YIELD;
@@ -379,6 +413,7 @@ int task_snapshot(int slot, struct task_info *out)
     out->stack_top = task->stack_top;
     out->stack_used = task_stack_used(task);
     out->switches = task->switches;
+    out->cpu_ticks = task->cpu_ticks;
     return 1;
 }
 
@@ -406,4 +441,15 @@ u32 task_switch_total(void)
 u32 task_preempt_total(void)
 {
     return preempt_total;
+}
+
+u32 task_cpu_total(void)
+{
+    u32 total = 0;
+    int i;
+
+    /* 只汇总仍存活的用户任务，保证统计页各行百分比相加为 100%。 */
+    for (i = 0; i < TASK_MAX; i++)
+        if (tasks[i].state != TASK_UNUSED) total += tasks[i].cpu_ticks;
+    return total;
 }
