@@ -3,8 +3,10 @@
 #include "arch/x86/context.h"
 #include "config/memory.h"
 
-#define TASK_MAX   3
-#define CTX_SLOTS  8
+#define CTX_SLOTS     8
+#define TASK_TRACE_N  64
+#define TASK_TRACE_DIV 32
+#define STACK_MAGIC   0xA5A5A5A5u
 
 struct context {
     u32 eax, ebx, ecx, edx, esi, edi, ebp, esp, eip;
@@ -13,21 +15,35 @@ struct context {
 struct task_struct {
     int  pid;
     int  state;
+    int  priority;
     char comm[TASK_NAME_MAX + 1];
+    void (*entry)(void);
+    u32  stack_base;
+    u32  stack_top;
+    u32  switches;
     struct context ctx;
 };
 
 static struct task_struct tasks[TASK_MAX];
 static struct task_struct boot_task;
 static struct task_struct *current_task;
-static int task_count;
+
+static u32 switch_trace[TASK_TRACE_N];
+static int switch_i;
+static u32 switch_total;
+static u32 trace_total;
 
 static void task_zero(struct task_struct *task)
 {
     int i;
     task->pid = 0;
-    task->state = TASK_RUNNING;
+    task->state = TASK_UNUSED;
+    task->priority = 0;
     for (i = 0; i <= TASK_NAME_MAX; i++) task->comm[i] = 0;
+    task->entry = 0;
+    task->stack_base = 0;
+    task->stack_top = 0;
+    task->switches = 0;
     task->ctx.eax = 0;
     task->ctx.ebx = 0;
     task->ctx.ecx = 0;
@@ -42,6 +58,7 @@ static void task_zero(struct task_struct *task)
 void task_boot(void)
 {
     task_zero(&boot_task);
+    boot_task.state = TASK_RUNNING;
     boot_task.comm[0] = 'i';
     boot_task.comm[1] = 'n';
     boot_task.comm[2] = 'i';
@@ -49,31 +66,51 @@ void task_boot(void)
     current_task = &boot_task;
 }
 
-u32 task_create(int pid, const char *name, void (*entry)(void), u32 stack_top,
-                struct task_struct **out)
+u32 task_create(int pid, int priority, const char *name,
+                void (*entry)(void), u32 stack_top, struct task_struct **out)
 {
     struct task_struct *task;
     u32 *sp;
+    u32 *p;
+    u32 stack_base;
     int i;
 
     if (!out) return ERR_TASK_OUT_MISSING;
     *out = 0;
     if (!entry) return ERR_TASK_ENTRY_MISSING;
+    if (priority < 0 || priority > 3) return ERR_TASK_PRIORITY;
     if (stack_top < AEVUM_TASK_STACK_MIN || stack_top > AEVUM_TASK_STACK_MAX ||
         (stack_top & 0xFu))
         return ERR_TASK_STACK_INVALID;
 
-    for (i = 0; i < task_count; i++)
-        if (tasks[i].pid == pid) return ERR_TASK_PID_DUP;
+    stack_base = stack_top - AEVUM_TASK_STACK_SIZE;
+    if (stack_base < AEVUM_TASK_STACK_MIN) return ERR_TASK_STACK_INVALID;
 
-    if (task_count >= TASK_MAX) return ERR_TASK_SLOT_FULL;
+    for (i = 0; i < TASK_MAX; i++)
+        if (tasks[i].state != TASK_UNUSED && tasks[i].pid == pid)
+            return ERR_TASK_PID_DUP;
 
-    task = &tasks[task_count++];
+    task = 0;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state == TASK_UNUSED) {
+            task = &tasks[i];
+            break;
+        }
+    }
+    if (!task) return ERR_TASK_SLOT_FULL;
+
     task_zero(task);
     task->pid = pid;
-    task->state = TASK_RUNNING;
+    task->state = TASK_READY;
+    task->priority = priority;
+    task->entry = entry;
+    task->stack_base = stack_base;
+    task->stack_top = stack_top;
     for (i = 0; i < TASK_NAME_MAX && name[i]; i++) task->comm[i] = name[i];
     task->comm[i] = 0;
+
+    /* 栈底到栈顶填魔数，运行后从栈底向上扫描即可得到真实栈水位。 */
+    for (p = (u32 *)stack_base; p < (u32 *)stack_top; p++) *p = STACK_MAGIC;
 
     sp = (u32 *)(stack_top - CTX_SLOTS * 4);
     for (i = 0; i < CTX_SLOTS - 1; i++) sp[i] = 0;
@@ -88,7 +125,7 @@ u32 task_create(int pid, const char *name, void (*entry)(void), u32 stack_top,
 u32 task_set_state(struct task_struct *task, int state)
 {
     if (!task) return ERR_TASK_BAD_STATE;
-    if (state != TASK_RUNNING && state != TASK_INTERRUPTIBLE)
+    if (state != TASK_READY && state != TASK_RUNNING && state != TASK_BLOCKED)
         return ERR_TASK_BAD_STATE;
     task->state = state;
     return 0;
@@ -99,12 +136,114 @@ struct task_struct *task_current(void)
     return current_task;
 }
 
+static void task_note_switch(struct task_struct *next)
+{
+    switch_total++;
+    if ((switch_total % TASK_TRACE_DIV) == 0) {
+        switch_trace[switch_i] = (u32)next->pid;
+        switch_i = (switch_i + 1) % TASK_TRACE_N;
+        trace_total++;
+    }
+}
+
 u32 task_switch_to(struct task_struct *next)
 {
     struct task_struct *prev = current_task;
 
-    if (!prev || !next) return ERR_TASK_BAD_STATE;
+    if (!prev || !next || prev == next) return ERR_TASK_BAD_STATE;
+    prev->switches++;
+    task_note_switch(next);
     current_task = next;
     cpu_switch(&prev->ctx.esp, next->ctx.esp);
     return 0;
+}
+
+static struct task_struct *task_pick_next(struct task_struct *prev)
+{
+    int start = 0;
+    int i;
+
+    for (i = 0; i < TASK_MAX; i++) {
+        if (&tasks[i] == prev) {
+            start = i + 1;
+            break;
+        }
+    }
+
+    for (i = 0; i < TASK_MAX; i++) {
+        int idx = (start + i) % TASK_MAX;
+        if (tasks[idx].state == TASK_READY) return &tasks[idx];
+    }
+    return prev;
+}
+
+u32 task_yield(void)
+{
+    struct task_struct *prev = current_task;
+    struct task_struct *next;
+    u32 rc;
+
+    if (!prev) return ERR_TASK_BAD_STATE;
+    if (prev->state == TASK_RUNNING) prev->state = TASK_READY;
+    next = task_pick_next(prev);
+    if (next == prev) {
+        prev->state = TASK_RUNNING;
+        return 0;
+    }
+    next->state = TASK_RUNNING;
+    rc = task_switch_to(next);
+    prev->state = TASK_RUNNING;
+    return rc;
+}
+
+static u32 task_stack_used(struct task_struct *task)
+{
+    u32 *base = (u32 *)task->stack_base;
+    int n = (int)((task->stack_top - task->stack_base) / 4);
+    int i;
+
+    for (i = 0; i < n; i++)
+        if (base[i] != STACK_MAGIC) break;
+
+    if (i >= n) return 32;
+    return task->stack_top - (task->stack_base + (u32)i * 4u);
+}
+
+int task_snapshot(int slot, struct task_info *out)
+{
+    struct task_struct *task;
+    int i;
+
+    if (!out || slot < 0 || slot >= TASK_MAX) return 0;
+    task = &tasks[slot];
+    if (task->state == TASK_UNUSED) return 0;
+    out->pid = task->pid;
+    out->state = task->state;
+    out->priority = task->priority;
+    for (i = 0; i <= TASK_NAME_MAX; i++) out->comm[i] = task->comm[i];
+    out->stack_top = task->stack_top;
+    out->stack_used = task_stack_used(task);
+    out->switches = task->switches;
+    return 1;
+}
+
+int task_trace_len(void)
+{
+    if (trace_total > TASK_TRACE_N) return TASK_TRACE_N;
+    return (int)trace_total;
+}
+
+u32 task_trace_pid(int index)
+{
+    int len = task_trace_len();
+    int start;
+
+    if (index < 0 || index >= len) return 0;
+    start = (switch_i - len + TASK_TRACE_N) % TASK_TRACE_N;
+    return switch_trace[(start + index) % TASK_TRACE_N];
+}
+
+u32 task_switch_total(void)
+{
+    return switch_total;
 }

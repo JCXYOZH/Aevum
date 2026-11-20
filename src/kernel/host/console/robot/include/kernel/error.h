@@ -24,13 +24,14 @@
 /* 内核入口 */
 #define ERR_KERNEL_MAIN_ARM_APP        AEVUM_ERR(AEVUM_RR_KERNEL_MAIN, 0x00, 0x04)
 
-/* 任务模块：字段 0 槽位 / 1 入口 / 2 栈 / 3 PID / 4 状态 / 5 出参 */
+/* 任务模块：字段 0 槽位 / 1 入口 / 2 栈 / 3 PID / 4 状态 / 5 出参 / 6 优先级 */
 #define ERR_TASK_SLOT_FULL             AEVUM_ERR(AEVUM_RR_TASK, 0x00, 0x04)
 #define ERR_TASK_ENTRY_MISSING         AEVUM_ERR(AEVUM_RR_TASK, 0x01, 0x01)
 #define ERR_TASK_STACK_INVALID         AEVUM_ERR(AEVUM_RR_TASK, 0x02, 0x03)
 #define ERR_TASK_PID_DUP               AEVUM_ERR(AEVUM_RR_TASK, 0x03, 0x02)
 #define ERR_TASK_BAD_STATE             AEVUM_ERR(AEVUM_RR_TASK, 0x04, 0x03)
 #define ERR_TASK_OUT_MISSING           AEVUM_ERR(AEVUM_RR_TASK, 0x05, 0x01)
+#define ERR_TASK_PRIORITY              AEVUM_ERR(AEVUM_RR_TASK, 0x06, 0x02)
 
 /* 应用装配：任务创建是跨模块依赖 */
 #define ERR_ARM_APP_TASK_CREATE        AEVUM_ERR(AEVUM_RR_ARM_APP, 0x00, 0x04)
