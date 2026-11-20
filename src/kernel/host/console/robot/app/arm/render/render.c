@@ -1,6 +1,7 @@
 #include "app/arm/render.h"
 #include "drivers/video/vga.h"
 #include "kernel/task.h"
+#include "config/memory.h"
 #include "lib/fixed.h"
 #include "lib/format.h"
 #include "lib/trig.h"
@@ -98,9 +99,9 @@ static u8 task_pid_color(u32 pid)
 static void task_panel(void)
 {
     char buf[40];
-    struct task_info ti;
-    int slot, x, p, i;
-    int len, first, pad;
+    struct task_info info[TASK_MAX];
+    int slot, x, p, i, count;
+    int len;
     u32 total = task_switch_total();
     u32 now;
 
@@ -111,41 +112,72 @@ static void task_panel(void)
     buf[p] = 0;
     vga_text(59, 18, buf, C_WHITE);
 
+    count = 0;
+    for (slot = 0; slot < TASK_MAX; slot++) {
+        if (task_snapshot(slot, &info[count])) count++;
+    }
+
     len = task_trace_len();
     now = len ? task_trace_pid(len - 1) : 0;
 
     x = 45;
-    for (slot = 0; slot < TASK_MAX; slot++) {
+    for (i = 0; i < count; i++) {
         u8 attr;
-        if (!task_snapshot(slot, &ti)) continue;
         p = 0;
-        p += fmt_dec(buf + p, (u32)ti.pid);
-        buf[p++] = ti.comm[0] ? ti.comm[0] : '?';
-        buf[p++] = ti.comm[1] ? ti.comm[1] : ' ';
+        p += fmt_dec(buf + p, (u32)info[i].pid);
+        buf[p++] = info[i].comm[0] ? info[i].comm[0] : '?';
+        buf[p++] = info[i].comm[1] ? info[i].comm[1] : ' ';
         buf[p++] = ' ';
-        buf[p++] = task_state_char(ti.state);
+        buf[p++] = task_state_char(info[i].state);
         buf[p++] = ' ';
-        p += fmt_dec(buf + p, ti.stack_used);
+        p += fmt_dec(buf + p, info[i].stack_used);
         buf[p++] = 'B';
         buf[p++] = ' ';
         buf[p] = 0;
-        if ((u32)ti.pid == now)
+        if ((u32)info[i].pid == now)
             attr = (u8)((task_pid_color(now) << 4) | C_WHITE);
         else
-            attr = (ti.state == TASK_RUNNING) ? C_GREEN : C_GRAY;
+            attr = (info[i].state == TASK_RUNNING) ? C_GREEN : C_GRAY;
         vga_text(x, 19, buf, attr);
         x += p;
         if (x > 76) break;
     }
 
-    first = len > 35 ? len - 35 : 0;
-    pad = 35 - (len > 35 ? 35 : len);
-    for (i = 0; i < 35; i++) {
-        if (i < pad) {
-            vga_cell(45 + i, 20, ' ', C_GRAY);
+    x = 45;
+    for (i = 0; i < count; i++) {
+        int n;
+        p = 0;
+        p += fmt_dec(buf + p, (u32)info[i].pid);
+        buf[p++] = info[i].comm[0] ? info[i].comm[0] : '?';
+        buf[p++] = info[i].comm[1] ? info[i].comm[1] : ' ';
+        buf[p++] = ' ';
+        buf[p] = 0;
+        vga_text(x, 20, buf, C_GRAY);
+        x += p;
+        n = (int)(((u64)info[i].stack_used * 6u) / (AEVUM_TASK_STACK_SIZE / 8u));
+        if (n > 6) n = 6;
+        for (p = 0; p < 6; p++)
+            vga_cell(x + p, 20, p < n ? (char)CH_FULL : (char)CH_LIGHT,
+                     task_pid_color((u32)info[i].pid));
+        x += 7;
+        if (x > 76) break;
+    }
+}
+
+static void task_timeline(void)
+{
+    int len = task_trace_len();
+    int cells = len > 64 ? 64 : len;
+    int first = len > 64 ? len - 64 : 0;
+    int pad = (80 - cells) / 2;
+    int c;
+
+    for (c = 0; c < 80; c++) {
+        if (c < pad || c >= pad + cells) {
+            vga_cell(c, 21, ' ', C_GRAY);
         } else {
-            u32 pid = task_trace_pid(first + i - pad);
-            vga_cell(45 + i, 20, (char)CH_FULL, task_pid_color(pid));
+            u32 pid = task_trace_pid(first + c - pad);
+            vga_cell(c, 21, (char)CH_FULL, task_pid_color(pid));
         }
     }
 }
@@ -273,7 +305,7 @@ void arm_render_frame(const struct arm_status *s)
         task_panel();
     }
 
-    for (c = 0; c < VGA_COLS; c++) vga_cell(c, 21, (char)CH_H, C_GRAY);
+    task_timeline();
     vga_text(2, 22, "tip@ elbowO wrist* targeto path. base#  sweep 0.30..0.81m", C_GRAY);
     vga_text(2, 23, "tip", C_GRAY);
     fmt_fx(buf, s->err_mm, 3);

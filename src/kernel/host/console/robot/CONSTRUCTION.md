@@ -97,7 +97,7 @@
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 读 28 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 14336 字节。
-当前构建约 13.4KB，保留约 0.6KB 余量。若继续增长，先加 `boot.asm` 扇区数，
+当前构建约 13.6KB，保留约 0.4KB 余量。若继续增长，先加 `boot.asm` 扇区数，
 同时把所有任务栈和主栈整体上移，不要覆盖任务栈。
 
 ## 四、验收
@@ -115,5 +115,5 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - `kernel.bin` 不超过 14336 字节，链接无 undefined symbol。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
 - 屏幕出现机械臂、目标点、轨迹、右侧 `ARM STATUS` 面板和 `TASK SCHED` 任务监视器。
-- `TASK SCHED` 能看到 `1co / 2re / 3id` 三个任务、状态、栈水位和滚动调度条。
+- `TASK SCHED` 能看到 `1co / 2re / 3id` 三个任务、状态、栈水位条和底部滚动调度时间轴。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
