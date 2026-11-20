@@ -101,7 +101,7 @@ static void task_panel(void)
 {
     char buf[40];
     struct task_info info[TASK_MAX];
-    int slot, x, p, i, count;
+    int slot, x, p, i, count, compact;
     int len;
     u32 total = task_switch_total();
     u32 now;
@@ -128,6 +128,7 @@ static void task_panel(void)
     len = task_trace_len();
     now = len ? task_trace_pid(len - 1) : 0;
 
+    compact = count > 3;
     x = 45;
     for (i = 0; i < count; i++) {
         u8 attr;
@@ -137,15 +138,21 @@ static void task_panel(void)
         buf[p++] = info[i].comm[1] ? info[i].comm[1] : ' ';
         buf[p++] = ' ';
         buf[p++] = task_state_char(info[i].state);
-        buf[p++] = ' ';
-        p += fmt_dec(buf + p, info[i].stack_used);
-        buf[p++] = 'B';
+        if (!compact) {
+            buf[p++] = ' ';
+            p += fmt_dec(buf + p, info[i].stack_used);
+            buf[p++] = 'B';
+        }
         buf[p++] = ' ';
         buf[p] = 0;
         if ((u32)info[i].pid == now)
             attr = (u8)((task_pid_color(now) << 4) | C_WHITE);
+        else if (info[i].state == TASK_RUNNING)
+            attr = C_GREEN;
+        else if (info[i].state == TASK_BLOCKED)
+            attr = C_BLUE;
         else
-            attr = (info[i].state == TASK_RUNNING) ? C_GREEN : C_GRAY;
+            attr = C_GRAY;
         vga_text(x, 19, buf, attr);
         x += p;
         if (x > 76) break;
@@ -198,7 +205,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Planar Arm | P=pid probe ", C_WHITE);
+    vga_text(1, 0, " 3-DOF Planar Arm | P=probe B=block ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;

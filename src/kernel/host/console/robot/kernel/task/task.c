@@ -240,6 +240,36 @@ void task_exit(void)
     for (;;) __asm__ __volatile__("cli; hlt");
 }
 
+u32 task_block(void)
+{
+    struct task_struct *prev = current_task;
+    struct task_struct *next;
+    u32 rc;
+
+    if (!prev || prev->state != TASK_RUNNING) return ERR_TASK_BAD_STATE;
+    prev->state = TASK_BLOCKED;
+    next = task_pick_next(prev);
+    if (next == prev) {
+        prev->state = TASK_RUNNING;
+        return ERR_TASK_BAD_STATE;
+    }
+    next->state = TASK_RUNNING;
+    rc = task_switch_to(next);
+    return rc;
+}
+
+u32 task_wake(int pid)
+{
+    int i;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].pid == pid && tasks[i].state == TASK_BLOCKED) {
+            tasks[i].state = TASK_READY;
+            return 0;
+        }
+    }
+    return ERR_TASK_BAD_STATE;
+}
+
 u32 task_yield(void)
 {
     struct task_struct *prev = current_task;

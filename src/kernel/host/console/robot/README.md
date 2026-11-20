@@ -31,7 +31,7 @@
 - **多进程**：`kernel_main` 通过 `task_create` 为 `control` / `render` / `idle` 构造独立内核栈；PID 由 `task.c` 的位图自动分配，应用不再硬编码，再用 `task_switch_to` 启动第一个任务。
   每个进程各自拥有栈和计数器，互不影响。
 - **上下文切换**：`cpu_switch` 保存/恢复 7 个通用寄存器与栈指针，实现真正意义上的任务切换；
-  采用协作式调度（任务主动调用 `task_yield` 让出 CPU）；`task_exit()` 把任务置为 ZOMBIE，下一次 `task_yield()` 回收 PID。
+  采用协作式调度（任务主动调用 `task_yield` 让出 CPU）；`task_exit()` 把任务置为 ZOMBIE，下一次 `task_yield()` 回收 PID；`task_block()` / `task_wake()` 已打通 BLOCKED 与 READY。
 - **显示输出**：直接写显存 `0xB8000`（80×25 文本模式），`render` 每帧在影子显存 `0x20000`
   画三自由度机械臂、目标点、轨迹和右侧数值面板，再整块搬到 VGA；同一帧通过 COM1
   把变化的文本单元发给 QEMU 串口，供桌面「内核实况」窗口实时显示。
@@ -175,6 +175,7 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
    如果 `kernel.bin` 超过 16KB，需要同步增大 `boot.asm` 里的读取扇区数，
    并把全部任务栈和主栈整体上移（不要跨出磁道边界）。
 2. 页目录 / 页表固定在 `0x10000` / `0x11000`，不要和内核段或任务栈重叠。
-3. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1` / `AEVUM_STACK_P2` / `AEVUM_STACK_IDLE` / `AEVUM_STACK_MAIN` / `AEVUM_STACK_PROBE` 决定，修改时要保证互不重叠。
-4. `cpu_switch` 必须是 `__attribute__((naked))`（无栈帧）：普通 C 函数会在寄存器与返回地址之间
+3. 按 `B`（扫描码 `0x30`）可把 `idle` 任务阻塞成 `3id B`，再按一次唤醒；这是 `BLOCKED` 状态的可控演示。
+4. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1` / `AEVUM_STACK_P2` / `AEVUM_STACK_IDLE` / `AEVUM_STACK_MAIN` / `AEVUM_STACK_PROBE` 决定，修改时要保证互不重叠。
+5. `cpu_switch` 必须是 `__attribute__((naked))`（无栈帧）：普通 C 函数会在寄存器与返回地址之间
    插入编译器栈帧，任务被“重新调度回来”时 `ret` 会弹到错误地址。

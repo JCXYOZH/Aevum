@@ -18,6 +18,9 @@ static struct task_struct *p_idle;
 static int probe_live;
 static u32 app_dep_code;
 static u32 probe_runs;
+static volatile int idle_pid;
+static volatile u32 idle_block_req;
+static volatile u32 idle_blocked;
 
 static const struct aevum_error app_err_template = {
     0, "arm_app", "task_create", "arm app task assembly failed", 0, 0, 0
@@ -45,9 +48,15 @@ static void proc_render(void)
         u8 key = keyboard_poll();
         if (key == 0x39) arm_control_toggle_nullspace();
         if (key == 0x19) (void)arm_app_spawn_probe();
+        if (key == 0x30) {
+            if (idle_blocked) (void)task_wake(idle_pid);
+            else idle_block_req = 1;
+        }
 
         arm_control_status(&status);
         arm_render_frame(&status);
+        if (idle_blocked)
+            vga_text(2, 2, "BLOCKED: idle waiting task_wake()", 0x09);
         vga_flush();
         if ((frames & 7) == 0) uart_scan();
         vga_vsync();
@@ -117,7 +126,14 @@ static void proc_probe(void)
 
 static void proc_idle(void)
 {
+    idle_pid = task_current_pid();
     for (;;) {
+        if (idle_block_req) {
+            idle_block_req = 0;
+            idle_blocked = 1;
+            if (task_block()) idle_blocked = 0;
+            idle_blocked = 0;
+        }
         if (task_yield()) {
             struct aevum_error e = app_err_template;
             e.code = ERR_ARM_APP_SWITCH;

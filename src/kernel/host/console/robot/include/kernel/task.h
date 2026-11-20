@@ -42,6 +42,10 @@ u32 task_switch_to(struct task_struct *next);
 /* 协作式轮转：当前任务主动让出，调度策略归 task.c，不再由应用层指定下一个。 */
 u32 task_yield(void);
 
+/* 阻塞/唤醒：阻塞后不返回，直到另一个任务 task_wake(pid) 把它重新置为 READY。 */
+u32 task_block(void);
+u32 task_wake(int pid);
+
 /* 监视器接口：按槽位读任务快照；返回 0 表示该槽未使用。 */
 int task_snapshot(int slot, struct task_info *out);
 int task_trace_len(void);

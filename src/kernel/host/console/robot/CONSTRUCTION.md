@@ -12,7 +12,7 @@
 | 内存布局 | `config/memory.h` | 物理地址常量 | 只读宏 |
 | 基础类型 | `include/kernel/types.h` | `i32/u32/u16/u8/i64/u64` | 只读类型 |
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
-| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹 | `task_boot/task_create/task_set_state/task_current/task_switch_to/task_exit/task_yield/task_pid_used` |
+| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹 | `task_boot/task_create/task_set_state/task_current/task_switch_to/task_exit/task_yield/task_block/task_wake/task_pid_used` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
 | 上下文 | `arch/x86/cpu/context/context.c` | 寄存器保存/恢复 | `cpu_switch()` |
 | VGA | `drivers/video/vga/text/vga.c` | 影子显存 `0x20000`、`0xB8000` 刷新 | `vga_*` |
@@ -61,7 +61,25 @@
 `aevum_fail()` 是唯一停机入口，错误屏必须带四要素：错误码、owner、field、detail；
 有上游依赖时再带 `dep_code/dep_rr`。
 
-## 三、内存与构建预算
+## 三、进程状态
+
+`task_struct.state` 只有 `task.c` 能写。当前已经跑通的边：
+
+| 起始 | 触发 | 目标 | 实现 |
+| --- | --- | --- | --- |
+| `UNUSED` | 创建任务 | `READY` | `task_create()` |
+| `READY` | 调度器选中 | `RUNNING` | `task_yield()` / `task_block()` 切换前 |
+| `RUNNING` | 主动让出 | `READY` | `task_yield()` |
+| `RUNNING` | 主动阻塞 | `BLOCKED` | `task_block()` |
+| `BLOCKED` | 别的任务唤醒 | `READY` | `task_wake(pid)` |
+| `RUNNING` | 任务退出 | `ZOMBIE` | `task_exit()` |
+| `ZOMBIE` | 下一次让出 | `UNUSED` | `task_reap()` 释放 PID |
+
+`task_pick_next()` 只选择 `READY`，因此 `BLOCKED` 和 `ZOMBIE` 不会被调度。
+当前 `BLOCKED` 没有超时和 sleep，`task_wake()` 必须由另一个任务显式调用；
+PIT/IDT 时间片抢占和优先级选择尚未接入。
+
+## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
@@ -79,10 +97,10 @@
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 读 32 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 16384 字节。
-当前构建 15,476 字节，保留约 908 字节余量。若继续增长，先加 `boot.asm` 扇区数，
+当前构建 15,932 字节，保留约 452 字节余量。若继续增长，先加 `boot.asm` 扇区数，
 同时把 `control`/`render` 栈和主栈整体上移，不要覆盖任务栈。
 
-## 四、验收
+## 五、验收
 
 ```sh
 make clean && make all
@@ -99,3 +117,4 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
 - 按 `P`（扫描码 `0x19`）创建 `probe` 任务，画面显示 PID（首次为 4）；任务退出后 `P3/31` 回到 3，再按 `P` 仍分配 PID 4，证明 ZOMBIE 回收与 PID 复用。
+- 按 `B`（扫描码 `0x30`）让 `idle` 任务执行 `task_block()`，面板第三行从 `3id r` 变成 `3id B` 并出现 `BLOCKED` 提示；再按 `B` 调 `task_wake()`，变回 `3id r`，证明 `RUNNING -> BLOCKED -> READY` 两条边成立。

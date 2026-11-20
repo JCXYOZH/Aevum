@@ -15,10 +15,11 @@
 - **引导**：`boot.asm` 读 32 个扇区到 `0x1000`，建立 GDT、0~4MB 恒等页表，跳到内核入口。
 - **多任务**：`task.c` 管理 6 个任务槽，三个常驻任务按 READY/RUNNING 状态轮转；任务主动调用 `task_yield()`，调度策略归 `task.c`，应用层不再指定“下一个是谁”。
 - **任务描述符**：每个任务保存 PID、状态、优先级、栈底/栈顶、上下文、切出次数；栈底填魔数，运行时扫描得到真实栈水位。**PID 由 `task.c` 的 31 位位图自动分配**，`task_create` 不再接收显式 PID，应用层也不写 1/2/3；任务 `task_exit()` 后置为 ZOMBIE，下一次 `task_yield()` 回收 PID。
+- **状态链路**：`UNUSED -> READY -> RUNNING`；`RUNNING -> READY` 由 `task_yield()`；`RUNNING -> BLOCKED` 由 `task_block()`，`BLOCKED -> READY` 由 `task_wake(pid)`；`RUNNING -> ZOMBIE` 由 `task_exit()`，`ZOMBIE -> UNUSED` 由 `task_reap()`。`B` 键演示阻塞/唤醒，`P` 键演示 PID 分配/回收。
 - **机械臂**：三自由度平面臂，Q16.16 定点运算；阻尼最小范数控制、零空间投影、2×2 雅可比奇异值面板。
 - **显示**：80×25 VGA 文本，影子显存在 `0x20000`，整块刷新到 `0xB8000`；右侧新增 `TASK SCHED` 任务监视器和滚动调度条。
 - **串口**：COM1 差量帧 `A5 5A 01 COUNT [row col ch attr] CRC`，每 8 帧扫描一次，每 120 次扫描强制全帧。
-- **交互**：空格扫描码 `0x39` 切换零空间；每 420 帧自动切换一次；`P`（扫描码 `0x19`）创建一个全屏 `probe` 任务。
+- **交互**：空格扫描码 `0x39` 切换零空间；每 420 帧自动切换一次；`P`（扫描码 `0x19`）创建一个全屏 `probe` 任务；`B`（扫描码 `0x30`）把 `idle` 任务阻塞成 `3id B`，再按一次 `B` 唤醒。
 - **错误**：统一 `0xRRFFTT` 错误码；失败时由 `aevum_fail()` 打印错误码、owner、field、detail，并停机。
 
 ## 模块结构
@@ -54,7 +55,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 16384 字节（`boot.asm` 读 32 个扇区）；当前构建 15,476 字节，保留约 908 字节余量。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 16384 字节（`boot.asm` 读 32 个扇区）；当前构建 15,932 字节，保留约 452 字节余量。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 
@@ -80,6 +81,3 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 按 `P` 后，`probe` 全屏显示 `PID 4 / RUN #1`；它执行完 `task_exit()` 进入 ZOMBIE，下一次 `task_yield()` 回收 PID，面板回到 `P3/31`。再次按 `P`，画面显示 `RUN #2` 且 PID 仍为 4——这不是打印常量，而是内核 PID 位图的真实分配与复用。
 
 更细的字段归属、错误码表和验收口径见 `CONSTRUCTION.md`；机器人学下一目标见 `ROBOTICS.md`。
-
-
-
