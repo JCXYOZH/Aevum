@@ -12,9 +12,9 @@
 | 内存布局 | `config/memory.h` | 物理地址常量 | 只读宏 |
 | 基础类型 | `include/kernel/types.h` | `i32/u32/u16/u8/i64/u64` | 只读类型 |
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
-| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹 | `task_boot/task_create/task_set_state/task_current/task_switch_to/task_exit/task_yield/task_block/task_wake/task_pid_used` |
+| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹 | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_preempt_total` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
-| 上下文 | `arch/x86/cpu/context/context.c` | 寄存器保存/恢复 | `cpu_switch()` |
+| 中断/定时 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC、PIT 100Hz、IRQ0 EOI | `interrupt_init/interrupt_eoi` |
 | VGA | `drivers/video/vga/text/vga.c` | 影子显存 `0x20000`、`0xB8000` 刷新 | `vga_*` |
 | 串口 | `drivers/serial/uart/uart.c` | COM1、`0x30000` 快照、差量帧缓冲 | `uart_*` |
 | 键盘 | `drivers/input/keyboard/keyboard.c` | 无状态；只读扫描码 | `keyboard_poll()` |
@@ -24,7 +24,7 @@
 | 运动学 | `app/arm/kinematics/kinematics.c` | 纯函数，无状态 | `arm_fk/arm_jacobian/arm_solve` |
 | 控制 | `app/arm/control/control.c` | `q/dq/points/target/...` 与 `arm_status` 快照 | `arm_control_init/step/toggle_nullspace/status` |
 | 渲染 | `app/arm/render/render.c` | 轨迹环形缓冲 `trace[]`；只读 `arm_status` | `arm_render_init/frame/trace_push` |
-| 应用装配 | `app/arm/app/app.c` | `p_control/p_render/app_dep_code`；两进程调度 | `arm_app_init/start/dep_code` |
+| 应用装配 | `app/arm/app/app.c` | `p_control/p_render/p_idle/app_dep_code`；创建三个常驻任务 | `arm_app_init/start/dep_code` |
 | 组合根 | `kernel/main/main.c` | 只做初始化编排 | `kernel_main()` |
 
 约束：
@@ -67,25 +67,28 @@
 
 | 起始 | 触发 | 目标 | 实现 |
 | --- | --- | --- | --- |
-| `UNUSED` | 创建任务 | `READY` | `task_create()` |
-| `READY` | 调度器选中 | `RUNNING` | `task_yield()` / `task_block()` 切换前 |
-| `RUNNING` | 主动让出 | `READY` | `task_yield()` |
+| `UNUSED` | 创建任务 | `READY` | `task_create()` 末尾发布 |
+| `READY` | 调度器选中 | `RUNNING` | `task_schedule_irq()` |
+| `RUNNING` | 主动让出 / PIT 时间片到期 | `READY` | `task_yield()` / IRQ0 的 `task_schedule_irq()` |
 | `RUNNING` | 主动阻塞 | `BLOCKED` | `task_block()` |
 | `BLOCKED` | 别的任务唤醒 | `READY` | `task_wake(pid)` |
 | `RUNNING` | 任务退出 | `ZOMBIE` | `task_exit()` |
-| `ZOMBIE` | 下一次让出 | `UNUSED` | `task_reap()` 释放 PID |
+| `ZOMBIE` | 调度器下一次进入 | `UNUSED` | `task_reap()` 释放 PID |
 
 `task_pick_next()` 只选择 `READY`，因此 `BLOCKED` 和 `ZOMBIE` 不会被调度。
-当前 `BLOCKED` 没有超时和 sleep，`task_wake()` 必须由另一个任务显式调用；
-PIT/IDT 时间片抢占和优先级选择尚未接入。
+PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x40` 两条入口上做同一套轮转；
+`px` 是 IRQ0 实际造成的抢占切换数，`sw` 是全部切换数（含主动 `task_yield`）。
+当前 `BLOCKED` 仍没有超时和 sleep，`task_wake()` 必须由另一个任务显式调用；
+优先级选择和每任务 CPU 时间统计尚未接入。
 
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
 | `0x1000` | 内核镜像起点 |
-| `0x1000..0x4FFF` | boot 读取的 32 扇区（16KB）窗口 |
-| `0x5000..0x5FFF` | 内核 BSS 尾部与保留区（不放置任务栈） |
+| `0x1000..0x5FFF` | boot 读取的 40 扇区（20KB）窗口 |
+| `0x12000..0x127FF` | 256 项 IDT（0x20 IRQ0、0x40 软件调度门） |
+| `0x12800..0x12817` | 重定位后的 GDT（3 项） |
 | `0x7000` | `control` 任务栈顶（向下增长） |
 | `0x8000` | `render` 任务栈顶（向下增长） |
 | `0x9000` | `idle` 任务栈顶（向下增长） |
@@ -96,15 +99,15 @@ PIT/IDT 时间片抢占和优先级选择尚未接入。
 | `0x30000` | 串口帧快照 |
 | `0xB8000` | VGA 文本显存 |
 
-`boot.asm` 读 32 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 16384 字节。
-当前构建 15,932 字节，保留约 452 字节余量。若继续增长，先加 `boot.asm` 扇区数，
-同时把 `control`/`render` 栈和主栈整体上移，不要覆盖任务栈。
+`boot.asm` 读 40 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 20480 字节。
+当前构建 16,196 字节，BSS 结束于 `0x53E0`；余量约 4,284 字节。若继续增长，先加 `boot.asm` 扇区数，
+同时确认 BSS 没有越过 `0x6000` 的栈区。
 
 ## 五、验收
 
 ```sh
 make clean && make all
-wc -c kernel.bin          # 必须 <= 16384
+wc -c kernel.bin          # 必须 <= 20480
 timeout 6 qemu-system-i386 -accel tcg -drive format=raw,file=disk.img \
   -display none -serial file:/tmp/robot-serial.bin -no-reboot
 xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
@@ -112,9 +115,9 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 通过标准：
 
-- `kernel.bin` 不超过 16384 字节，链接无 undefined symbol。
+- `kernel.bin` 不超过 20480 字节，链接无 undefined symbol。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
-- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板。
+- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz`，面板出现 `px` 抢占计数。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
-- 按 `P`（扫描码 `0x19`）创建 `probe` 任务，画面显示 PID（首次为 4）；任务退出后 `P3/31` 回到 3，再按 `P` 仍分配 PID 4，证明 ZOMBIE 回收与 PID 复用。
+- 按 `P`（扫描码 `0x19`）创建 `probe` 任务，画面显示 PID（首次为 4）和 `PIT PREEMPTIONS` 计数；探针循环不调用 `task_yield`，计数仍持续增长，证明 IRQ0 真的抢占了 CPU 密集型任务。任务退出后 `P3/31` 回到 3，再按 `P` 仍分配 PID 4，证明 ZOMBIE 回收与 PID 复用。
 - 按 `B`（扫描码 `0x30`）让 `idle` 任务执行 `task_block()`，面板第三行从 `3id r` 变成 `3id B` 并出现 `BLOCKED` 提示；再按 `B` 调 `task_wake()`，变回 `3id r`，证明 `RUNNING -> BLOCKED -> READY` 两条边成立。

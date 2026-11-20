@@ -53,6 +53,17 @@ static void proc_render(void)
             else idle_block_req = 1;
         }
 
+        /* 探针占用全屏时，render 不再抢画，但仍在调度器里正常让出。 */
+        if (probe_live) {
+            if (task_yield()) {
+                struct aevum_error e = app_err_template;
+                e.code = ERR_ARM_APP_SWITCH;
+                e.field = "task_yield(render/probe-live)";
+                aevum_fail(&e);
+            }
+            continue;
+        }
+
         arm_control_status(&status);
         arm_render_frame(&status);
         if (idle_blocked)
@@ -116,6 +127,13 @@ static void proc_probe(void)
         vga_text(12, 15, "RUNNING  ->  ZOMBIE  ->  REAP  ->  PID REUSED", 0x1F);
         vga_text(12, 17, "press P after return: the same PID is issued again", 0x1E);
         vga_text(12, 19, "this is a real scheduled task, not a printed bitmap", 0x18);
+
+        p = 0;
+        p += fmt_dec(buf, task_preempt_total());
+        buf[p] = 0;
+        vga_text(12, 21, "PIT PREEMPTIONS", 0x18);
+        vga_text(29, 21, buf, 0x1E);
+        vga_text(34, 21, "timer IRQ0 switched this CPU-bound loop", 0x1B);
         vga_flush();
         vga_vsync();
     }
@@ -195,21 +213,7 @@ void arm_app_start(void)
         aevum_fail(&e);
     }
 
-    if (task_set_state(p_control, TASK_RUNNING)) {
-        struct aevum_error e = app_err_template;
-        e.code = ERR_ARM_APP_SWITCH;
-        e.field = "task_set_state(control)";
-        aevum_fail(&e);
-    }
-
-    if (task_switch_to(p_control)) {
-        struct aevum_error e = app_err_template;
-        e.code = ERR_ARM_APP_SWITCH;
-        e.field = "task_switch_to(control)";
-        aevum_fail(&e);
-    }
-
-    for (;;) __asm__ __volatile__("cli; hlt");
+    task_start(p_control);
 }
 
 u32 arm_app_dep_code(void)

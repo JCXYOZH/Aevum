@@ -1,6 +1,7 @@
 #include "kernel/types.h"
 #include "kernel/error.h"
 #include "kernel/task.h"
+#include "arch/x86/interrupt.h"
 #include "drivers/video/vga.h"
 #include "drivers/serial/uart.h"
 #include "app/arm/app.h"
@@ -27,6 +28,9 @@ void kernel_main(void)
         aevum_fail(&e);
     }
 
+    /* 先装 IDT/PIC/PIT，再让第一个任务 iret 打开 IF；定时抢占从此刻开始。 */
+    __asm__ __volatile__("cli");
+    interrupt_init();
     arm_app_start();
     for (;;) __asm__ __volatile__("cli; hlt");
 }

@@ -1,16 +1,22 @@
 #include "kernel/task.h"
 #include "kernel/error.h"
-#include "arch/x86/context.h"
+#include "arch/x86/interrupt.h"
 #include "config/memory.h"
 
-#define CTX_SLOTS     8
-#define TASK_TRACE_N  64
-#define TASK_TRACE_DIV 32
-#define PID_MAX       31
-#define STACK_MAGIC   0xA5A5A5A5u
+#define CTX_FRAME_SLOTS 12
+#define TASK_TRACE_N    64
+#define TASK_TRACE_DIV  32
+#define PID_MAX         31
+#define STACK_MAGIC     0xA5A5A5A5u
+
+/* 与 loader.asm 的 irq_common 帧逐槽对应。 */
+struct irq_frame {
+    u32 eax, ebx, ecx, edx, esi, edi, ebp;
+    u32 vector, err, eip, cs, eflags;
+};
 
 struct context {
-    u32 eax, ebx, ecx, edx, esi, edi, ebp, esp, eip;
+    u32 esp;
 };
 
 struct task_struct {
@@ -25,15 +31,28 @@ struct task_struct {
     struct context ctx;
 };
 
+enum schedule_reason {
+    SCHED_START = 0,
+    SCHED_YIELD = 1,
+    SCHED_BLOCK = 2,
+    SCHED_EXIT = 3,
+    SCHED_TICK = 4
+};
+
 static struct task_struct tasks[TASK_MAX];
 static struct task_struct boot_task;
 static struct task_struct *current_task;
+static struct task_struct *start_target;
+
+static volatile u32 sched_reason;
+static volatile int sched_failed;
 
 static u32 switch_trace[TASK_TRACE_N];
 static int switch_i;
 static u32 switch_total;
 static u32 trace_total;
 static u32 pid_map;
+static u32 preempt_total;
 
 static int pid_alloc(void)
 {
@@ -64,15 +83,7 @@ static void task_zero(struct task_struct *task)
     task->stack_base = 0;
     task->stack_top = 0;
     task->switches = 0;
-    task->ctx.eax = 0;
-    task->ctx.ebx = 0;
-    task->ctx.ecx = 0;
-    task->ctx.edx = 0;
-    task->ctx.esi = 0;
-    task->ctx.edi = 0;
-    task->ctx.ebp = 0;
     task->ctx.esp = 0;
-    task->ctx.eip = 0;
 }
 
 void task_boot(void)
@@ -121,7 +132,6 @@ u32 task_create(int priority, const char *name,
 
     task_zero(task);
     task->pid = pid;
-    task->state = TASK_READY;
     task->priority = priority;
     task->entry = entry;
     task->stack_base = stack_base;
@@ -132,22 +142,28 @@ u32 task_create(int priority, const char *name,
     /* 栈底到栈顶填魔数，运行后从栈底向上扫描即可得到真实栈水位。 */
     for (p = (u32 *)stack_base; p < (u32 *)stack_top; p++) *p = STACK_MAGIC;
 
-    sp = (u32 *)(stack_top - CTX_SLOTS * 4);
-    for (i = 0; i < CTX_SLOTS - 1; i++) sp[i] = 0;
-    sp[CTX_SLOTS - 1] = (u32)entry;
+    /*
+     * 新任务的初始帧必须和中断帧同构，第一次 iret 就会进入 entry。
+     * eflags=0x202 打开 IF，任务开始运行后 PIT 才能真正抢占。
+     */
+    sp = (u32 *)(stack_top - CTX_FRAME_SLOTS * 4);
+    for (i = 0; i < CTX_FRAME_SLOTS; i++) sp[i] = 0;
+    sp[9]  = (u32)entry;
+    sp[10] = 0x08;
+    sp[11] = 0x202;
     task->ctx.esp = (u32)sp;
-    task->ctx.eip = (u32)entry;
 
-    *out = task;
-    return 0;
-}
-
-u32 task_set_state(struct task_struct *task, int state)
-{
-    if (!task) return ERR_TASK_BAD_STATE;
-    if (state != TASK_READY && state != TASK_RUNNING && state != TASK_BLOCKED)
-        return ERR_TASK_BAD_STATE;
-    task->state = state;
+    /*
+     * 新任务必须在完全构造好之后才发布为 READY。
+     * 否则 PIT 可能在 task_create 中途抢占，调度器会选中 ctx.esp 还无效的任务。
+     */
+    {
+        u32 flags;
+        __asm__ __volatile__("pushf; pop %0; cli" : "=r"(flags) : : "memory");
+        task->state = TASK_READY;
+        *out = task;
+        __asm__ __volatile__("push %0; popf" : : "r"(flags) : "memory", "cc");
+    }
     return 0;
 }
 
@@ -184,18 +200,6 @@ static void task_note_switch(struct task_struct *next)
     }
 }
 
-u32 task_switch_to(struct task_struct *next)
-{
-    struct task_struct *prev = current_task;
-
-    if (!prev || !next || prev == next) return ERR_TASK_BAD_STATE;
-    prev->switches++;
-    task_note_switch(next);
-    current_task = next;
-    cpu_switch(&prev->ctx.esp, next->ctx.esp);
-    return 0;
-}
-
 static struct task_struct *task_pick_next(struct task_struct *prev)
 {
     int start = 0;
@@ -212,7 +216,7 @@ static struct task_struct *task_pick_next(struct task_struct *prev)
         int idx = (start + i) % TASK_MAX;
         if (tasks[idx].state == TASK_READY) return &tasks[idx];
     }
-    return prev;
+    return 0;
 }
 
 static void task_reap(void)
@@ -226,36 +230,93 @@ static void task_reap(void)
     }
 }
 
-void task_exit(void)
+/*
+ * 唯一调度入口：IRQ0、int 0x40 都从这里切栈。
+ * 返回下一个任务的帧指针；loader.asm 恢复该帧并 iret。
+ */
+u32 task_schedule_irq(struct irq_frame *frame)
 {
     struct task_struct *prev = current_task;
     struct task_struct *next;
+    u32 reason = sched_reason;
 
-    if (!prev) for (;;) __asm__ __volatile__("cli; hlt");
-    prev->state = TASK_ZOMBIE;
+    if (!prev || !frame) {
+        for (;;) __asm__ __volatile__("cli; hlt");
+    }
+
+    if (frame->vector == 0x20) {
+        interrupt_eoi();
+        reason = SCHED_TICK;
+    }
+
+    prev->ctx.esp = (u32)frame;
+    sched_failed = 0;
+
+    if (reason == SCHED_START) {
+        next = start_target;
+        if (!next || next->state != TASK_READY) {
+            sched_failed = 1;
+            for (;;) __asm__ __volatile__("cli; hlt");
+        }
+        next->state = TASK_RUNNING;
+        current_task = next;
+        task_note_switch(next);
+        sched_reason = SCHED_YIELD;
+        return next->ctx.esp;
+    }
+
+    if (prev->state == TASK_RUNNING) {
+        if (reason == SCHED_EXIT)
+            prev->state = TASK_ZOMBIE;
+        else if (reason == SCHED_BLOCK)
+            prev->state = TASK_BLOCKED;
+        else
+            prev->state = TASK_READY;       /* yield 或 PIT 时间片到期 */
+    }
+
+    task_reap();
     next = task_pick_next(prev);
-    if (!next || next == prev) for (;;) __asm__ __volatile__("cli; hlt");
-    next->state = TASK_RUNNING;
-    (void)task_switch_to(next);
+
+    if (!next) {
+        if (reason == SCHED_EXIT)
+            for (;;) __asm__ __volatile__("cli; hlt");
+        if (reason == SCHED_BLOCK) {
+            prev->state = TASK_RUNNING;
+            sched_failed = 1;
+        } else {
+            prev->state = TASK_RUNNING;
+        }
+        next = prev;
+    }
+
+    if (next != prev) {
+        prev->switches++;
+        next->state = TASK_RUNNING;
+        if (reason == SCHED_TICK) preempt_total++;
+        task_note_switch(next);
+    }
+    current_task = next;
+    sched_reason = SCHED_YIELD;
+    return next->ctx.esp;
+}
+
+void task_exit(void)
+{
+    sched_reason = SCHED_EXIT;
+    sched_failed = 0;
+    __asm__ __volatile__("int $0x40");
     for (;;) __asm__ __volatile__("cli; hlt");
 }
 
 u32 task_block(void)
 {
     struct task_struct *prev = current_task;
-    struct task_struct *next;
-    u32 rc;
 
     if (!prev || prev->state != TASK_RUNNING) return ERR_TASK_BAD_STATE;
-    prev->state = TASK_BLOCKED;
-    next = task_pick_next(prev);
-    if (next == prev) {
-        prev->state = TASK_RUNNING;
-        return ERR_TASK_BAD_STATE;
-    }
-    next->state = TASK_RUNNING;
-    rc = task_switch_to(next);
-    return rc;
+    sched_reason = SCHED_BLOCK;
+    sched_failed = 0;
+    __asm__ __volatile__("int $0x40");
+    return sched_failed ? ERR_TASK_BAD_STATE : 0;
 }
 
 u32 task_wake(int pid)
@@ -273,21 +334,21 @@ u32 task_wake(int pid)
 u32 task_yield(void)
 {
     struct task_struct *prev = current_task;
-    struct task_struct *next;
-    u32 rc;
 
     if (!prev) return ERR_TASK_BAD_STATE;
-    task_reap();
-    if (prev->state == TASK_RUNNING) prev->state = TASK_READY;
-    next = task_pick_next(prev);
-    if (next == prev) {
-        prev->state = TASK_RUNNING;
-        return 0;
-    }
-    next->state = TASK_RUNNING;
-    rc = task_switch_to(next);
-    prev->state = TASK_RUNNING;
-    return rc;
+    sched_reason = SCHED_YIELD;
+    sched_failed = 0;
+    __asm__ __volatile__("int $0x40");
+    return sched_failed ? ERR_TASK_BAD_STATE : 0;
+}
+
+void task_start(struct task_struct *first)
+{
+    start_target = first;
+    sched_reason = SCHED_START;
+    sched_failed = 0;
+    __asm__ __volatile__("int $0x40");
+    for (;;) __asm__ __volatile__("cli; hlt");
 }
 
 static u32 task_stack_used(struct task_struct *task)
@@ -342,3 +403,7 @@ u32 task_switch_total(void)
     return switch_total;
 }
 
+u32 task_preempt_total(void)
+{
+    return preempt_total;
+}

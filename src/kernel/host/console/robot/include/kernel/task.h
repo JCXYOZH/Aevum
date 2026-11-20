@@ -35,14 +35,15 @@ void task_exit(void) __attribute__((noreturn));
 int task_current_pid(void);
 int task_pid_used(void);
 int task_pid_capacity(void);
-u32 task_set_state(struct task_struct *task, int state);
 struct task_struct *task_current(void);
-u32 task_switch_to(struct task_struct *next);
 
-/* 协作式轮转：当前任务主动让出，调度策略归 task.c，不再由应用层指定下一个。 */
+/* 从启动线程切入第一个任务；成功后不返回。 */
+void task_start(struct task_struct *first) __attribute__((noreturn));
+
+/* 主动让出：进入 int 0x40，与 PIT IRQ0 共用 task.c 的同一个调度入口。 */
 u32 task_yield(void);
 
-/* 阻塞/唤醒：阻塞后不返回，直到另一个任务 task_wake(pid) 把它重新置为 READY。 */
+/* 阻塞/唤醒：阻塞时切走；另一个任务 task_wake(pid) 置 READY 后，本调用才返回。 */
 u32 task_block(void);
 u32 task_wake(int pid);
 
@@ -51,5 +52,6 @@ int task_snapshot(int slot, struct task_info *out);
 int task_trace_len(void);
 u32 task_trace_pid(int index);
 u32 task_switch_total(void);
+u32 task_preempt_total(void);
 
 #endif

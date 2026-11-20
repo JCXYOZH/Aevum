@@ -97,6 +97,18 @@ static u8 task_pid_color(u32 pid)
     return C_GRAY;
 }
 
+static int fmt_compact(char *buf, u32 value)
+{
+    int p = 0;
+    if (value >= 1000u) {
+        p += fmt_dec(buf, value / 1000u);
+        buf[p++] = 'k';
+        buf[p] = 0;
+        return p;
+    }
+    return fmt_dec(buf, value);
+}
+
 static void task_panel(void)
 {
     char buf[40];
@@ -116,9 +128,15 @@ static void task_panel(void)
     vga_text(57, 18, buf, C_WHITE);
     vga_text(63, 18, "sw", C_GRAY);
     p = 0;
-    p += fmt_dec(buf, total);
+    p += fmt_compact(buf, total);
     buf[p] = 0;
     vga_text(66, 18, buf, C_WHITE);
+
+    vga_text(72, 18, "px", C_GRAY);
+    p = 0;
+    p += fmt_compact(buf, task_preempt_total());
+    buf[p] = 0;
+    vga_text(75, 18, buf, C_WHITE);
 
     count = 0;
     for (slot = 0; slot < TASK_MAX; slot++) {
@@ -205,7 +223,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Planar Arm | P=probe B=block ", C_WHITE);
+    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;

@@ -19,7 +19,7 @@ SRCS = \
 	kernel/main/main.c \
 	kernel/error/error.c \
 	kernel/task/task.c \
-	arch/x86/cpu/context/context.c \
+	arch/x86/cpu/interrupt/interrupt.c \
 	drivers/video/vga/text/vga.c \
 	drivers/serial/uart/uart.c \
 	drivers/input/keyboard/keyboard.c \
@@ -51,8 +51,8 @@ $(BUILD)/loader.o: loader.asm
 kernel.elf kernel.bin: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 	$(LD) -m elf_i386 -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf
 	$(LD) -m elf_i386 -T $(LDSCRIPT) --oformat binary $(BUILD)/loader.o $(OBJS) -o kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 16384 / 32 sectors)"; \
-	if [ $$size -gt 16384 ]; then echo "ERROR: kernel.bin $$size bytes > 16384"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 20480 / 40 sectors)"; \
+	if [ $$size -gt 20480 ]; then echo "ERROR: kernel.bin $$size bytes > 20480"; exit 1; fi
 
 boot.bin: boot.asm
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin

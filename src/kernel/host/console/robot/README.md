@@ -14,11 +14,11 @@
 > ```
 >
 > `interface/desktop/main.js` 优先启动本目录的 `disk.img`；`kernel.bin` 上限
-> 16384 字节（boot.asm 读 32 个扇区到 0x1000）。串口快照放在 `0x30000`，
+> 20480 字节（boot.asm 读 40 个扇区到 0x1000）。串口快照放在 `0x30000`，
 > 不占内核镜像窗口。模块归属、错误码和验收流程见 `CONSTRUCTION.md`。
 
 一个用 NASM + C 写的 32 位裸机内核：从软盘镜像启动，进入保护模式、建立自己的 GDT 和分页，
-然后运行 `control` / `render` / `idle` 三个常驻任务，并可按 `P` 生成一个 `probe` 任务，用协作式上下文切换轮流执行，并在 VGA 文本模式下
+然后运行 `control` / `render` / `idle` 三个常驻任务，并可按 `P` 生成一个 `probe` 任务，用 PIT 100Hz 时间片抢占和主动让出轮流执行，并在 VGA 文本模式下
 绘制三自由度机械臂和运行信息。
 
 ---
@@ -27,11 +27,11 @@
 
 - **启动流程**：BIOS 把引导扇区加载到 `0x7C00` → `boot.asm` 用 `INT 13h` 把内核读到 `0x1000`
   → 装载 GDT 进入保护模式 → 建立 0~4MB 恒等分页 → 跳到 `0x1000`。
-- **内核入口**：`loader.asm` 把主栈设为 `0xA000` 并调用 C 的 `kernel_main`。
-- **多进程**：`kernel_main` 通过 `task_create` 为 `control` / `render` / `idle` 构造独立内核栈；PID 由 `task.c` 的位图自动分配，应用不再硬编码，再用 `task_switch_to` 启动第一个任务。
+- **内核入口**：`loader.asm` 把 GDT 搬到 `0x12800`、清 BSS、把主栈设为 `0xA000`，再调用 C 的 `kernel_main`。
+- **多进程**：`kernel_main` 通过 `task_create` 为 `control` / `render` / `idle` 构造独立内核栈；PID 由 `task.c` 的位图自动分配，应用不再硬编码，再用 `task_start` 切入第一个任务。
   每个进程各自拥有栈和计数器，互不影响。
-- **上下文切换**：`cpu_switch` 保存/恢复 7 个通用寄存器与栈指针，实现真正意义上的任务切换；
-  采用协作式调度（任务主动调用 `task_yield` 让出 CPU）；`task_exit()` 把任务置为 ZOMBIE，下一次 `task_yield()` 回收 PID；`task_block()` / `task_wake()` 已打通 BLOCKED 与 READY。
+- **上下文切换**：IDT 门 + 统一中断帧保存 `eax/ebx/ecx/edx/esi/edi/ebp/eip/cs/eflags`；PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq` 在 IRQ0 与 `int 0x40` 两条入口上做同一套轮转。
+  `task_yield()` / `task_block()` / `task_exit()` / `task_start()` 都走 `int 0x40`；`task_exit()` 置 ZOMBIE 后由调度器回收 PID；`task_block()` / `task_wake()` 已打通 BLOCKED 与 READY。
 - **显示输出**：直接写显存 `0xB8000`（80×25 文本模式），`render` 每帧在影子显存 `0x20000`
   画三自由度机械臂、目标点、轨迹和右侧数值面板，再整块搬到 VGA；同一帧通过 COM1
   把变化的文本单元发给 QEMU 串口，供桌面「内核实况」窗口实时显示。
@@ -48,7 +48,7 @@
  tip @  elbow O  wrist *  target o  path .  base #  radial sweep
 ```
 
-机械臂会持续追踪右侧面板里的目标点，`control` 算控制量，`render` 负责渲染，1:1 协作切换。
+机械臂会持续追踪右侧面板里的目标点，`control` 算控制量，`render` 负责渲染；PIT 100Hz 抢占保证 CPU 密集型任务也不能独占。
 
 ---
 
@@ -126,12 +126,12 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 | 文件 | 作用 |
 | --- | --- |
-| `boot.asm` | 主引导扇区（512 字节）。用 `INT 13h` 读 32 个扇区到 `0x1000`；设置 GDT；建立 `0x10000` 页目录 + `0x11000` 页表（恒等映射 0~4MB）；开启分页后跳到 `0x1000`。 |
-| `loader.asm` | 保护模式下的入口 `start`。把主栈设为 `0xA000` 并调用 C 的 `kernel_main`；返回后死循环停机。 |
-| `kernel/main/main.c` | 组合根：按顺序初始化 VGA、串口、任务系统和机械臂应用。 |
+| `boot.asm` | 主引导扇区（512 字节）。用 `INT 13h` 读 40 个扇区到 `0x1000`；设置 GDT；建立 `0x10000` 页目录 + `0x11000` 页表（恒等映射 0~4MB）；开启分页后跳到 `0x1000`。 |
+| `loader.asm` | 保护模式入口 `start`。把 boot 扇区的 GDT 搬到 `0x12800` 并重新 `lgdt`，清 BSS，主栈设 `0xA000`，调用 `kernel_main`；返回后死循环。 |
+| `kernel/main/main.c` | 组合根：初始化 VGA、串口、任务、机械臂应用、IDT/PIC/PIT，最后切入第一个任务。 |
 | `kernel/error/error.c` | 唯一错误屏与停机入口，打印 `0xRRFFTT` 四要素。 |
 | `kernel/task/task.c` | `task_struct`、任务槽、上下文切换的唯一写者。 |
-| `arch/x86/cpu/context/context.c` | 寄存器保存/恢复的 `cpu_switch`。 |
+| `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC 重映射、PIT 100Hz、EOI 的唯一写者。 |
 | `drivers/video/vga/text/vga.c` | VGA 影子显存与文本绘制。 |
 | `drivers/serial/uart/uart.c` | COM1 初始化、差量帧上报。 |
 | `drivers/input/keyboard/keyboard.c` | PS/2 扫描码读取。 |
@@ -156,8 +156,9 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 | 物理地址 | 用途 |
 | --- | --- |
-| `0x00001000` – `0x00004FFF` | boot 读取的 16KB 内核窗口（`.text` / `.rodata` / `.data` / `.bss`） |
-| `0x00005000` – `0x00005FFF` | 内核 BSS 尾部和保留区（不放置任务栈） |
+| `0x00001000` – `0x00005FFF` | boot 读取的 20KB 内核窗口（`.text` / `.rodata` / `.data` / `.bss`） |
+| `0x00012000` – `0x000127FF` | 256 项 IDT（`0x20` IRQ0、`0x40` 软件调度门） |
+| `0x00012800` – `0x00012817` | 重定位后的 GDT（3 项，24 字节） |
 | `0x00006000` – `0x00006FFF` | `control` 任务栈（栈顶 `0x7000`，向下增长） |
 | `0x00007000` – `0x00007FFF` | `render` 任务栈（栈顶 `0x8000`，向下增长） |
 | `0x00008000` – `0x00008FFF` | `idle` 任务栈（栈顶 `0x9000`，向下增长） |
@@ -171,11 +172,11 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 ## 六、注意事项
 
-1. **内核镜像必须小于 16KB**：`boot.asm` 一次只读 32 个扇区（16KB）到 `0x1000`。
-   如果 `kernel.bin` 超过 16KB，需要同步增大 `boot.asm` 里的读取扇区数，
-   并把全部任务栈和主栈整体上移（不要跨出磁道边界）。
-2. 页目录 / 页表固定在 `0x10000` / `0x11000`，不要和内核段或任务栈重叠。
+1. **内核镜像必须小于 20KB**：`boot.asm` 一次只读 40 个扇区（20KB）到 `0x1000`。
+   如果 `kernel.bin` 超过 20KB，需要同步增大 `boot.asm` 里的读取扇区数；
+   当前 BSS 结束于 `0x53E0`，仍在 `0x6000` 栈区之前。
+2. 页目录 / 页表固定在 `0x10000` / `0x11000`，IDT 固定在 `0x12000..0x127FF`，GDT 固定在 `0x12800..0x12817`；不要和内核段或任务栈重叠。
 3. 按 `B`（扫描码 `0x30`）可把 `idle` 任务阻塞成 `3id B`，再按一次唤醒；这是 `BLOCKED` 状态的可控演示。
 4. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1` / `AEVUM_STACK_P2` / `AEVUM_STACK_IDLE` / `AEVUM_STACK_MAIN` / `AEVUM_STACK_PROBE` 决定，修改时要保证互不重叠。
-5. `cpu_switch` 必须是 `__attribute__((naked))`（无栈帧）：普通 C 函数会在寄存器与返回地址之间
-   插入编译器栈帧，任务被“重新调度回来”时 `ret` 会弹到错误地址。
+5. 中断帧布局必须与 `loader.asm` 的 `irq_common` 逐槽一致；新增字段时先改汇编压栈顺序，再改 `struct irq_frame`，否则 `iret` 会恢复到错误地址。
+6. 任务栈会覆盖 boot 扇区的旧 GDT，必须由 `loader.asm` 先搬到 `0x12800` 再 `lgdt`；否则第一次 `iret` 会因 GDT 被 `0xA5A5A5A5` 覆盖而 #GP。

@@ -7,7 +7,7 @@ start:
     mov es, ax
     mov bx, 0x1000      ; 把第二阶段加载到物理地址0x1000
     mov ah, 0x02        ; BIOS读扇区
-    mov al, 32          ; 读取32个扇区(16KB)，内核镜像上限0x6000
+    mov al, 40          ; 读取40个扇区(20KB)，内核镜像上限0x6000
     mov ch, 0           ; 磁道0
     mov cl, 2           ; 从第2扇区读取（扇区1是当前引导扇区）
     mov dh, 0           ; 磁头0
