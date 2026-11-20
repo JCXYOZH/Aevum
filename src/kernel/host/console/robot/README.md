@@ -18,8 +18,7 @@
 > 不占内核镜像窗口。模块归属、错误码和验收流程见 `CONSTRUCTION.md`。
 
 一个用 NASM + C 写的 32 位裸机内核：从软盘镜像启动，进入保护模式、建立自己的 GDT 和分页，
-然后运行 `control` / `render` / `idle` 三个常驻任务，并可按 `P` 生成一个 `probe` 任务，用 PIT 100Hz 时间片抢占和主动让出轮流执行，并在 VGA 文本模式下
-绘制三自由度机械臂和运行信息。
+然后运行 `control` / `render` / `idle` 三个常驻任务；按 `P` 可生成一个 `probe` 任务，按 `T` 可启动两个 CPU 密集型任务的抢占决斗。PIT 100Hz 时间片抢占和任务主动让出共同驱动轮转，并在 VGA 文本模式下绘制三自由度机械臂和运行信息。
 
 ---
 
@@ -35,12 +34,15 @@
 - **显示输出**：直接写显存 `0xB8000`（80×25 文本模式），`render` 每帧在影子显存 `0x20000`
   画三自由度机械臂、目标点、轨迹和右侧数值面板，再整块搬到 VGA；同一帧通过 COM1
   把变化的文本单元发给 QEMU 串口，供桌面「内核实况」窗口实时显示。
+- **抢占决斗**：按 `T`（扫描码 `0x14`）创建 `spinA` / `spinB` 两个 CPU 密集型任务，循环里都不调用
+  `task_yield()`；全屏显示两条 lane 的实时步数、进度条和 80 格 IRQ0 抢占磁带。只有 PIT 真的抢占 CPU，
+  两条 lane 才会同时推进，磁带才会出现青/洋红交替的条纹；再按 `T` 停止并回到机械臂画面。
 - **无 libc**：完全 freestanding，字符串输出、整数转十进制和 Q16.16 定点运算都由内核自己实现。
 
 ### 运行效果
 
 ```
- 3-DOF Planar Arm  |  Jacobian live demo
+ 3-DOF Arm | PIT 100Hz | P/B/T
  ARM STATUS                         nullsp ON
  joint angles
  q1  -37.1  q2  60.9  q3  83.6
@@ -164,6 +166,8 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `0x00008000` – `0x00008FFF` | `idle` 任务栈（栈顶 `0x9000`，向下增长） |
 | `0x00009000` – `0x00009FFF` | 内核主线程栈（栈顶 `0xA000`） |
 | `0x0000A000` – `0x0000AFFF` | `probe` 任务栈（栈顶 `0xB000`，按 `P` 创建） |
+| `0x0000B000` – `0x0000BFFF` | `spinA` 任务栈（栈顶 `0xC000`，按 `T` 创建） |
+| `0x0000C000` – `0x0000CFFF` | `spinB` 任务栈（栈顶 `0xD000`，按 `T` 创建） |
 | `0x00010000` | 页目录 PD（`boot.asm` 使用） |
 | `0x00011000` | 页表 PT（`boot.asm` 使用） |
 | `0x000B8000` | VGA 文本显存（80×25，每字符 2 字节：字符 + 颜色） |
@@ -174,9 +178,10 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 1. **内核镜像必须小于 20KB**：`boot.asm` 一次只读 40 个扇区（20KB）到 `0x1000`。
    如果 `kernel.bin` 超过 20KB，需要同步增大 `boot.asm` 里的读取扇区数；
-   当前 BSS 结束于 `0x53E0`，仍在 `0x6000` 栈区之前。
+   当前 BSS 结束于 `0x5BE0`，仍在 `0x6000` 栈区之前。
 2. 页目录 / 页表固定在 `0x10000` / `0x11000`，IDT 固定在 `0x12000..0x127FF`，GDT 固定在 `0x12800..0x12817`；不要和内核段或任务栈重叠。
 3. 按 `B`（扫描码 `0x30`）可把 `idle` 任务阻塞成 `3id B`，再按一次唤醒；这是 `BLOCKED` 状态的可控演示。
-4. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1` / `AEVUM_STACK_P2` / `AEVUM_STACK_IDLE` / `AEVUM_STACK_MAIN` / `AEVUM_STACK_PROBE` 决定，修改时要保证互不重叠。
-5. 中断帧布局必须与 `loader.asm` 的 `irq_common` 逐槽一致；新增字段时先改汇编压栈顺序，再改 `struct irq_frame`，否则 `iret` 会恢复到错误地址。
-6. 任务栈会覆盖 boot 扇区的旧 GDT，必须由 `loader.asm` 先搬到 `0x12800` 再 `lgdt`；否则第一次 `iret` 会因 GDT 被 `0xA5A5A5A5` 覆盖而 #GP。
+4. 按 `T`（扫描码 `0x14`）进入/退出抢占决斗；决斗使用 `spinA` / `spinB` 两个 CPU 密集型任务，只有 PIT/IRQ0 抢占才能让两边同时前进。
+5. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1` / `AEVUM_STACK_P2` / `AEVUM_STACK_IDLE` / `AEVUM_STACK_MAIN` / `AEVUM_STACK_PROBE` / `AEVUM_STACK_DUEL_A` / `AEVUM_STACK_DUEL_B` 决定，修改时要保证互不重叠。
+6. 中断帧布局必须与 `loader.asm` 的 `irq_common` 逐槽一致；新增字段时先改汇编压栈顺序，再改 `struct irq_frame`，否则 `iret` 会恢复到错误地址。
+7. 任务栈会覆盖 boot 扇区的旧 GDT，必须由 `loader.asm` 先搬到 `0x12800` 再 `lgdt`；否则第一次 `iret` 会因 GDT 被 `0xA5A5A5A5` 覆盖而 #GP。

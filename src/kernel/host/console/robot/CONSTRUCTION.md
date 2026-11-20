@@ -94,14 +94,17 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 | `0x9000` | `idle` 任务栈顶（向下增长） |
 | `0xA000` | 内核主线程栈顶 |
 | `0xB000` | `probe` 任务栈顶（按 `P` 创建） |
+| `0xC000` | `spinA` 任务栈顶（按 `T` 创建） |
+| `0xD000` | `spinB` 任务栈顶（按 `T` 创建） |
 | `0x10000 / 0x11000` | 页目录 / 页表 |
 | `0x20000` | VGA 影子显存 |
 | `0x30000` | 串口帧快照 |
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 读 40 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 20480 字节。
-当前构建 16,196 字节，BSS 结束于 `0x53E0`；余量约 4,284 字节。若继续增长，先加 `boot.asm` 扇区数，
-同时确认 BSS 没有越过 `0x6000` 的栈区。
+当前构建 18,156 字节，BSS 结束于 `0x5BE0`；镜像余量约 2,324 字节，BSS 距 `0x6000` 栈区还有 1,056 字节。
+若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 没有越过 `0x6000` 的栈区。`AEVUM_TASK_STACK_MAX`
+已随抢占决斗栈改为 `0xD000`。
 
 ## 五、验收
 
@@ -121,3 +124,4 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
 - 按 `P`（扫描码 `0x19`）创建 `probe` 任务，画面显示 PID（首次为 4）和 `PIT PREEMPTIONS` 计数；探针循环不调用 `task_yield`，计数仍持续增长，证明 IRQ0 真的抢占了 CPU 密集型任务。任务退出后 `P3/31` 回到 3，再按 `P` 仍分配 PID 4，证明 ZOMBIE 回收与 PID 复用。
 - 按 `B`（扫描码 `0x30`）让 `idle` 任务执行 `task_block()`，面板第三行从 `3id r` 变成 `3id B` 并出现 `BLOCKED` 提示；再按 `B` 调 `task_wake()`，变回 `3id r`，证明 `RUNNING -> BLOCKED -> READY` 两条边成立。
+- 按 `T`（扫描码 `0x14`）进入全屏 `PREEMPTION DUEL`：创建 `spinA` / `spinB` 两个 CPU 密集型任务，循环里都不调用 `task_yield()`；两条 lane 的 `STEP` 同时增长，80 格抢占磁带出现青/洋红交替条纹，`PIT PREEMPTIONS` 持续增加。再按 `T` 停止，两个任务经 `task_exit()` 退出，画面恢复机械臂，面板回到 `P3/31`。

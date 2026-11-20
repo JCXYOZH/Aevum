@@ -11,12 +11,22 @@
 
 #define PROC_AUTO_TOGGLE 420
 #define PROBE_FRAMES 6000
+#define DUEL_TAPE 80
 
 static struct task_struct *p_control;
 static struct task_struct *p_render;
 static struct task_struct *p_idle;
 static int probe_live;
 static u32 app_dep_code;
+static struct task_struct *p_duel_a;
+static struct task_struct *p_duel_b;
+static volatile u32 duel_stop;
+static volatile u32 duel_a;
+static volatile u32 duel_b;
+static volatile int duel_alive;
+static volatile int duel_live;
+static volatile u8 duel_tape[DUEL_TAPE];
+static volatile u32 duel_tape_head;
 static u32 probe_runs;
 static volatile int idle_pid;
 static volatile u32 idle_block_req;
@@ -46,11 +56,36 @@ static void proc_render(void)
     for (;;) {
         struct arm_status status;
         u8 key = keyboard_poll();
-        if (key == 0x39) arm_control_toggle_nullspace();
-        if (key == 0x19) (void)arm_app_spawn_probe();
-        if (key == 0x30) {
-            if (idle_blocked) (void)task_wake(idle_pid);
-            else idle_block_req = 1;
+
+        if (key == 0x14) {                 /* T：开始/停止抢占决斗 */
+            if (duel_live) duel_stop = 1;
+            else if (!probe_live) (void)arm_app_start_duel();
+        }
+
+        if (!duel_live) {
+            if (key == 0x39) arm_control_toggle_nullspace();
+            if (key == 0x19) (void)arm_app_spawn_probe();
+            if (key == 0x30) {
+                if (idle_blocked) (void)task_wake(idle_pid);
+                else idle_block_req = 1;
+            }
+        }
+
+        /* 两个 CPU 密集型 lane 占用全屏；render 只刷新和观察。 */
+        if (duel_live) {
+            if (duel_alive == 0) {
+                duel_live = 0;
+            } else {
+                arm_render_duel_status(duel_a, duel_b, (const u8 *)duel_tape, duel_tape_head);
+                vga_flush();
+                if (task_yield()) {
+                    struct aevum_error e = app_err_template;
+                    e.code = ERR_ARM_APP_SWITCH;
+                    e.field = "task_yield(render/duel)";
+                    aevum_fail(&e);
+                }
+                continue;
+            }
         }
 
         /* 探针占用全屏时，render 不再抢画，但仍在调度器里正常让出。 */
@@ -142,6 +177,41 @@ static void proc_probe(void)
     task_exit();
 }
 
+/*
+ * 两个 CPU 密集型任务：循环里没有 task_yield()。
+ * 如果 PIT/IRQ0 不抢占，先跑的那个会把另一个彻底饿死。
+ */
+static void proc_duel(int lane)
+{
+    int pid = task_current_pid();
+    u32 step = 0;
+    u32 last_px = task_preempt_total();
+    volatile u32 spin;
+
+    for (;;) {
+        if (duel_stop) break;
+        step++;
+        if (lane) duel_b = step;
+        else duel_a = step;
+        if (task_preempt_total() != last_px) {
+            last_px = task_preempt_total();
+            duel_tape[duel_tape_head % (u32)DUEL_TAPE] = (u8)(lane + 1);
+            duel_tape_head++;
+        }
+        if ((step & 63u) == 0)
+            arm_render_duel_lane(lane, step, pid);
+        for (spin = 0; spin < 12u; spin++)
+            __asm__ __volatile__("" ::: "memory");
+    }
+
+    arm_render_duel_lane(lane, step, pid);
+    duel_alive--;
+    task_exit();
+}
+
+static void proc_duel_a(void) { proc_duel(0); }
+static void proc_duel_b(void) { proc_duel(1); }
+
 static void proc_idle(void)
 {
     idle_pid = task_current_pid();
@@ -173,6 +243,38 @@ u32 arm_app_spawn_probe(void)
         probe_runs++;
     }
     return rc;
+}
+
+u32 arm_app_start_duel(void)
+{
+    u32 rc;
+
+    if (duel_live || probe_live) return 0;
+
+    duel_stop = 0;
+    duel_a = 0;
+    duel_b = 0;
+    duel_alive = 2;
+    duel_live = 1;
+    duel_tape_head = 0;
+    arm_render_duel_init();
+
+    rc = task_create(1, "spinA", proc_duel_a, AEVUM_STACK_DUEL_A, &p_duel_a);
+    if (rc) {
+        duel_stop = 1;
+        duel_alive = 0;
+        duel_live = 0;
+        return rc;
+    }
+
+    rc = task_create(1, "spinB", proc_duel_b, AEVUM_STACK_DUEL_B, &p_duel_b);
+    if (rc) {
+        /* 第一个任务已经存在，让它看到 stop 后自己退出。 */
+        duel_stop = 1;
+        duel_alive = 1;
+        return rc;
+    }
+    return 0;
 }
 
 u32 arm_app_init(void)

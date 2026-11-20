@@ -215,6 +215,104 @@ static void task_timeline(void)
     }
 }
 
+
+#define DUEL_W    36
+#define DUEL_A_X  2
+#define DUEL_B_X  41
+#define DUEL_TAPE 80
+
+static void duel_bar(int x, int row, u32 step, u8 color)
+{
+    int n = (int)((step % (u32)(DUEL_W * 64)) / 64u);
+    int i;
+    if (n < 0) n = 0;
+    if (n > DUEL_W) n = DUEL_W;
+    for (i = 0; i < DUEL_W; i++)
+        vga_cell(x + i, row, i < n ? (char)CH_FULL : (char)CH_LIGHT, color);
+}
+
+void arm_render_duel_init(void)
+{
+    int c;
+    vga_clear(0x00);
+    vga_text(17, 0, "AEVUM / PREEMPTION DUEL", 0x1F);
+    vga_text(8, 2, "TWO CPU-BOUND TASKS / NEITHER CALLS task_yield()", 0x1B);
+    vga_text(DUEL_A_X, 4, "TASK A", C_CYAN);
+    vga_text(DUEL_B_X, 4, "TASK B", C_MAG);
+    vga_text(DUEL_A_X, 8, "RUN HISTORY", C_GRAY);
+    vga_text(DUEL_B_X, 8, "RUN HISTORY", C_GRAY);
+    vga_text(3, 11, "PREEMPTION TAPE / WHICH TASK OWNS THE CPU", C_GRAY);
+    vga_text(2, 16, "PIT PREEMPTIONS", C_GRAY);
+    vga_text(2, 17, "A STEPS", C_GRAY);
+    vga_text(41, 17, "B STEPS", C_GRAY);
+    vga_text(2, 19, "T = STOP DUEL", 0x1E);
+    vga_text(2, 21, "BOTH LANES MOVE ONLY BECAUSE IRQ0 PREEMPTS", 0x18);
+    for (c = 0; c < DUEL_W; c++) {
+        vga_cell(DUEL_A_X + c, 6, (char)CH_LIGHT, C_DGRAY);
+        vga_cell(DUEL_B_X + c, 6, (char)CH_LIGHT, C_DGRAY);
+    }
+    vga_flush();
+}
+
+void arm_render_duel_lane(int lane, u32 step, int pid)
+{
+    char buf[16];
+    int p = 0;
+    int x = lane ? DUEL_B_X : DUEL_A_X;
+    u8 color = lane ? C_MAG : C_CYAN;
+    int hx;
+
+    vga_text(x, 4, lane ? "TASK B" : "TASK A", color);
+    vga_text(x + 8, 4, "PID", 0x18);
+    p = fmt_dec(buf, (u32)pid);
+    buf[p] = 0;
+    vga_text(x + 12, 4, buf, 0x1E);
+    vga_text(x + 16, 4, "< CPU BOUND", 0x18);
+
+    vga_text(x, 5, "STEP", 0x18);
+    p = 0;
+    p += fmt_dec(buf, step);
+    buf[p] = 0;
+    vga_text(x + 5, 5, buf, 0x1F);
+
+    duel_bar(x, 6, step, color);
+
+    hx = x + (int)(step % (u32)DUEL_W);
+    vga_cell(hx, 9, (char)CH_FULL, color);
+    vga_cell(x + (int)((step + 1u) % (u32)DUEL_W), 9, (char)CH_LIGHT, 0x08);
+}
+
+void arm_render_duel_status(u32 a_steps, u32 b_steps, const u8 *tape, u32 tape_head)
+{
+    char buf[20];
+    int p, c, r;
+    u32 start = tape_head > (u32)DUEL_TAPE ? tape_head - (u32)DUEL_TAPE : 0;
+
+    for (r = 12; r <= 14; r++) {
+        for (c = 0; c < (int)DUEL_TAPE; c++) {
+            u32 seq = start + (u32)c;
+            u8 v = seq < tape_head ? tape[seq % (u32)DUEL_TAPE] : 0;
+            u8 attr = v == 1 ? C_CYAN : (v == 2 ? C_MAG : 0x08);
+            vga_cell(c, r, v ? (char)CH_FULL : ' ', attr);
+        }
+    }
+
+    p = 0;
+    p += fmt_dec(buf, task_preempt_total());
+    buf[p] = 0;
+    vga_text(18, 16, buf, 0x1E);
+
+    p = 0;
+    p += fmt_dec(buf, a_steps);
+    buf[p] = 0;
+    vga_text(10, 17, buf, 0x1F);
+
+    p = 0;
+    p += fmt_dec(buf, b_steps);
+    buf[p] = 0;
+    vga_text(49, 17, buf, 0x1F);
+}
+
 void arm_render_frame(const struct arm_status *s)
 {
     char buf[40];
@@ -223,7 +321,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B ", C_WHITE);
+    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;
