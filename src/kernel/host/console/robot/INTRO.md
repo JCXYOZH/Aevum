@@ -54,7 +54,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 16384 字节（`boot.asm` 读 32 个扇区）；当前构建 15,444 字节，保留约 940 字节余量。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 16384 字节（`boot.asm` 读 32 个扇区）；当前构建 15,476 字节，保留约 908 字节余量。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 
@@ -80,5 +80,6 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 按 `P` 后，`probe` 全屏显示 `PID 4 / RUN #1`；它执行完 `task_exit()` 进入 ZOMBIE，下一次 `task_yield()` 回收 PID，面板回到 `P3/31`。再次按 `P`，画面显示 `RUN #2` 且 PID 仍为 4——这不是打印常量，而是内核 PID 位图的真实分配与复用。
 
 更细的字段归属、错误码表和验收口径见 `CONSTRUCTION.md`；机器人学下一目标见 `ROBOTICS.md`。
+
 
 
