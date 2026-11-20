@@ -1,4 +1,4 @@
-# Makefile —— 32 位裸机内核
+# Makefile —— 32 位裸机内核（模块化目录）
 # 依赖：nasm / gcc(支持 -m32 编译) / ld(binutils) / make / qemu-system-i386
 
 CC      = gcc
@@ -6,34 +6,53 @@ AS      = nasm
 LD      = ld
 QEMU    = qemu-system-i386
 
-# freestanding：不连 libc；-m32 生成 32 位代码
-# -fno-stack-protector            裸机没有 __stack_chk_fail，必须关掉栈保护
-# -fno-asynchronous-unwind-tables 不生成 .eh_frame，减小镜像体积
-CFLAGS  = -m32 -ffreestanding -c -Os -g -fno-pic -fno-pie -fno-plt \
-          -fno-stack-protector -fno-asynchronous-unwind-tables
+BUILD   = build
+CFLAGS  = -m32 -ffreestanding -c -O2 -g -fno-tree-loop-distribute-patterns -fno-pic -fno-pie \
+          -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables \
+          -falign-functions=1 -falign-jumps=1 -falign-loops=1 \
+          -Wall -Wextra -Iinclude -I.
 ASFLAGS_BIN   = -f bin
 ASFLAGS_ELF32 = -f elf32
 LDSCRIPT = kernel.ld
 
-OBJS    = loader.o kernel.o
+SRCS = \
+	kernel/main/main.c \
+	kernel/error/error.c \
+	kernel/task/task.c \
+	arch/x86/cpu/context/context.c \
+	drivers/video/vga/text/vga.c \
+	drivers/serial/uart/uart.c \
+	drivers/input/keyboard/keyboard.c \
+	lib/fixed/fixed.c \
+	lib/math/trig.c \
+	lib/format/format.c \
+	app/arm/app/app.c \
+	app/arm/kinematics/kinematics.c \
+	app/arm/control/control.c \
+	app/arm/render/render.c
+
+OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o))
 IMG     = os.img
 
-# 所有由构建生成的产物（make clean 时一并删除）
-GENERATED = boot.bin loader.o kernel.o kernel.elf kernel.bin $(IMG) disk.img
+GENERATED = boot.bin $(IMG) disk.img kernel.bin kernel.elf $(BUILD)
 
-.PHONY: all clean rebuild run debug
+.PHONY: all clean rebuild run debug size
 
 all: disk.img
 
-kernel.bin kernel.elf: $(OBJS) $(LDSCRIPT)
-	$(LD) -m elf_i386 -T $(LDSCRIPT) $(OBJS) -o kernel.elf
-	$(LD) -m elf_i386 -T $(LDSCRIPT) --oformat binary $(OBJS) -o kernel.bin
+$(BUILD)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< -o $@
 
-loader.o: loader.asm
-	$(AS) $(ASFLAGS_ELF32) loader.asm -o loader.o
+$(BUILD)/loader.o: loader.asm
+	@mkdir -p $(BUILD)
+	$(AS) $(ASFLAGS_ELF32) loader.asm -o $@
 
-kernel.o: kernel.c
-	$(CC) $(CFLAGS) kernel.c -o kernel.o
+kernel.elf kernel.bin: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
+	$(LD) -m elf_i386 -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf
+	$(LD) -m elf_i386 -T $(LDSCRIPT) --oformat binary $(BUILD)/loader.o $(OBJS) -o kernel.bin
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 14336 / 28 sectors)"; \
+	if [ $$size -gt 14336 ]; then echo "ERROR: kernel.bin $$size bytes > 14336"; exit 1; fi
 
 boot.bin: boot.asm
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin
@@ -43,23 +62,22 @@ $(IMG): boot.bin kernel.bin
 	dd if=boot.bin of=$(IMG) conv=notrunc
 	dd if=kernel.bin of=$(IMG) bs=512 seek=1 conv=notrunc
 
-# 桌面端固定读取 disk.img；和 os.img 内容一致，保留 os.img 便于直接 qemu 调试。
+# 桌面端固定读 disk.img；和 os.img 内容一致，保留 os.img 便于直接 qemu 调试。
 disk.img: $(IMG)
 	cp $(IMG) disk.img
 
-# 删除全部编译产物（.o / .bin / .elf / os.img）
-clean:
-	rm -f $(GENERATED)
+size: kernel.bin
+	@wc -c kernel.bin
 
-# 一步完成：先清干净，再重新编译
+clean:
+	rm -rf $(GENERATED)
+
 rebuild:
 	$(MAKE) clean
 	$(MAKE) all
 
-# 启动 QEMU 运行内核
 run: disk.img
 	$(QEMU) -drive format=raw,file=disk.img
 
-# 启动 QEMU 并停在起点等待 gdb 连接（gdb: target remote :1234）
 debug: $(IMG)
 	$(QEMU) -s -S -drive format=raw,file=$(IMG)

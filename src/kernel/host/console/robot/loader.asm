@@ -6,7 +6,7 @@ extern kernel_main   ; 改成下划线版本！
 section .text
 start:
     ; 设置C代码栈
-    mov esp, 0x6000
+    mov esp, 0x8000
     call kernel_main
 
 ; 死循环，内核返回就停机
