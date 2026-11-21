@@ -108,6 +108,11 @@ void interrupt_set_user_gate(int vector, void (*handler)(void))
     idt_set_gate_flags(vector, handler, 0xEE);
 }
 
+void interrupt_set_kernel_gate(int vector, void (*handler)(void))
+{
+    idt_set_gate_flags(vector, handler, 0x8E);
+}
+
 void interrupt_eoi(void)
 {
     outb(PIC1_CMD, 0x20);

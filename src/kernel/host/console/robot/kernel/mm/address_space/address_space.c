@@ -150,6 +150,11 @@ void address_space_set_stop(struct address_space *space, u32 stop)
     if (space && space->user) *(volatile u32 *)space->control = stop;
 }
 
+void address_space_set_mode(struct address_space *space, u32 mode)
+{
+    if (space && space->user) ((volatile u32 *)space->data)[1] = mode;
+}
+
 int address_space_user_active(const struct address_space *space)
 {
     return space && space->user && space->used;

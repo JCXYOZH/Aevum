@@ -14,19 +14,19 @@
 > ```
 >
 > `interface/desktop/main.js` 优先启动本目录的 `disk.img`；`kernel.bin` 上限
-> 24576 字节（boot.asm 读 48 个扇区到 0x1000）。串口快照放在 `0x30000`，
+> 28,672 字节（boot.asm 一次 LBA 读 56 个扇区到 0x80000）。串口快照放在 `0x30000`，
 > 不占内核镜像窗口。模块归属、错误码和验收流程见 `CONSTRUCTION.md`。
 
 一个用 NASM + C 写的 32 位裸机内核：从软盘镜像启动，进入保护模式、建立自己的 GDT 和分页，
-然后运行 `control` / `render` / `idle` 三个常驻任务；按 `P` 可生成一个 `probe` 任务，按 `T` 可启动两个 CPU 密集型任务的抢占决斗，按 `F` 可打开 FPU/SSE 上下文实验，按 `C` 可切到全屏 CPU 时间统计。PIT 100Hz 时间片抢占、按优先级加权的 `vruntime` 选择和任务主动让出共同驱动轮转，并在 VGA 文本模式下绘制三自由度机械臂和运行信息。
+然后运行 `control` / `render` / `idle` 三个常驻任务；按 `P` 可生成一个 `probe` 任务，按 `T` 可启动两个 CPU 密集型任务的抢占决斗，按 `F` 可打开 FPU/SSE 上下文实验，按 `C` 可切到全屏 CPU 时间统计。PIT 100Hz 时间片抢占、按优先级加权的 `vruntime` 选择和任务主动让出共同驱动轮转；按 `V` 可切到 ring3 进程上下文与 `#PF` 故障隔离演示，在 VGA 文本模式下绘制三自由度机械臂和运行信息。
 
 ---
 
 ## 一、功能简介
 
-- **启动流程**：BIOS 把引导扇区加载到 `0x7C00` → `boot.asm` 用 `INT 13h` 把内核读到 `0x1000`
-  → 装载 GDT 进入保护模式 → 建立 0~4MB 恒等分页 → 跳到 `0x1000`。
-- **内核入口**：`loader.asm` 加载内核自己的 6 项 GDT、清 BSS、把主栈设为 `0xC000`，再调用 C 的 `kernel_main`；`tss_init()` 写 TSS 描述符并 `ltr 0x28`。
+- **启动流程**：BIOS 把引导扇区加载到 `0x7C00` → `boot.asm` 用 `INT 13h` 的 LBA 扩展读一次把 56 个扇区读到 `0x80000`
+  → 装载 GDT 进入保护模式 → 建立 0~4MB 恒等分页 → 跳到 `0x80000`。
+- **内核入口**：`loader.asm` 加载内核自己的 6 项 GDT、清 BSS、把主栈设为 `0xC000`（启动镜像里不再需要尾部搬运），再调用 C 的 `kernel_main`；`tss_init()` 写 TSS 描述符并 `ltr 0x28`。
 - **多进程**：`kernel_main` 通过 `task_create` 为 `control` / `render` / `idle` 构造独立内核栈；PID 由 `task.c` 的位图自动分配，应用不再硬编码，再用 `task_start` 切入第一个任务。
   每个进程各自拥有栈和计数器，互不影响。
 - **上下文切换**：IDT 门 + 统一中断帧保存 `eax/ebx/ecx/edx/esi/edi/ebp/eip/cs/eflags`；每个任务栈底预留 512 字节 FXSAVE 区，切换时用 `fxsave/fxrstor` 保存 FPU/SSE 状态；`loader.asm` 打开 CR4.OSFXSR/OSXMMEXCPT 并清 CR0.EM/TS。PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq` 在 IRQ0 与 `int 0x40` 两条入口上做同一套调度；若选中的仍是当前任务，必须恢复 `RUNNING`，否则一次 yield 会让任务永久停在 `READY`、PIT 不再给它计费。
@@ -34,7 +34,8 @@
   `task_set_current_state(state)` 是当前任务状态的统一写入口：`RUNNING` 无副作用，`READY` / `BLOCKED` / `ZOMBIE` 分别等价于让出、阻塞、退出；`task_yield()` / `task_block()` / `task_exit()` 都只是它的薄封装。
 - **FPU 上下文实验**：按 `F`（扫描码 `0x21`）创建 `fpuA` / `fpuB` 两个 CPU 密集型任务；两个任务都没有 `task_yield()`，各自在 `XMM0` 里保存不同标签和计数。全屏显示两条 lane 的 PID、TAG、COUNT、`CTX OK/LOST` 和进度条；如果 `fxsave/fxrstor` 漏掉，标签会串到另一条 lane，屏幕直接判 `CTX LOST`。再按 `F` 停止并回到机械臂。
 - **进程家族树**：按 `G`（扫描码 `0x22`）进入全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 创建 `famA` / `famB` 后主动退出，两个直接子进程由 `family.c` 重挂到 `idle`。树形页显示真实的 `ppid` 关系、每任务 CPU、reaper 和最近一次 `parent -> reaper` 重挂事件；再按 `G` 停止并回到机械臂。
-- **进程地址空间 / ring3**：按 `V`（扫描码 `0x2F`）启动两个用户进程。每个进程有自己的页目录和 CR3，代码都复制到同一个虚拟地址 `0x400000`，数据页却映射到不同物理页；它们从 ring3 执行，通过 `int 0x80` 让出或结束。全屏页显示 ASID、CR3、用户页物理地址、`CPL 3`、各自的私有计数器，以及最近一次系统调用的真实 `CS=0x1B`。再按 `V` 停止两个用户进程并回到机械臂。
+- **进程地址空间 / ring3**：按 `V`（扫描码 `0x2F`）启动三个用户进程。每个进程有自己的页目录和 CR3，代码都复制到同一个虚拟地址 `0x400000`，数据页却映射到不同物理页；它们从 ring3 执行，通过 `int 0x80` 让出或结束。全屏页显示 ASID、CR3、用户页物理地址、`CPL 3`、各自的私有计数器，以及最近一次系统调用的真实 `CS=0x1B`。
+- **`#PF` 故障隔离**：`userC` 在私有数据页置 `mode=1`，数到 20000 后故意写内核显存 `0xB8000`；CPU 触发 `#PF`，内核读取 `CR2/ERR/EIP`，只对故障任务调用 `task_exit()`，`userA/userB` 的 CR3 与计数器继续推进。全屏页显示 `P/W/U`、`KILLED` 计数和故障 task 的 `comm`；再按 `V` 停止 A/B 并回到机械臂。
 - **显示输出**：直接写显存 `0xB8000`（80×25 文本模式），`render` 每帧在影子显存 `0x20000`
   画三自由度机械臂、目标点、轨迹和右侧数值面板，再整块搬到 VGA；同一帧通过 COM1
   把变化的文本单元发给 QEMU 串口，供桌面「内核实况」窗口实时显示。
@@ -161,8 +162,8 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 | 文件 | 作用 |
 | --- | --- |
-| `boot.asm` | 主引导扇区（512 字节）。用 `INT 13h` 读 48 个扇区到 `0x1000`；设置 GDT；建立 `0x10000` 页目录 + `0x11000` 页表（恒等映射 0~4MB）；开启分页后跳到 `0x1000`。 |
-| `loader.asm` | 保护模式入口 `start`。打开 CR4.OSFXSR/OSXMMEXCPT、清 CR0.EM/TS；加载 6 项内核 GDT（ring0/ring3 代码、数据、TSS 槽），清 BSS，主栈设 `0xC000`，调用 `kernel_main`；提供 IRQ0、`int 0x40` 和 `int 0x80` 三个 stub，返回后死循环。 |
+| `boot.asm` | 主引导扇区（512 字节）。用 `INT 13h` 的 LBA 扩展一次读 56 个扇区到 `0x80000`；设置 GDT；建立 `0x10000` 页目录 + `0x11000` 页表（恒等映射 0~4MB）；开启分页后跳到 `0x80000`。 |
+| `loader.asm` | 保护模式入口 `start`。打开 CR4.OSFXSR/OSXMMEXCPT、清 CR0.EM/TS；加载 6 项内核 GDT（ring0/ring3 代码、数据、TSS 槽），清 BSS，主栈设 `0xC000`，调用 `kernel_main`；提供 IRQ0、`int 0x40`、`int 0x80` 和 `#PF` 四个 stub，返回后死循环。 |
 | `kernel/main/main.c` | 组合根：初始化 VGA、串口、任务、机械臂应用、IDT/PIC/PIT，最后切入第一个任务。 |
 | `kernel/error/error.c` | 唯一错误屏与停机入口，打印 `0xRRFFTT` 四要素。 |
 | `kernel/task/task.c` | `task_struct`、任务槽、上下文切换的唯一写者。 |
@@ -175,7 +176,7 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `app/arm/kinematics/`、`control/`、`render/`、`app/` | 机械臂纯运动学、控制状态、渲染、任务装配。 |
 | `app/fpu/demo/`、`app/fpu/render/` | FPU/SSE 实验的任务状态与全屏页面。 |
 | `app/tree/demo/`、`app/tree/render/` | 家族树演示任务与树形页；演示任务由 `famP` 创建两个子进程后退出。 |
-| `kernel.ld` | 链接脚本。加载窗口从 `0x1000` 起；BSS 当前到 `0x88BC`，由 loader 清零；`render` 栈从 `0x9000` 起，避免与页目录/页表冲突。 |
+| `kernel.ld` | 链接脚本。加载基址 `0x80000`；BSS 当前到 `0x87F88`，由 loader 清零；`render` 栈从 `0x9000` 起，远低于内核段。 |
 | `Makefile` | 构建脚本：汇编、编译、链接、打包镜像，以及运行 / 调试 / 清理。 |
 
 ### 生成的文件（`make clean` 会全部删除）
@@ -194,9 +195,8 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 | 物理地址 | 用途 |
 | --- | --- |
-| `0x00001000` – `0x00007BFF` | boot 读取的 54 扇区（27KB）内核窗口；当前镜像结束于 `0x7908` |
-| `0x00007920` – `0x000088BC` | `.bss`：loader 载入后由 `rep stosb` 清零 |
-| `0x000088C0` – `0x00008FFF` | BSS 尾部到 `render` 栈之间的保护空隙 |
+| `0x00080000` – `0x00086F47` | boot 一次 LBA 读取的 56 扇区（28KB）内核镜像；当前 `kernel.bin` 28,488 字节 |
+| `0x00086F60` – `0x00087F88` | `.bss`：loader 载入后由 `rep stosb` 清零 |
 | `0x00009000` – `0x00009FFF` | `render` 任务栈（栈顶 `0xA000`，向下增长） |
 | `0x0000A000` – `0x0000AFFF` | `idle` 任务栈（栈顶 `0xB000`，向下增长） |
 | `0x0000B000` – `0x0000BFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -208,10 +208,12 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `0x00201000` – `0x00201FFF` | `userB` 的内核栈（栈顶 `0x202000`） |
 | `0x00010000` / `0x00011000` | 内核页目录 / 页表（`boot.asm` 建立 0–4MB 恒等映射） |
 | `0x00012000` – `0x000127FF` | 256 项 IDT（`0x20` IRQ0、`0x40` 软件调度门、`0x80` ring3 系统调用门） |
-| `0x00007860` – `0x0000788F` | 内核 GDT（6 项：ring0 代码/数据、ring3 代码/数据、TSS） |
-| `0x000082E0` – `0x00008347` | TSS（ring3 进内核时提供 `esp0/ss0`） |
+| `0x00086EE0` – `0x00086F0F` | 内核 GDT（6 项：ring0 代码/数据、ring3 代码/数据、TSS） |
+| `0x00087980` – `0x000879E7` | TSS（ring3 进内核时提供 `esp0/ss0`） |
 | `0x00040000` – `0x00045FFF` | 用户 A 的 PD/PT/代码/数据/栈/控制页（6×4KB） |
 | `0x00046000` – `0x0004BFFF` | 用户 B 的 PD/PT/代码/数据/栈/控制页（6×4KB） |
+| `0x0004C000` – `0x00051FFF` | 用户 C 的 PD/PT/代码/数据/栈/控制页（6×4KB） |
+| `0x00202000` – `0x00202FFF` | `userC` 的内核栈（栈顶 `0x203000`） |
 | `0x00020000` | VGA 影子显存 |
 | `0x00030000` | 串口帧快照 |
 | `0x000B8000` | VGA 文本显存（80×25，每字符 2 字节：字符 + 颜色） |
@@ -220,17 +222,17 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 ## 六、注意事项
 
-1. **内核镜像必须小于 27KB**：`boot.asm` 一次只读 54 个扇区（27KB）到 `0x1000`。
-   当前 `kernel.bin` 为 26,888 字节，BSS 结束于 `0x88BC`；BSS 落在读取窗口之外的部分由 loader 清零，
-   镜像数据本身不超过 27,648 字节。若继续增长，先加 `boot.asm` 的扇区数，并确认 BSS 不越过 `0x9000` 的 `render` 栈。
-2. 内核页目录 / 页表固定在 `0x10000` / `0x11000`，IDT 固定在 `0x12000..0x127FF`；内核 GDT 在 `.data` 的 `0x7860..0x788F`，TSS 在 BSS；不要和内核段或任务栈重叠。
+1. **内核镜像必须小于 28KB**：`boot.asm` 一次 LBA 读 56 个扇区（28,672 字节）到 `0x80000`。
+   当前 `kernel.bin` 为 28,488 字节，BSS 结束于 `0x87F88`；镜像数据本身不超过 28,672 字节，余量 184 字节。
+   内核已完全避开 BIOS 低内存暂存区与 `0x7C00` boot 代码；若继续增长，必须同时增加扇区数并同步 `kernel.ld`/`config/memory.h`。
+2. 内核页目录 / 页表固定在 `0x10000` / `0x11000`，IDT 固定在 `0x12000..0x127FF`；内核 GDT 在 `.data` 的 `0x86EE0..0x86F0F`，TSS 在 BSS 的 `0x87980..0x879E7`；不要和内核段或任务栈重叠。
 3. 按 `B`（扫描码 `0x30`）可把 `idle` 任务阻塞成 `3id B`，再按一次唤醒；这是 `BLOCKED` 状态的可控演示。
 4. 按 `T`（扫描码 `0x14`）进入/退出抢占决斗；决斗使用 `spinA` / `spinB` 两个 CPU 密集型任务，只有 PIT/IRQ0 抢占才能让两边同时前进。
 5. 按 `C`（扫描码 `0x2E`）在机械臂与全屏 CPU 统计页之间切换；统计页中的 CPU% 来自每个任务的 `cpu_ticks`，不是静态文本。
 6. 按 `F`（扫描码 `0x21`）进入/退出全屏 `AEVUM / FPU CONTEXT LAB`；两个任务在 `XMM0` 里各自保存不同标签，屏幕的 `CTX OK` 表示切换后读回的是自己的状态。
 7. 按 `G`（扫描码 `0x22`）进入/退出全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 退出后 `famA` / `famB` 会被重挂到 `idle`，右侧面板显示父 PID、子 PID 和新父亲。
-8. 按 `V`（扫描码 `0x2F`）进入/退出全屏 `AEVUM / RING3 PROCESS CONTEXT`；两个用户进程都从 CPL3 的 `0x400000` 执行，但 `CR3`、代码物理页、数据物理页和计数器不同，系统调用统计显示真实 `CS=0x1B`。
-9. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1=0x200000` / `AEVUM_STACK_P2=0xA000` / `AEVUM_STACK_IDLE=0xB000` / `AEVUM_STACK_MAIN=0xC000` / `AEVUM_STACK_PROBE=0xD000` / `AEVUM_STACK_DUEL_A=0xE000` / `AEVUM_STACK_DUEL_B=0xF000` / `AEVUM_STACK_USER_A=0x201000` / `AEVUM_STACK_USER_B=0x202000` 决定，修改时要保证互不重叠。每个任务栈底部 512 字节是 FXSAVE 区，实际可用栈为 3.5KB。
+8. 按 `V`（扫描码 `0x2F`）进入/退出全屏 `AEVUM / RING3 PROCESS CONTEXT`；三个用户进程都从 CPL3 的 `0x400000` 执行，但 `CR3`、代码物理页、数据物理页和计数器不同，系统调用统计显示真实 `CS=0x1B`。`userC` 写 `0xB8000` 触发 `#PF` 后只被单独回收，A/B 继续运行。
+9. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1=0x200000` / `AEVUM_STACK_P2=0xA000` / `AEVUM_STACK_IDLE=0xB000` / `AEVUM_STACK_MAIN=0xC000` / `AEVUM_STACK_PROBE=0xD000` / `AEVUM_STACK_DUEL_A=0xE000` / `AEVUM_STACK_DUEL_B=0xF000` / `AEVUM_STACK_USER_A=0x201000` / `AEVUM_STACK_USER_B=0x202000` / `AEVUM_STACK_USER_C=0x203000` 决定，修改时要保证互不重叠。每个任务栈底部 512 字节是 FXSAVE 区，实际可用栈为 3.5KB。
 10. 中断帧布局必须与 `loader.asm` 的 `SAVE_CTX/RESTORE_CTX` 逐槽一致；新增字段时先改汇编压栈顺序，再改 `struct irq_frame`，否则 `iret` 会恢复到错误地址。
-11. `control` 栈已移到 `0x1FF000..0x1FFFFF`，给 BSS 让出 `0x8000..0x88FF` 的空间；加载窗口扩大到 54 扇区后，BSS 仍必须止于 `0x9000` 之前。
+11. `control` 栈已移到 `0x1FF000..0x1FFFFF`；内核镜像整体在 `0x80000..0x87F88`，与 `render` 栈 `0x9000`、用户地址空间 `0x40000` 不重叠，加载窗口扩到 56 扇区不会挤占任何低内存结构。
 12. 全局 `CFLAGS` 用 `-Os -mno-sse`；只有 `app/fpu/demo` 追加 `-msse2`。非 FPU 模块若让编译器生成 SSE 暂存，会和 `fxsave` 捕获任务 `XMM` 状态的时序打架，表现为 `TAG 0 / CTX LOST`。

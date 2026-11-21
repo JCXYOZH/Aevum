@@ -4,10 +4,12 @@ global start
 global irq0_stub
 global int40_stub
 global int80_stub
+global page_fault_stub
 global gdt_new
 extern kernel_main
 extern task_schedule_irq
 extern syscall_dispatch
+extern page_fault_dispatch
 extern __bss_start
 extern __bss_end
 
@@ -16,6 +18,18 @@ extern __bss_end
 %macro SAVE_CTX 2
     push dword %1
     push dword %2
+    push ebp
+    push edi
+    push esi
+    push edx
+    push ecx
+    push ebx
+    push eax
+%endmacro
+
+; 异常帧：CPU 已经压入 error code，stub 只补 vector，不再补 err。
+%macro SAVE_EXC 1
+    push dword %1
     push ebp
     push edi
     push esi
@@ -82,6 +96,16 @@ int80_stub:
     mov eax, esp
     push eax
     call syscall_dispatch
+    add esp, 4
+    mov esp, eax
+    RESTORE_CTX
+
+; #PF：CPU 压 error code；C 侧记录 CR2/EIP/ERR，再决定杀用户任务或停机。
+page_fault_stub:
+    SAVE_EXC 0x0E
+    mov eax, esp
+    push eax
+    call page_fault_dispatch
     add esp, 4
     mov esp, eax
     RESTORE_CTX

@@ -4,15 +4,16 @@
 
 start:
     mov ax, 0
+    mov ds, ax
     mov es, ax
-    mov bx, 0x1000      ; 把第二阶段加载到物理地址0x1000
-    mov ah, 0x02        ; BIOS读扇区
-    mov al, 54          ; 读取54个扇区(27KB)，内核镜像上限0x7C00
-    mov ch, 0           ; 磁道0
-    mov cl, 2           ; 从第2扇区读取（扇区1是当前引导扇区）
-    mov dh, 0           ; 磁头0
+    ; 56 个扇区一次 LBA 读到 0x80000。内核不再落在 BIOS 低内存暂存区，
+    ; 也不会覆盖正在执行的 boot 代码。
+    mov ah, 0x42
+    mov si, dap
+    mov dl, 0x80
     int 0x13
     jc disk_error       ; 读盘失败跳转
+
 
     cli 
     lgdt [gdt_desc]
@@ -63,11 +64,19 @@ fill_pt:
     or eax, 0x80000000
     mov cr0, eax        ; 开启分页
 
-    jmp 0x08:0x1000     ; 跳到第二阶段内核代码！
+    jmp dword 0x08:0x80000 ; 跳到 0x80000 的内核入口
 
 disk_error:
     cli
     hlt
+
+align 4
+dap:
+    db 0x10, 0
+    dw 56
+    dw 0x0000
+    dw 0x8000
+    dq 1
 
 gdt_start:
     dq 0

@@ -14,11 +14,12 @@
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
 | 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime`/`fpu_state` | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_pid_of/task_snapshot_pid/task_preempt_total/task_cpu_total` |
 | 进程家族 | `kernel/task/family/family.c` | `family[]`、`reaper`、最近一次重挂事件；只写 `ppid` 关系 | `family_boot/set_reaper/add/exit/snapshot/last_event` |
-| 地址空间 | `kernel/mm/address_space/address_space.c` | 用户 PD/PT、用户页、CR3 切换与地址空间槽 | `address_space_boot/kernel/create_user/switch/release/cr3/id/...` |
+| 地址空间 | `kernel/mm/address_space/address_space.c` | 用户 PD/PT、用户页、CR3 切换与地址空间槽 | `address_space_boot/kernel/create_user/switch/release/cr3/id/set_mode/...` |
+| 页错误 | `arch/x86/cpu/fault/page_fault.c` | IDT 14 门、CR2/ERR/EIP 记录、用户故障 kill | `page_fault_init/last/count/clear` |
 | TSS | `arch/x86/cpu/tss/tss.c` | `tss.esp0/ss0`、TSS 描述符、`ltr` | `tss_init/tss_set_esp0` |
 | 系统调用 | `arch/x86/cpu/syscall/syscall.c` | `int 0x80` 入口、调用计数、最后 CS | `syscall_init/dispatch/count_total/last_cs` |
-| 用户程序 | `user/ring3/ring3.asm` | 被复制进每个用户地址空间的 ring3 代码 | `user_program_start/end` |
-| 用户演示 | `app/user/demo/demo.c` | `userA/userB` 的创建、停止、地址空间和 PID | `user_demo_start/stop/alive/error/pid/space` |
+| 用户程序 | `user/ring3/ring3.asm` | 被复制进每个用户地址空间的 ring3 代码；同一段代码按 `mode` 进入正常/故障路径 | `user_program_start/end` |
+| 用户演示 | `app/user/demo/demo.c` | `userA/userB/userC` 的创建、停止、地址空间和 PID | `user_demo_start/stop/alive/error/pid/space` |
 | 用户渲染 | `app/user/render/render.c` | 全屏 ring3 页；只读地址空间快照 | `user_render_frame` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
 | 中断/定时 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC、PIT 100Hz、IRQ0 EOI | `interrupt_init/interrupt_set_user_gate/interrupt_eoi` |
@@ -162,18 +163,20 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 - `task_create_user()` 构造 14 槽中断帧：`cs=0x1B`、`ss=0x23`、`eflags=0x202`，并带用户 `esp`。`task_create()` 的内核任务仍用 12 槽 `cs=0x08` 帧。
 - 调度器在 `next != prev` 时调用 `address_space_switch(next->space)`；同一地址空间不重复写 CR3。切到用户任务前还要 `tss_set_esp0(next->stack_top)`，ring3 中断/系统调用才能落到该任务的内核栈。
 - `int 0x80` 是 DPL3 中断门：`eax=2` 调 `task_yield()`，`eax=3` 调 `task_exit()`；`syscall_dispatch` 记录调用次数和真实 `frame->cs`，页面显示 `CS=0x1B` 作为 ring3 证据。
-- `V` 演示创建 `userA/userB`：两段代码都复制到 `0x400000`，但物理代码页分别为 `0x42000/0x48000`，数据页 `0x43000/0x49000`；两任务各自递增同一个虚拟地址 `0x401000` 的私有计数器，页面上的两个数值不同就是地址空间隔离的直接证据。
+- `V` 演示创建 `userA/userB/userC`：三段代码都复制到 `0x400000`，但物理代码页分别为 `0x42000/0x48000/0x4E000`，数据页 `0x43000/0x49000/0x4F000`；三个任务各自递增同一个虚拟地址 `0x401000` 的私有计数器，页面上的数值不同就是地址空间隔离的直接证据。
+- `page_fault_init()` 在 `interrupt_init()` / `syscall_init()` 之后安装 IDT 第 14 项：`flags=0x8E`、DPL0，CPU 已压入 error code，`page_fault_stub` 只用 `SAVE_EXC 0x0E` 补 vector。`page_fault_dispatch()` 读取 `CR2`，记录 `pid/cs/eip/err/cr2/comm`；`frame->cs & 3 == 3` 时只调用 `task_exit()` 回收当前用户任务，内核态故障进入专用 panic 页并停机。
+- `userC` 的数据页偏移 4 是 `mode`；用户代码读到 `mode=1` 后计数到 20000，执行 `mov [0xB8000], 0xDEADBEEF`。该地址不在用户页表，CPU 触发 `#PF`：`CR2=0xB8000`、`ERR=0x7`（P/W/U）、`EIP=0x400029`；A/B 的 CR3 和计数器继续增长，`page_fault_count()` 变为 1。
+- 调度器在 ZOMBIE 上先 `fpu_save(prev->fpu_state)` 再 `task_reap()`，并用 `prev_reaped` 跳过已清槽的 `prev->switches++` 与第二次 `fpu_save`；否则 `#PF` kill 路径会经 `task_zero()` 把 `prev->fpu_state` 变成 0 地址，破坏控制状态。
 
-边界：这是 32 位、平坦段、单核、固定物理页池的最小实现；没有 ELF 加载、按需分页、COW、完整 `wait/reap`，也没有文件系统和多核。`userA/userB` 的任务槽与内核栈是编译期固定的，地址空间槽只有 2 个。
+边界：这是 32 位、平坦段、单核、固定物理页池的最小实现；没有 ELF 加载、按需分页、COW、完整 `wait/reap`，也没有文件系统和多核。`userA/userB/userC` 的任务槽与内核栈是编译期固定的，地址空间槽只有 3 个。`TASK_MAX=6` 正好容纳 control/render/idle + A/B/C，V 运行期间不能再创建 probe/tree/duel。`#PF` 只处理用户态越界；内核态故障、双重 fault、栈溢出仍是停机路径，未做恢复。
 
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
-| `0x1000` | 内核镜像起点 |
-| `0x1000..0x7BFF` | boot 读取的 54 扇区（27KB）窗口；当前镜像结束于 `0x7908` |
-| `0x7920..0x88BC` | `.bss`，由 loader 的 `rep stosb` 清零 |
-| `0x88C0..0x8FFF` | BSS 尾部到 `render` 栈的保护空隙 |
+| `0x80000` | 内核镜像起点 |
+| `0x80000..0x86F47` | boot 一次 LBA 读取的 56 扇区（28KB）窗口；当前 `kernel.bin` 28,488 字节 |
+| `0x86F60..0x87F88` | `.bss`，由 loader 的 `rep stosb` 清零 |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
 | `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -183,27 +186,29 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 | `0x1FF000..0x1FFFFF` | `control` 任务栈（栈顶 `0x200000`） |
 | `0x200000..0x200FFF` | `userA` 内核栈（栈顶 `0x201000`） |
 | `0x201000..0x201FFF` | `userB` 内核栈（栈顶 `0x202000`） |
+| `0x202000..0x202FFF` | `userC` 内核栈（栈顶 `0x203000`） |
 | `0x10000 / 0x11000` | 内核页目录 / 页表（0–4MB 恒等映射） |
 | `0x12000..0x127FF` | 256 项 IDT（0x20 IRQ0、0x40 软件调度门、0x80 ring3 系统调用门） |
-| `0x7860..0x788F` | 内核 GDT（6 项） |
-| `0x82E0..0x8347` | TSS（`esp0/ss0`） |
+| `0x86EE0..0x86F0F` | 内核 GDT（6 项） |
+| `0x87980..0x879E7` | TSS（`esp0/ss0`） |
 | `0x40000..0x45FFF` | 用户 A 的 PD/PT/代码/数据/栈/控制页 |
 | `0x46000..0x4BFFF` | 用户 B 的 PD/PT/代码/数据/栈/控制页 |
+| `0x4C000..0x51FFF` | 用户 C 的 PD/PT/代码/数据/栈/控制页 |
 | `0x20000` | VGA 影子显存 |
 | `0x30000` | 串口帧快照 |
 | `0xB8000` | VGA 文本显存 |
 
-`boot.asm` 读 54 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 27,648 字节。
-当前构建 26,888 字节，BSS 结束于 `0x88BC`；镜像余量 760 字节，BSS 距 `0x9000` 的 `render` 栈还有 1,860 字节。
+`boot.asm` 用一次 LBA 读 56 个扇区到 `0x80000`，所以 `kernel.bin` 必须不超过 28,672 字节。
+当前构建 28,488 字节，BSS 结束于 `0x87F88`；镜像余量 184 字节，BSS 距 `0x9000` 的 `render` 栈还有很大空间。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 不越过 `0x9000`。`AEVUM_TASK_STACK_MIN=0x8000`，
-`AEVUM_TASK_STACK_MAX=0x202000`。
+`AEVUM_TASK_STACK_MAX=0x203000`，`AEVUM_AS_MAX=3`。
 
 ## 五、验收
 
 ```sh
 make clean && make all
-wc -c kernel.bin          # 必须 <= 27648
+wc -c kernel.bin          # 必须 <= 28672
 timeout 6 qemu-system-i386 -accel tcg -drive format=raw,file=disk.img \
   -display none -serial file:/tmp/robot-serial.bin -no-reboot
 xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
@@ -211,7 +216,7 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 通过标准：
 
-- `kernel.bin` 不超过 27648 字节，链接无 undefined symbol。
+- `kernel.bin` 不超过 28672 字节，链接无 undefined symbol。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
 - 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C/F/G/V`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
@@ -221,4 +226,6 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - 按 `C`（扫描码 `0x2E`）进入全屏 `AEVUM / CPU TIME ACCOUNTING`：三行任务的 `CPU%` 应稳定在约 `50% / 38% / 12%`，`TICKS` 每秒增长，`PIT TICKS` 等于三行 `TICKS` 之和；再按 `C` 返回机械臂，帧号和 `sw` 继续增长。
 - 按 `F`（扫描码 `0x21`）进入全屏 `AEVUM / FPU CONTEXT LAB`：`fpuA` / `fpuB` 两个 CPU 密集型任务同时推进 `COUNT`，`TAG` 始终分别为 `A11CE` / `B22CE`，两条 lane 都显示 `CTX OK`；`SWITCHES` / `PREEMPTIONS` 持续增长。再按 `F` 停止，画面恢复机械臂。
 - 按 `G`（扫描码 `0x22`）进入全屏 `AEVUM / PROCESS FAMILY TREE`：`famP` 下面先出现 `famA` / `famB`；约 1.5 秒后 `famP` 退出，两个子进程移到 `idle` 下面，右侧 `LAST REPARENT` 显示 `parent`、`children`、子 PID 和 `reaper`。再按 `G` 停止，画面恢复机械臂。
-- 按 `V`（扫描码 `0x2F`）进入全屏 `AEVUM / RING3 PROCESS CONTEXT`：`userA` / `userB` 的 `CPL 3` 与 `CR3 0x40000 / 0x46000` 同时出现；两者都映射虚拟 `0x400000` 和 `0x401000`，但代码/数据物理页不同，私有计数器各自增长；`int 0x80` 行显示真实 `last CS 0x1B`。再按 `V` 等两个用户任务结束后回机械臂。
+- 按 `V`（扫描码 `0x2F`）进入全屏 `AEVUM / RING3 PROCESS CONTEXT`：`userA` / `userB` / `userC` 的 `CPL 3` 与 `CR3 0x40000 / 0x46000 / 0x4C000` 同时出现；三者都映射虚拟 `0x400000` 和 `0x401000`，但代码/数据物理页不同，私有计数器各自增长；`int 0x80` 行显示真实 `last CS 0x1B`。
+- `userC` 的 `mode=1` 计数到 20000 后写 `0xB8000`，页面出现 `#PF pid 6 eip 00400029 cr2 000B8000 err 00000007`、`P=1 W=1 U=1`、`KILLED 1`，C 行变 `FAULT`；A/B 的计数器继续增长，证明故障只杀死当前用户进程。
+- 再按 `V` 停止 A/B 并回机械臂；机械臂 q 值保持正常，证明启动/调度/FPU 状态没有被 `#PF` 路径破坏。

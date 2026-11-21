@@ -4,6 +4,7 @@
 #include "kernel/mm/address_space.h"
 #include "arch/x86/tss.h"
 #include "arch/x86/syscall.h"
+#include "arch/x86/page_fault.h"
 #include "arch/x86/interrupt.h"
 #include "drivers/video/vga.h"
 #include "drivers/serial/uart.h"
@@ -37,6 +38,7 @@ void kernel_main(void)
     __asm__ __volatile__("cli");
     interrupt_init();
     syscall_init();
+    page_fault_init();
     arm_app_start();
     for (;;) __asm__ __volatile__("cli; hlt");
 }

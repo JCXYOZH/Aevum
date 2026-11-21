@@ -1,11 +1,11 @@
 /* kernel.ld 链接脚本
- * 加载窗口 0x1000..0x7BFF（boot 54 扇区）；BSS 由 loader 清零，
- * 当前止于 0x88BC，仍低于 0x9000 的 render 栈；页目录/页表在 0x10000/0x11000。
+ * 内核加载到 0x80000，避开 BIOS 低内存暂存区；boot 用 56 扇区 LBA 读到
+ * 0x80000。BSS 由 loader 清零，页目录/页表仍在 0x10000/0x11000。
  */
 ENTRY(start);
 
 SECTIONS {
-    . = 0x1000; /* 加载到物理地址0x1000，和boot的jmp目标匹配 */
+    . = 0x80000; /* 加载到物理地址 0x80000，避开 BIOS 低内存与 1MB 回绕 */
 
     .text : {
         *(.boot)

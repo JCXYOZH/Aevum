@@ -23,6 +23,7 @@ u32 address_space_code_phys(const struct address_space *space);
 u32 address_space_data_phys(const struct address_space *space);
 u32 address_space_counter(const struct address_space *space);
 void address_space_set_stop(struct address_space *space, u32 stop);
+void address_space_set_mode(struct address_space *space, u32 mode);
 int address_space_user_active(const struct address_space *space);
 
 #endif

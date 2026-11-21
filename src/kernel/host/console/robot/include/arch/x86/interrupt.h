@@ -10,6 +10,9 @@ void interrupt_init(void);
 /* 只给系统调用门使用：present, DPL=3, 32-bit interrupt gate。 */
 void interrupt_set_user_gate(int vector, void (*handler)(void));
 
+/* 只给异常门使用：present, DPL=0, 32-bit interrupt gate。 */
+void interrupt_set_kernel_gate(int vector, void (*handler)(void));
+
 /* IRQ0 处理完后由调度器调用，向主 PIC 发 EOI。 */
 void interrupt_eoi(void);
 

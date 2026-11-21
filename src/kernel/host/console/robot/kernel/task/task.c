@@ -362,6 +362,7 @@ u32 task_schedule_irq(struct irq_frame *frame)
     struct task_struct *prev = current_task;
     struct task_struct *next;
     u32 reason = sched_reason;
+    int prev_reaped = 0;
 
     if (!prev || !frame) {
         for (;;) __asm__ __volatile__("cli; hlt");
@@ -406,8 +407,15 @@ u32 task_schedule_irq(struct irq_frame *frame)
     }
 
     /* 父任务死亡时先重挂直接子进程，再由 task_reap() 回收 PID。 */
-    if (prev->state == TASK_ZOMBIE)
+    if (prev->state == TASK_ZOMBIE) {
         family_exit(prev->pid);
+        /*
+         * ZOMBIE 会在 task_reap() 里被 task_zero()，之后 fpu_state 会变成 0；
+         * 必须在清槽前保存自己的 FPU 状态，不能让 task_zero 后的指针进入 fxsave。
+         */
+        fpu_save((void *)prev->fpu_state);
+        prev_reaped = 1;
+    }
 
     task_reap();
     next = task_pick_next(prev);
@@ -425,7 +433,7 @@ u32 task_schedule_irq(struct irq_frame *frame)
     }
 
     if (next != prev) {
-        prev->switches++;
+        if (!prev_reaped) prev->switches++;
         next->state = TASK_RUNNING;
         if (reason == SCHED_TICK) preempt_total++;
         task_note_switch(next);
@@ -437,7 +445,7 @@ u32 task_schedule_irq(struct irq_frame *frame)
         next->state = TASK_RUNNING;
     }
     if (next != prev) {
-        fpu_save((void *)prev->fpu_state);
+        if (!prev_reaped) fpu_save((void *)prev->fpu_state);
         fpu_restore((void *)next->fpu_state);
     }
     current_task = next;
