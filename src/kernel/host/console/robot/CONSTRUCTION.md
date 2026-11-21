@@ -12,7 +12,8 @@
 | 内存布局 | `config/memory.h` | 物理地址常量 | 只读宏 |
 | 基础类型 | `include/kernel/types.h` | `i32/u32/u16/u8/i64/u64` | 只读类型 |
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
-| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime`/`fpu_state` | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_preempt_total/task_cpu_total` |
+| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime`/`fpu_state` | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_pid_of/task_snapshot_pid/task_preempt_total/task_cpu_total` |
+| 进程家族 | `kernel/task/family/family.c` | `family[]`、`reaper`、最近一次重挂事件；只写 `ppid` 关系 | `family_boot/set_reaper/add/exit/snapshot/last_event` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
 | 中断/定时 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC、PIT 100Hz、IRQ0 EOI | `interrupt_init/interrupt_eoi` |
 | VGA | `drivers/video/vga/text/vga.c` | 影子显存 `0x20000`、`0xB8000` 刷新 | `vga_*` |
@@ -27,6 +28,8 @@
 | 应用装配 | `app/arm/app/app.c` | `p_control/p_render/p_idle/app_dep_code`；创建三个常驻任务；键盘分发 | `arm_app_init/start/dep_code` |
 | FPU 上下文实验 | `app/fpu/demo/demo.c` | `active/stop/done[]/lanes[]`；两个任务各自维护 XMM0 标签与计数 | `fpu_demo_start/stop/live/read` |
 | FPU 实验渲染 | `app/fpu/render/render.c` | 全屏 VGA 布局；只读 `struct fpu_lane` 快照 | `fpu_render_frame` |
+| 家族树演示 | `app/tree/demo/demo.c` | `famP/famA/famB` 的创建、停止、done 标志；父进程退出由 `task_exit()` 触发 | `tree_demo_start/stop/alive/error` |
+| 家族树渲染 | `app/tree/render/render.c` | 全屏树形页；只读 `family_entry` 与 `task_info` 快照 | `tree_render_frame` |
 | 组合根 | `kernel/main/main.c` | 只做初始化编排 | `kernel_main()` |
 
 约束：
@@ -130,14 +133,27 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 
 `F` 键创建 `fpuA` / `fpuB` 两个 CPU 密集型任务，循环里不调用 `task_yield()`；两个任务只在 `XMM0` 里维护自己的标签和计数。`app/fpu/demo/demo.c` 是 `lanes[]`、`active/stop/done[]` 的唯一写者，`app/fpu/render/render.c` 只读快照并画 `CTX OK/LOST`。如果切换漏掉 `fxsave/fxrstor`，标签会串到另一条 lane，屏幕直接判 `CTX LOST`；`F` 再按一次停止并回到机械臂。
 
+全局 `CFLAGS` 使用 `-Os -mno-sse`，只有 `app/fpu/demo` 追加 `-msse2`。这不是为了省事：如果编译器在普通任务代码里生成 SSE 暂存，它会在调度器执行 `fxsave` 前改写 `XMM0`，把任务的标签保存成 0，屏幕上就会看到 `TAG 0 / CTX LOST`。
+
+### 3.6 进程家族树
+
+`kernel/task/family/family.c` 单独维护 `pid -> ppid` 表，`task.c` 只负责在创建和退出时通知它：
+
+- `task_create()` 在发布 READY 前调用 `family_add(pid, current_pid)`，新任务是当前任务的直接子进程
+- `task_exit()` 进入 ZOMBIE 后调用 `family_exit(pid)`，只遍历 `ppid == pid` 的直接子进程，不假设兄弟必须整体迁移
+- 重挂目标是 `family_set_reaper(idle_pid)` 设置的 `idle`；若 reaper 是退出任务的子孙，回落到 `init(0)`，避免父子成环
+- 这版不做 exit-status 等待队列，`task_reap()` 仍然立即回收 PID；因此它是“关系正确 + 重挂可见”，不是完整的 Linux `wait/reap` 语义
+
+`G` 键展示真实树：`famP` 创建 `famA` / `famB` 后退出，两个子进程被移到 `idle` 下面，右侧事件面板记录父 PID、两个子 PID 和新父亲。`app/tree/render/render.c` 只读 `family_snapshot()` 和 `task_snapshot_pid()`，不直接改关系。
+
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
 | `0x1000` | 内核镜像起点 |
 | `0x1000..0x6FFF` | boot 读取的 48 扇区（24KB）窗口 |
-| `0x68E0..0x729F` | `.bss`，由 loader 的 `rep stosb` 清零 |
-| `0x72A0..0x7FFF` | BSS 尾部到任务栈的保护空隙 |
+| `0x6A60..0x789F` | `.bss`，由 loader 的 `rep stosb` 清零 |
+| `0x78A0..0x7FFF` | BSS 尾部到任务栈的保护空隙 |
 | `0x8000..0x8FFF` | `control` 任务栈（栈顶 `0x9000`） |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
@@ -153,7 +169,7 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 读 48 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 24576 字节。
-当前构建 22,736 字节，BSS 结束于 `0x72A0`；镜像余量 1,840 字节，BSS 距 `0x8000` 任务栈还有 3,424 字节。
+当前构建 23,136 字节，BSS 结束于 `0x78A0`；镜像余量 1,440 字节，BSS 距 `0x8000` 任务栈还有 1,888 字节。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 不越过 `0x8000`。`AEVUM_TASK_STACK_MIN=0x8000`，
 `AEVUM_TASK_STACK_MAX=0xF000`。
@@ -172,10 +188,11 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 - `kernel.bin` 不超过 24576 字节，链接无 undefined symbol。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
-- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C/F`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
+- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C/F/G`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
 - 按 `P`（扫描码 `0x19`）创建 `probe` 任务，画面显示 PID（首次为 4）和 `PIT PREEMPTIONS` 计数；探针循环不调用 `task_yield`，计数仍持续增长，证明 IRQ0 真的抢占了 CPU 密集型任务。任务退出后 `P3/31` 回到 3，再按 `P` 仍分配 PID 4，证明 ZOMBIE 回收与 PID 复用。
 - 按 `B`（扫描码 `0x30`）让 `idle` 任务执行 `task_block()`，面板第三行从 `3id r` 变成 `3id B` 并出现 `BLOCKED` 提示；再按 `B` 调 `task_wake()`，变回 `3id r`，证明 `RUNNING -> BLOCKED -> READY` 两条边成立。
 - 按 `T`（扫描码 `0x14`）进入全屏 `PREEMPTION DUEL`：创建 `spinA` / `spinB` 两个 CPU 密集型任务，循环里都不调用 `task_yield()`；两条 lane 的 `STEP` 同时增长，80 格抢占磁带出现青/洋红交替条纹，`PIT PREEMPTIONS` 持续增加。再按 `T` 停止，两个任务经 `task_exit()` 退出，画面恢复机械臂，面板回到 `P3/31`。
 - 按 `C`（扫描码 `0x2E`）进入全屏 `AEVUM / CPU TIME ACCOUNTING`：三行任务的 `CPU%` 应稳定在约 `50% / 38% / 12%`，`TICKS` 每秒增长，`PIT TICKS` 等于三行 `TICKS` 之和；再按 `C` 返回机械臂，帧号和 `sw` 继续增长。
 - 按 `F`（扫描码 `0x21`）进入全屏 `AEVUM / FPU CONTEXT LAB`：`fpuA` / `fpuB` 两个 CPU 密集型任务同时推进 `COUNT`，`TAG` 始终分别为 `A11CE` / `B22CE`，两条 lane 都显示 `CTX OK`；`SWITCHES` / `PREEMPTIONS` 持续增长。再按 `F` 停止，画面恢复机械臂。
+- 按 `G`（扫描码 `0x22`）进入全屏 `AEVUM / PROCESS FAMILY TREE`：`famP` 下面先出现 `famA` / `famB`；约 1.5 秒后 `famP` 退出，两个子进程移到 `idle` 下面，右侧 `LAST REPARENT` 显示 `parent`、`children`、子 PID 和 `reaper`。再按 `G` 停止，画面恢复机械臂。

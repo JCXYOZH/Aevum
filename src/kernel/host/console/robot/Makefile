@@ -7,7 +7,9 @@ LD      = ld
 QEMU    = qemu-system-i386
 
 BUILD   = build
-CFLAGS  = -m32 -msse2 -ffreestanding -c -O2 -g -fno-tree-loop-distribute-patterns -fno-pic -fno-pie \
+# 非 FPU 模块禁止编译器生成 SSE 暂存，避免打乱 fxsave 捕获任务 XMM 状态；
+# FPU 演示对象单独追加 -msse2（见下方 target-specific CFLAGS）。
+CFLAGS  = -m32 -mno-sse -ffreestanding -c -Os -g -fno-tree-loop-distribute-patterns -fno-pic -fno-pie \
           -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables \
           -falign-functions=1 -falign-jumps=1 -falign-loops=1 \
           -Wall -Wextra -Iinclude -I.
@@ -19,6 +21,7 @@ SRCS = \
 	kernel/main/main.c \
 	kernel/error/error.c \
 	kernel/task/task.c \
+	kernel/task/family/family.c \
 	arch/x86/cpu/interrupt/interrupt.c \
 	drivers/video/vga/text/vga.c \
 	drivers/serial/uart/uart.c \
@@ -31,7 +34,9 @@ SRCS = \
 	app/arm/control/control.c \
 	app/arm/render/render.c \
 	app/fpu/demo/demo.c \
-	app/fpu/render/render.c
+	app/fpu/render/render.c \
+	app/tree/demo/demo.c \
+	app/tree/render/render.c
 
 OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o))
 IMG     = os.img
@@ -41,6 +46,9 @@ GENERATED = boot.bin $(IMG) disk.img kernel.bin kernel.elf $(BUILD)
 .PHONY: all clean rebuild run debug size
 
 all: disk.img
+
+# FPU 演示是唯一需要编译器显式按 SSE2 编译的模块；其余模块保持 -mno-sse。
+$(BUILD)/app/fpu/demo/demo.o: CFLAGS += -msse2
 
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)

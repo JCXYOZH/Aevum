@@ -18,11 +18,12 @@
 - **状态链路**：`UNUSED -> READY -> RUNNING`；`RUNNING -> READY` 由 `task_yield()` 或 PIT IRQ0；`RUNNING -> BLOCKED` 由 `task_block()`，`BLOCKED -> READY` 由 `task_wake(pid)`；`RUNNING -> ZOMBIE` 由 `task_exit()`，`ZOMBIE -> UNUSED` 由 `task_reap()`。这三种 `RUNNING` 离开方式都收敛到 `task_set_current_state(state)`，状态字段只由 `task.c` 写入；`B` 键演示阻塞/唤醒，`P` 键演示 PID 分配/回收，`T` 键演示 PIT 抢占下的双任务同时推进，`C` 键查看每任务 CPU 时间。
 - **抢占决斗**：按 `T` 创建 `spinA` / `spinB` 两个 CPU 密集型任务，两个循环都不调用 `task_yield()`；全屏显示各自的实时 `STEP`、进度条、运行历史，以及 80 格 IRQ0 抢占磁带。只有 PIT 100Hz 真的打断 CPU，两条 lane 才会同时前进，磁带才会出现青/洋红交替条纹；再按 `T` 停止。
 - **FPU 上下文实验**：按 `F` 创建 `fpuA` / `fpuB` 两个 CPU 密集型任务，循环里不调用 `task_yield()`；两个任务在 `XMM0` 里各自保存标签和计数，全屏显示 `TAG`、`COUNT`、`CTX OK/LOST` 与进度条。只要 `fxsave/fxrstor` 漏掉一次，标签就会串到另一条 lane。
+- **进程家族树**：按 `G` 进入全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 创建 `famA` / `famB` 后退出，`family.c` 只把这两个直接子进程重挂到 `idle`，右侧面板显示父 PID、子 PID 和 `reaper`。树形页读的是真实 `ppid` 关系，不是画出来的假树。
 - **CPU 统计**：按 `C` 打开全屏 `AEVUM / CPU TIME ACCOUNTING`，三行任务显示 PID、TASK、PRI、WT、STATE、CPU%、TICKS、SHARE，底部是 PIT TICKS、SWITCHES、PREEMPTIONS。百分比来自每个任务的 `cpu_ticks`，并随 PIT 持续变化。
 - **机械臂**：三自由度平面臂，Q16.16 定点运算；阻尼最小范数控制、零空间投影、2×2 雅可比奇异值面板。
 - **显示**：80×25 VGA 文本，影子显存在 `0x20000`，整块刷新到 `0xB8000`；右侧 `TASK SCHED` 第二行显示每任务 CPU 百分比，第三行保留栈水位条，底部是滚动调度时间轴。
 - **串口**：COM1 差量帧 `A5 5A 01 COUNT [row col ch attr] CRC`，每 8 帧扫描一次，每 120 次扫描强制全帧。
-- **交互**：空格扫描码 `0x39` 切换零空间；每 420 帧自动切换一次；`P`（扫描码 `0x19`）创建一个全屏 `probe` 任务；`B`（扫描码 `0x30`）把 `idle` 任务阻塞成 `3id B`，再按一次 `B` 唤醒；`T`（扫描码 `0x14`）进入/退出全屏抢占决斗；`C`（扫描码 `0x2E`）进入/退出 CPU 统计页。
+- **交互**：空格扫描码 `0x39` 切换零空间；每 420 帧自动切换一次；`P`（扫描码 `0x19`）创建一个全屏 `probe` 任务；`B`（扫描码 `0x30`）把 `idle` 任务阻塞成 `3id B`，再按一次 `B` 唤醒；`T`（扫描码 `0x14`）进入/退出全屏抢占决斗；`C`（扫描码 `0x2E`）进入/退出 CPU 统计页；`F`（扫描码 `0x21`）进入/退出 FPU 页；`G`（扫描码 `0x22`）进入/退出家族树页。
 - **错误**：统一 `0xRRFFTT` 错误码；失败时由 `aevum_fail()` 打印错误码、owner、field、detail，并停机。
 
 ## 模块结构
@@ -34,10 +35,14 @@ include/arch/x86/               端口 I/O、IDT/PIC/PIT 接口
 include/drivers/                VGA、UART、键盘接口
 include/lib/                    定点、三角、格式化接口
 include/app/arm/                机械臂运动学、控制、渲染、装配接口
+include/app/fpu/                FPU 实验任务与渲染接口
+include/app/tree/               家族树演示任务与渲染接口
+include/kernel/task/family.h    进程父子关系/reaper 接口
 
 kernel/main/main.c              组合根
 kernel/error/error.c            唯一错误屏/停机入口
 kernel/task/task.c              任务字段与 current 的唯一写者
+kernel/task/family/family.c      父子关系、reaper、重挂事件的唯一写者
 arch/x86/cpu/interrupt/interrupt.c  IDT / PIC / PIT 100Hz
 drivers/video/vga/text/vga.c    VGA 唯一写者
 drivers/serial/uart/uart.c      COM1 与帧快照唯一写者
@@ -47,6 +52,8 @@ app/arm/kinematics/             纯运动学
 app/arm/control/                机械臂状态唯一写者
 app/arm/render/                 只读状态快照，拥有轨迹缓冲和任务监视器
 app/arm/app/                    三常驻任务装配 + 抢占决斗任务 + CPU 统计页状态
+app/fpu/demo/ + app/fpu/render/ XMM0 标签任务 + FPU CONTEXT LAB
+app/tree/demo/ + app/tree/render/ famP/famA/famB + 家族树页
 ```
 
 更细的字段归属、错误码表和验收口径见 `CONSTRUCTION.md`。
@@ -58,7 +65,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 20480 字节（`boot.asm` 读 40 个扇区）；当前构建 20,276 字节，BSS 结束于 `0x64A0`，镜像余量 204 字节。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 24576 字节（`boot.asm` 读 48 个扇区）；当前构建 23,136 字节，BSS 结束于 `0x78A0`，镜像余量 1,440 字节。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 

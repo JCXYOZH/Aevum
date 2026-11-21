@@ -33,6 +33,7 @@
   `task_yield()` / `task_block()` / `task_exit()` / `task_start()` 都走 `int 0x40`；`task_exit()` 置 ZOMBIE 后由调度器回收 PID；`task_block()` / `task_wake()` 已打通 BLOCKED 与 READY。
   `task_set_current_state(state)` 是当前任务状态的统一写入口：`RUNNING` 无副作用，`READY` / `BLOCKED` / `ZOMBIE` 分别等价于让出、阻塞、退出；`task_yield()` / `task_block()` / `task_exit()` 都只是它的薄封装。
 - **FPU 上下文实验**：按 `F`（扫描码 `0x21`）创建 `fpuA` / `fpuB` 两个 CPU 密集型任务；两个任务都没有 `task_yield()`，各自在 `XMM0` 里保存不同标签和计数。全屏显示两条 lane 的 PID、TAG、COUNT、`CTX OK/LOST` 和进度条；如果 `fxsave/fxrstor` 漏掉，标签会串到另一条 lane，屏幕直接判 `CTX LOST`。再按 `F` 停止并回到机械臂。
+- **进程家族树**：按 `G`（扫描码 `0x22`）进入全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 创建 `famA` / `famB` 后主动退出，两个直接子进程由 `family.c` 重挂到 `idle`。树形页显示真实的 `ppid` 关系、每任务 CPU、reaper 和最近一次 `parent -> reaper` 重挂事件；再按 `G` 停止并回到机械臂。
 - **显示输出**：直接写显存 `0xB8000`（80×25 文本模式），`render` 每帧在影子显存 `0x20000`
   画三自由度机械臂、目标点、轨迹和右侧数值面板，再整块搬到 VGA；同一帧通过 COM1
   把变化的文本单元发给 QEMU 串口，供桌面「内核实况」窗口实时显示。
@@ -45,7 +46,7 @@
 ### 运行效果
 
 ```
- 3-DOF Arm | PIT 100Hz | P/B/T/C/F
+ 3-DOF Arm | PIT 100Hz | P/B/T/C/F/G
  ARM STATUS                         nullsp ON
  joint angles
  q1  -37.1  q2  60.9  q3  83.6
@@ -136,13 +137,16 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `kernel/main/main.c` | 组合根：初始化 VGA、串口、任务、机械臂应用、IDT/PIC/PIT，最后切入第一个任务。 |
 | `kernel/error/error.c` | 唯一错误屏与停机入口，打印 `0xRRFFTT` 四要素。 |
 | `kernel/task/task.c` | `task_struct`、任务槽、上下文切换的唯一写者。 |
+| `kernel/task/family/family.c` | 进程父子关系、reaper 与孤儿重挂的唯一写者；只移动直接子进程。 |
 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC 重映射、PIT 100Hz、EOI 的唯一写者。 |
 | `drivers/video/vga/text/vga.c` | VGA 影子显存与文本绘制。 |
 | `drivers/serial/uart/uart.c` | COM1 初始化、差量帧上报。 |
 | `drivers/input/keyboard/keyboard.c` | PS/2 扫描码读取。 |
 | `lib/fixed/`、`lib/math/`、`lib/format/` | 定点、三角、格式化。 |
 | `app/arm/kinematics/`、`control/`、`render/`、`app/` | 机械臂纯运动学、控制状态、渲染、任务装配。 |
-| `kernel.ld` | 链接脚本。加载窗口从 `0x1000` 起；BSS 可到 `0x7280`，由 loader 清零；任务栈从 `0x8000` 起，避免与页目录/页表冲突。 |
+| `app/fpu/demo/`、`app/fpu/render/` | FPU/SSE 实验的任务状态与全屏页面。 |
+| `app/tree/demo/`、`app/tree/render/` | 家族树演示任务与树形页；演示任务由 `famP` 创建两个子进程后退出。 |
+| `kernel.ld` | 链接脚本。加载窗口从 `0x1000` 起；BSS 可到 `0x78A0`，由 loader 清零；任务栈从 `0x8000` 起，避免与页目录/页表冲突。 |
 | `Makefile` | 构建脚本：汇编、编译、链接、打包镜像，以及运行 / 调试 / 清理。 |
 
 ### 生成的文件（`make clean` 会全部删除）
@@ -162,8 +166,8 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | 物理地址 | 用途 |
 | --- | --- |
 | `0x00001000` – `0x00006FFF` | boot 读取的 24KB 内核窗口（`.text` / `.rodata` / `.data`） |
-| `0x000068E0` – `0x0000729F` | `.bss`：loader 载入后由 `rep stosb` 清零 |
-| `0x000072A0` – `0x00007FFF` | BSS 尾部到任务栈之间的保护空隙 |
+| `0x00006A60` – `0x0000789F` | `.bss`：loader 载入后由 `rep stosb` 清零 |
+| `0x000078A0` – `0x00007FFF` | BSS 尾部到任务栈之间的保护空隙 |
 | `0x00008000` – `0x00008FFF` | `control` 任务栈（栈顶 `0x9000`，向下增长） |
 | `0x00009000` – `0x00009FFF` | `render` 任务栈（栈顶 `0xA000`，向下增长） |
 | `0x0000A000` – `0x0000AFFF` | `idle` 任务栈（栈顶 `0xB000`，向下增长） |
@@ -184,13 +188,15 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 ## 六、注意事项
 
 1. **内核镜像必须小于 24KB**：`boot.asm` 一次只读 48 个扇区（24KB）到 `0x1000`。
-   当前 `kernel.bin` 为 22,736 字节，BSS 结束于 `0x72A0`；BSS 落在读取窗口之外的部分由 loader 清零，
+   当前 `kernel.bin` 为 23,136 字节，BSS 结束于 `0x78A0`；BSS 落在读取窗口之外的部分由 loader 清零，
    镜像数据本身不超过 24,576 字节。若继续增长，先加 `boot.asm` 的扇区数，并确认 BSS 不越过 `0x8000`。
 2. 页目录 / 页表固定在 `0x10000` / `0x11000`，IDT 固定在 `0x12000..0x127FF`，GDT 固定在 `0x12800..0x12817`；不要和内核段或任务栈重叠。
 3. 按 `B`（扫描码 `0x30`）可把 `idle` 任务阻塞成 `3id B`，再按一次唤醒；这是 `BLOCKED` 状态的可控演示。
 4. 按 `T`（扫描码 `0x14`）进入/退出抢占决斗；决斗使用 `spinA` / `spinB` 两个 CPU 密集型任务，只有 PIT/IRQ0 抢占才能让两边同时前进。
 5. 按 `C`（扫描码 `0x2E`）在机械臂与全屏 CPU 统计页之间切换；统计页中的 CPU% 来自每个任务的 `cpu_ticks`，不是静态文本。
 6. 按 `F`（扫描码 `0x21`）进入/退出全屏 `AEVUM / FPU CONTEXT LAB`；两个任务在 `XMM0` 里各自保存不同标签，屏幕的 `CTX OK` 表示切换后读回的是自己的状态。
-7. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1=0x9000` / `AEVUM_STACK_P2=0xA000` / `AEVUM_STACK_IDLE=0xB000` / `AEVUM_STACK_MAIN=0xC000` / `AEVUM_STACK_PROBE=0xD000` / `AEVUM_STACK_DUEL_A=0xE000` / `AEVUM_STACK_DUEL_B=0xF000` 决定，修改时要保证互不重叠。每个任务栈底部 512 字节是 FXSAVE 区，实际可用栈为 3.5KB。
-8. 中断帧布局必须与 `loader.asm` 的 `irq_common` 逐槽一致；新增字段时先改汇编压栈顺序，再改 `struct irq_frame`，否则 `iret` 会恢复到错误地址。
-9. 任务栈会覆盖 boot 扇区的旧 GDT，必须由 `loader.asm` 先搬到 `0x12800` 再 `lgdt`；否则第一次 `iret` 会因 GDT 被 `0xA5A5A5A5` 覆盖而 #GP。
+7. 按 `G`（扫描码 `0x22`）进入/退出全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 退出后 `famA` / `famB` 会被重挂到 `idle`，右侧面板显示父 PID、子 PID 和新父亲。
+8. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1=0x9000` / `AEVUM_STACK_P2=0xA000` / `AEVUM_STACK_IDLE=0xB000` / `AEVUM_STACK_MAIN=0xC000` / `AEVUM_STACK_PROBE=0xD000` / `AEVUM_STACK_DUEL_A=0xE000` / `AEVUM_STACK_DUEL_B=0xF000` 决定，修改时要保证互不重叠。每个任务栈底部 512 字节是 FXSAVE 区，实际可用栈为 3.5KB。
+9. 中断帧布局必须与 `loader.asm` 的 `irq_common` 逐槽一致；新增字段时先改汇编压栈顺序，再改 `struct irq_frame`，否则 `iret` 会恢复到错误地址。
+10. 任务栈会覆盖 boot 扇区的旧 GDT，必须由 `loader.asm` 先搬到 `0x12800` 再 `lgdt`；否则第一次 `iret` 会因 GDT 被 `0xA5A5A5A5` 覆盖而 #GP。
+11. 全局 `CFLAGS` 用 `-Os -mno-sse`；只有 `app/fpu/demo` 追加 `-msse2`。非 FPU 模块若让编译器生成 SSE 暂存，会和 `fxsave` 捕获任务 `XMM` 状态的时序打架，表现为 `TAG 0 / CTX LOST`。

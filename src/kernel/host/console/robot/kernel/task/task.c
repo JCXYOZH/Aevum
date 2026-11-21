@@ -1,4 +1,5 @@
 #include "kernel/task.h"
+#include "kernel/task/family.h"
 #include "kernel/error.h"
 #include "arch/x86/interrupt.h"
 #include "config/memory.h"
@@ -123,6 +124,7 @@ void task_boot(void)
     boot_task.fpu_state = (u32)boot_fpu_state;
     current_task = &boot_task;
     pid_map = 0;
+    family_boot();
 
     /*
      * 先给当前 FPU 一个已知初态，再分别保存模板和 boot 任务。
@@ -188,6 +190,9 @@ u32 task_create(int priority, const char *name,
     for (i = 0; i < TASK_NAME_MAX && name[i]; i++) task->comm[i] = name[i];
     task->comm[i] = 0;
 
+    /* 父子关系在 READY 发布前登记，树形页不会看到没有父亲的活任务。 */
+    family_add(pid, current_task ? current_task->pid : 0);
+
     /* 新任务的 FPU/SSE 从 boot 初始模板复制，不要从零初始化。 */
     for (i = 0; i < (int)(AEVUM_FPU_STATE_SIZE / 4); i++)
         ((u32 *)fpu_state)[i] = ((u32 *)fpu_template)[i];
@@ -228,6 +233,33 @@ struct task_struct *task_current(void)
 int task_current_pid(void)
 {
     return current_task ? current_task->pid : 0;
+}
+
+int task_pid_of(struct task_struct *task)
+{
+    return task ? task->pid : 0;
+}
+
+char task_state_char(int state)
+{
+    switch (state) {
+        case TASK_RUNNING: return 'R';
+        case TASK_READY:   return 'r';
+        case TASK_BLOCKED: return 'B';
+        case TASK_ZOMBIE:  return 'Z';
+        default:           return '?';
+    }
+}
+
+const char *task_state_name(int state)
+{
+    switch (state) {
+        case TASK_RUNNING: return "RUN";
+        case TASK_READY:   return "READY";
+        case TASK_BLOCKED: return "BLOCK";
+        case TASK_ZOMBIE:  return "ZOMB";
+        default:           return "?";
+    }
 }
 
 int task_pid_used(void)
@@ -345,6 +377,10 @@ u32 task_schedule_irq(struct irq_frame *frame)
             prev->state = TASK_READY;       /* yield 或 PIT 时间片到期 */
     }
 
+    /* 父任务死亡时先重挂直接子进程，再由 task_reap() 回收 PID。 */
+    if (prev->state == TASK_ZOMBIE)
+        family_exit(prev->pid);
+
     task_reap();
     next = task_pick_next(prev);
 
@@ -461,14 +497,10 @@ static u32 task_stack_used(struct task_struct *task)
     return task->stack_top - (task->stack_base + (u32)i * 4u);
 }
 
-int task_snapshot(int slot, struct task_info *out)
+static void task_fill_info(struct task_struct *task, struct task_info *out)
 {
-    struct task_struct *task;
     int i;
 
-    if (!out || slot < 0 || slot >= TASK_MAX) return 0;
-    task = &tasks[slot];
-    if (task->state == TASK_UNUSED) return 0;
     out->pid = task->pid;
     out->state = task->state;
     out->priority = task->priority;
@@ -477,7 +509,31 @@ int task_snapshot(int slot, struct task_info *out)
     out->stack_used = task_stack_used(task);
     out->switches = task->switches;
     out->cpu_ticks = task->cpu_ticks;
+}
+
+int task_snapshot(int slot, struct task_info *out)
+{
+    struct task_struct *task;
+
+    if (!out || slot < 0 || slot >= TASK_MAX) return 0;
+    task = &tasks[slot];
+    if (task->state == TASK_UNUSED) return 0;
+    task_fill_info(task, out);
     return 1;
+}
+
+int task_snapshot_pid(int pid, struct task_info *out)
+{
+    int i;
+
+    if (!out) return 0;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state != TASK_UNUSED && tasks[i].pid == pid) {
+            task_fill_info(&tasks[i], out);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 int task_trace_len(void)

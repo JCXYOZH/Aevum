@@ -34,9 +34,14 @@ u32 task_create(int priority, const char *name,
                 void (*entry)(void), u32 stack_top, struct task_struct **out);
 void task_exit(void) __attribute__((noreturn));
 int task_current_pid(void);
+int task_pid_of(struct task_struct *task);
 int task_pid_used(void);
 int task_pid_capacity(void);
 struct task_struct *task_current(void);
+
+/* 状态标签的唯一映射：渲染层不要再各写一份 switch。 */
+char task_state_char(int state);
+const char *task_state_name(int state);
 
 /* 从启动线程切入第一个任务；成功后不返回。 */
 void task_start(struct task_struct *first) __attribute__((noreturn));
@@ -57,6 +62,7 @@ u32 task_set_current_state(int state);
 
 /* 监视器接口：按槽位读任务快照；返回 0 表示该槽未使用。 */
 int task_snapshot(int slot, struct task_info *out);
+int task_snapshot_pid(int pid, struct task_info *out);
 int task_trace_len(void);
 u32 task_trace_pid(int index);
 u32 task_switch_total(void);

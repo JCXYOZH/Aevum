@@ -6,7 +6,7 @@
  * 这些地址是跨模块共享的布局常量，只允许本文件定义，其他模块只读。
  */
 #define AEVUM_KERNEL_BASE       0x00001000u
-#define AEVUM_KERNEL_END        0x000072A0u
+#define AEVUM_KERNEL_END        0x000078A0u
 #define AEVUM_STACK_P1          0x00009000u
 #define AEVUM_STACK_P2          0x0000A000u
 #define AEVUM_STACK_IDLE        0x0000B000u

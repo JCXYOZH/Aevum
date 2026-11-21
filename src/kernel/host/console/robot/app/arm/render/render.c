@@ -79,15 +79,6 @@ static void bar(int col, int row, int width, i32 frac, u8 attr)
         vga_cell(col + i, row, i < n ? (char)CH_FULL : (char)CH_LIGHT, attr);
 }
 
-static char task_state_char(int state)
-{
-    if (state == TASK_RUNNING) return 'R';
-    if (state == TASK_READY) return 'r';
-    if (state == TASK_BLOCKED) return 'B';
-    if (state == TASK_ZOMBIE) return 'Z';
-    return '?';
-}
-
 static u8 task_pid_color(u32 pid)
 {
     if (pid == 1) return C_CYAN;
@@ -195,7 +186,7 @@ static void task_panel(void)
         buf[p] = 0;
         vga_text(x, 20, buf, C_GRAY);
         x += p;
-        n = (int)(((u64)info[i].stack_used * 6u) / (AEVUM_TASK_STACK_USABLE / 8u));
+        n = (int)((info[i].stack_used * 6u) / (AEVUM_TASK_STACK_USABLE / 8u));
         if (n > 6) n = 6;
         for (p = 0; p < 6; p++)
             vga_cell(x + p, 20, p < n ? (char)CH_FULL : (char)CH_LIGHT,
@@ -423,7 +414,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T/C/F ", C_WHITE);
+    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T/C/F/G ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;
