@@ -1,6 +1,8 @@
 #include "app/arm/app.h"
 #include "app/arm/control.h"
 #include "app/arm/render.h"
+#include "app/fpu/demo.h"
+#include "app/fpu/render.h"
 #include "kernel/task.h"
 #include "kernel/error.h"
 #include "drivers/video/vga.h"
@@ -58,17 +60,31 @@ static void proc_render(void)
         struct arm_status status;
         u8 key = keyboard_poll();
 
-        if (key == 0x2E && !duel_live && !probe_live) { /* C：CPU 时间统计 */
+        if (key == 0x2E && !duel_live && !probe_live && !fpu_demo_live()) { /* C：CPU 时间统计 */
             cpu_live = !cpu_live;
             if (cpu_live) arm_render_cpu_init();
         }
 
-        if (key == 0x14 && !cpu_live) {    /* T：开始/停止抢占决斗 */
+        if (key == 0x14 && !cpu_live && !fpu_demo_live()) {    /* T：开始/停止抢占决斗 */
             if (duel_live) duel_stop = 1;
             else if (!probe_live) (void)arm_app_start_duel();
         }
 
-        if (!duel_live && !cpu_live && !probe_live) {
+        if (key == 0x21 && !duel_live && !cpu_live && !probe_live) { /* F：FPU context lab */
+            if (fpu_demo_live()) {
+                fpu_demo_stop();
+            } else {
+                u32 rc = fpu_demo_start();
+                if (rc) {
+                    struct aevum_error e = app_err_template;
+                    e.code = ERR_ARM_APP_TASK_CREATE;
+                    e.field = "fpu_demo_start";
+                    aevum_fail(&e);
+                }
+            }
+        }
+
+        if (!duel_live && !cpu_live && !probe_live && !fpu_demo_live()) {
             if (key == 0x39) arm_control_toggle_nullspace();
             if (key == 0x19) (void)arm_app_spawn_probe();
             if (key == 0x30) {
@@ -92,6 +108,19 @@ static void proc_render(void)
                 }
                 continue;
             }
+        }
+
+        /* FPU context lab：两条 lane 的 XMM0 必须各自回来。 */
+        if (fpu_demo_live()) {
+            fpu_render_frame();
+            vga_flush();
+            if (task_yield()) {
+                struct aevum_error e = app_err_template;
+                e.code = ERR_ARM_APP_SWITCH;
+                e.field = "task_yield(render/fpu)";
+                aevum_fail(&e);
+            }
+            continue;
         }
 
         /* CPU 统计全屏：只观察，不重绘机械臂。 */
@@ -165,7 +194,7 @@ static void proc_probe(void)
         vga_text(62, 5, "RUN #", 0x1B);
         vga_text(68, 5, buf, 0x1E);
 
-        vga_text(12, 7, "state RUNNING   stack 0xB000..0xC000", 0x1A);
+        vga_text(12, 7, "state RUNNING   stack 0xC000..0xD000", 0x1A);
         vga_text(12, 9, "kernel PID bitmap 1..31  /  no hard-coded 1,2,3", 0x18);
 
         for (c = 8; c < 72; c++)

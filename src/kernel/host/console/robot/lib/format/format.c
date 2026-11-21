@@ -13,6 +13,33 @@ int fmt_dec(char *out, u32 value)
     return n;
 }
 
+int fmt_hex(char *out, u32 value)
+{
+    int width = 1;
+    u32 probe = value;
+
+    while (probe >= 16u) {
+        width++;
+        probe >>= 4;
+    }
+    return fmt_hex_width(out, value, width);
+}
+
+int fmt_hex_width(char *out, u32 value, int width)
+{
+    int i;
+
+    if (width < 1) width = 1;
+    if (width > 8) width = 8;
+    for (i = 0; i < width; i++) {
+        int shift = (width - 1 - i) * 4;
+        u32 nibble = (value >> shift) & 0xFu;
+        out[i] = (char)(nibble < 10u ? ('0' + nibble) : ('A' + (nibble - 10u)));
+    }
+    out[width] = 0;
+    return width;
+}
+
 int fmt_fx(char *out, i32 value, int decimals)
 {
     u32 scale = 1, abs_value, integer_part, fraction_part;

@@ -7,7 +7,7 @@ LD      = ld
 QEMU    = qemu-system-i386
 
 BUILD   = build
-CFLAGS  = -m32 -ffreestanding -c -O2 -g -fno-tree-loop-distribute-patterns -fno-pic -fno-pie \
+CFLAGS  = -m32 -msse2 -ffreestanding -c -O2 -g -fno-tree-loop-distribute-patterns -fno-pic -fno-pie \
           -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables \
           -falign-functions=1 -falign-jumps=1 -falign-loops=1 \
           -Wall -Wextra -Iinclude -I.
@@ -29,7 +29,9 @@ SRCS = \
 	app/arm/app/app.c \
 	app/arm/kinematics/kinematics.c \
 	app/arm/control/control.c \
-	app/arm/render/render.c
+	app/arm/render/render.c \
+	app/fpu/demo/demo.c \
+	app/fpu/render/render.c
 
 OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o))
 IMG     = os.img
@@ -54,8 +56,8 @@ kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 # 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
 kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 20480 / 40 sectors)"; \
-	if [ $$size -gt 20480 ]; then echo "ERROR: kernel.bin $$size bytes > 20480"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 24576 / 48 sectors)"; \
+	if [ $$size -gt 24576 ]; then echo "ERROR: kernel.bin $$size bytes > 24576"; exit 1; fi
 
 boot.bin: boot.asm
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin

@@ -30,6 +30,7 @@ struct task_struct {
     u32  switches;
     u32  cpu_ticks;
     u64  vruntime;
+    u32  fpu_state;
     struct context ctx;
 };
 
@@ -56,6 +57,20 @@ static u32 trace_total;
 static u32 pid_map;
 static u32 preempt_total;
 #define WEIGHT_QUANTUM 64u
+
+/* FXSAVE 区域必须 16 字节对齐；模板只用于新任务的初始 FPU/SSE 状态。 */
+static u8 fpu_template[AEVUM_FPU_STATE_SIZE] __attribute__((aligned(16)));
+static u8 boot_fpu_state[AEVUM_FPU_STATE_SIZE] __attribute__((aligned(16)));
+
+static inline void fpu_save(void *area)
+{
+    __asm__ __volatile__("fxsave (%0)" : : "r"(area) : "memory");
+}
+
+static inline void fpu_restore(void *area)
+{
+    __asm__ __volatile__("fxrstor (%0)" : : "r"(area) : "memory");
+}
 
 static u32 task_weight(const struct task_struct *task)
 {
@@ -93,6 +108,7 @@ static void task_zero(struct task_struct *task)
     task->switches = 0;
     task->cpu_ticks = 0;
     task->vruntime = 0;
+    task->fpu_state = 0;
     task->ctx.esp = 0;
 }
 
@@ -104,8 +120,17 @@ void task_boot(void)
     boot_task.comm[1] = 'n';
     boot_task.comm[2] = 'i';
     boot_task.comm[3] = 't';
+    boot_task.fpu_state = (u32)boot_fpu_state;
     current_task = &boot_task;
     pid_map = 0;
+
+    /*
+     * 先给当前 FPU 一个已知初态，再分别保存模板和 boot 任务。
+     * 模板不会被切换路径改写，新任务从它复制，避免 fxrstor 到未初始化区域。
+     */
+    __asm__ __volatile__("fninit");
+    fpu_save(fpu_template);
+    fpu_save(boot_fpu_state);
 }
 
 u32 task_create(int priority, const char *name,
@@ -115,6 +140,7 @@ u32 task_create(int priority, const char *name,
     u32 *sp;
     u32 *p;
     u32 stack_base;
+    u32 fpu_state;
     int i, pid;
 
     if (!out) return ERR_TASK_OUT_MISSING;
@@ -127,6 +153,16 @@ u32 task_create(int priority, const char *name,
 
     stack_base = stack_top - AEVUM_TASK_STACK_SIZE;
     if (stack_base < AEVUM_TASK_STACK_MIN) return ERR_TASK_STACK_INVALID;
+
+    /*
+     * 每个任务栈底部预留 512 字节 FXSAVE 区，余下 3.5KB 才是可用栈。
+     * 这样不把 6×512 字节塞进 BSS，也不越过 BSS 与任务栈之间的保护空隙。
+     */
+    if (stack_base + AEVUM_FPU_STATE_SIZE > stack_top)
+        return ERR_TASK_STACK_INVALID;
+    fpu_state = stack_base;
+    stack_base += AEVUM_FPU_STATE_SIZE;
+    if (stack_base > stack_top) return ERR_TASK_STACK_INVALID;
 
     task = 0;
     for (i = 0; i < TASK_MAX; i++) {
@@ -148,8 +184,13 @@ u32 task_create(int priority, const char *name,
     task->entry = entry;
     task->stack_base = stack_base;
     task->stack_top = stack_top;
+    task->fpu_state = fpu_state;
     for (i = 0; i < TASK_NAME_MAX && name[i]; i++) task->comm[i] = name[i];
     task->comm[i] = 0;
+
+    /* 新任务的 FPU/SSE 从 boot 初始模板复制，不要从零初始化。 */
+    for (i = 0; i < (int)(AEVUM_FPU_STATE_SIZE / 4); i++)
+        ((u32 *)fpu_state)[i] = ((u32 *)fpu_template)[i];
 
     /* 栈底到栈顶填魔数，运行后从栈底向上扫描即可得到真实栈水位。 */
     for (p = (u32 *)stack_base; p < (u32 *)stack_top; p++) *p = STACK_MAGIC;
@@ -289,6 +330,8 @@ u32 task_schedule_irq(struct irq_frame *frame)
         next->state = TASK_RUNNING;
         current_task = next;
         task_note_switch(next);
+        fpu_save((void *)prev->fpu_state);
+        fpu_restore((void *)next->fpu_state);
         sched_reason = SCHED_YIELD;
         return next->ctx.esp;
     }
@@ -328,6 +371,10 @@ u32 task_schedule_irq(struct irq_frame *frame)
          * 永久留在 READY，PIT 不再给它计费，vruntime 也不再增长。
          */
         next->state = TASK_RUNNING;
+    }
+    if (next != prev) {
+        fpu_save((void *)prev->fpu_state);
+        fpu_restore((void *)next->fpu_state);
     }
     current_task = next;
     sched_reason = SCHED_YIELD;

@@ -12,7 +12,7 @@
 | 内存布局 | `config/memory.h` | 物理地址常量 | 只读宏 |
 | 基础类型 | `include/kernel/types.h` | `i32/u32/u16/u8/i64/u64` | 只读类型 |
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
-| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime` | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_preempt_total/task_cpu_total` |
+| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime`/`fpu_state` | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_preempt_total/task_cpu_total` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
 | 中断/定时 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC、PIT 100Hz、IRQ0 EOI | `interrupt_init/interrupt_eoi` |
 | VGA | `drivers/video/vga/text/vga.c` | 影子显存 `0x20000`、`0xB8000` 刷新 | `vga_*` |
@@ -20,11 +20,13 @@
 | 键盘 | `drivers/input/keyboard/keyboard.c` | 无状态；只读扫描码 | `keyboard_poll()` |
 | 定点 | `lib/fixed/fixed.c` + `include/lib/fixed.h` | Q16.16 运算 | `fx_mul/fx_div/isqrt64/fx_sqrt` |
 | 三角 | `lib/math/trig.c` | `sin_tab`、`fx_sin_deg` | `fx_sin/fx_cos/fx_deg/fx_rad` |
-| 格式化 | `lib/format/format.c` | 十进制/定点转字符串 | `fmt_dec/fmt_fx` |
+| 格式化 | `lib/format/format.c` | 十进制/十六进制/定点转字符串 | `fmt_dec/fmt_hex/fmt_hex_width/fmt_fx` |
 | 运动学 | `app/arm/kinematics/kinematics.c` | 纯函数，无状态 | `arm_fk/arm_jacobian/arm_solve` |
 | 控制 | `app/arm/control/control.c` | `q/dq/points/target/...` 与 `arm_status` 快照 | `arm_control_init/step/toggle_nullspace/status` |
 | 渲染 | `app/arm/render/render.c` | 轨迹环形缓冲 `trace[]`；只读 `arm_status` | `arm_render_init/frame/trace_push` |
-| 应用装配 | `app/arm/app/app.c` | `p_control/p_render/p_idle/app_dep_code`；创建三个常驻任务 | `arm_app_init/start/dep_code` |
+| 应用装配 | `app/arm/app/app.c` | `p_control/p_render/p_idle/app_dep_code`；创建三个常驻任务；键盘分发 | `arm_app_init/start/dep_code` |
+| FPU 上下文实验 | `app/fpu/demo/demo.c` | `active/stop/done[]/lanes[]`；两个任务各自维护 XMM0 标签与计数 | `fpu_demo_start/stop/live/read` |
+| FPU 实验渲染 | `app/fpu/render/render.c` | 全屏 VGA 布局；只读 `struct fpu_lane` 快照 | `fpu_render_frame` |
 | 组合根 | `kernel/main/main.c` | 只做初始化编排 | `kernel_main()` |
 
 约束：
@@ -116,21 +118,33 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 `task_yield()`、`task_block()`、`task_exit()` 都改为调用这个入口，B 键演示因此实际走的就是
 `RUNNING -> BLOCKED -> READY -> RUNNING` 的同一套状态写入路径。
 
+### 3.4 FPU / SSE 上下文
+
+- 每个任务栈底部预留 512 字节 FXSAVE 区，16 字节对齐；`task->fpu_state` 指向它，`stack_base` 后移 512 字节，实际可用栈 3.5KB。
+- `task_boot()` 先 `fninit`，把初始 FPU/SSE 状态分别存进 `fpu_template` 和 `boot_fpu_state`；新任务从模板复制，不从零初始化。
+- 调度器只在 `next != prev` 时执行 `fxsave(prev->fpu_state)`、`fxrstor(next->fpu_state)`；同任务不切换则不动 FPU。
+- `loader.asm` 打开 `CR4.OSFXSR/OSXMMEXCPT`，清 `CR0.EM/TS` 并置 `MP`，否则 `fxsave/fxrstor` 不可用。
+- 这套上下文仍属于 ring0、单页表：`ctx.esp` 仍只是帧指针，FPU/SSE 是第二块 CPU 状态；独立地址空间和用户态还没进来。
+
+### 3.5 FPU 上下文实验
+
+`F` 键创建 `fpuA` / `fpuB` 两个 CPU 密集型任务，循环里不调用 `task_yield()`；两个任务只在 `XMM0` 里维护自己的标签和计数。`app/fpu/demo/demo.c` 是 `lanes[]`、`active/stop/done[]` 的唯一写者，`app/fpu/render/render.c` 只读快照并画 `CTX OK/LOST`。如果切换漏掉 `fxsave/fxrstor`，标签会串到另一条 lane，屏幕直接判 `CTX LOST`；`F` 再按一次停止并回到机械臂。
+
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
 | `0x1000` | 内核镜像起点 |
-| `0x1000..0x5FFF` | boot 读取的 40 扇区（20KB）窗口 |
-| `0x5F40..0x649F` | `.bss`，由 loader 的 `rep stosb` 清零 |
-| `0x64A0..0x6FFF` | BSS 尾部到任务栈的保护空隙 |
-| `0x7000..0x7FFF` | `control` 任务栈（栈顶 `0x8000`） |
-| `0x8000..0x8FFF` | `render` 任务栈（栈顶 `0x9000`） |
-| `0x9000..0x9FFF` | `idle` 任务栈（栈顶 `0xA000`） |
-| `0xA000..0xAFFF` | 内核主线程栈（栈顶 `0xB000`） |
-| `0xB000..0xBFFF` | `probe` 任务栈（栈顶 `0xC000`） |
-| `0xC000..0xCFFF` | `spinA` 任务栈（栈顶 `0xD000`） |
-| `0xD000..0xDFFF` | `spinB` 任务栈（栈顶 `0xE000`） |
+| `0x1000..0x6FFF` | boot 读取的 48 扇区（24KB）窗口 |
+| `0x68E0..0x729F` | `.bss`，由 loader 的 `rep stosb` 清零 |
+| `0x72A0..0x7FFF` | BSS 尾部到任务栈的保护空隙 |
+| `0x8000..0x8FFF` | `control` 任务栈（栈顶 `0x9000`） |
+| `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
+| `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
+| `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |
+| `0xC000..0xCFFF` | `probe` 任务栈（栈顶 `0xD000`） |
+| `0xD000..0xDFFF` | `spinA` 任务栈（栈顶 `0xE000`） |
+| `0xE000..0xEFFF` | `spinB` 任务栈（栈顶 `0xF000`） |
 | `0x10000 / 0x11000` | 页目录 / 页表 |
 | `0x12000..0x127FF` | 256 项 IDT（0x20 IRQ0、0x40 软件调度门） |
 | `0x12800..0x12817` | 重定位后的 GDT（3 项） |
@@ -138,17 +152,17 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 | `0x30000` | 串口帧快照 |
 | `0xB8000` | VGA 文本显存 |
 
-`boot.asm` 读 40 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 20480 字节。
-当前构建 20,276 字节，BSS 结束于 `0x64A0`；镜像余量 204 字节，BSS 距 `0x7000` 任务栈还有 2,912 字节。
+`boot.asm` 读 48 个扇区到 `0x1000`，所以 `kernel.bin` 必须不超过 24576 字节。
+当前构建 22,736 字节，BSS 结束于 `0x72A0`；镜像余量 1,840 字节，BSS 距 `0x8000` 任务栈还有 3,424 字节。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
-若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 不越过 `0x7000`。`AEVUM_TASK_STACK_MIN=0x7000`，
-`AEVUM_TASK_STACK_MAX=0xE000`。
+若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 不越过 `0x8000`。`AEVUM_TASK_STACK_MIN=0x8000`，
+`AEVUM_TASK_STACK_MAX=0xF000`。
 
 ## 五、验收
 
 ```sh
 make clean && make all
-wc -c kernel.bin          # 必须 <= 20480
+wc -c kernel.bin          # 必须 <= 24576
 timeout 6 qemu-system-i386 -accel tcg -drive format=raw,file=disk.img \
   -display none -serial file:/tmp/robot-serial.bin -no-reboot
 xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
@@ -156,11 +170,12 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 通过标准：
 
-- `kernel.bin` 不超过 20480 字节，链接无 undefined symbol。
+- `kernel.bin` 不超过 24576 字节，链接无 undefined symbol。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
-- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
+- 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C/F`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
 - 按 `P`（扫描码 `0x19`）创建 `probe` 任务，画面显示 PID（首次为 4）和 `PIT PREEMPTIONS` 计数；探针循环不调用 `task_yield`，计数仍持续增长，证明 IRQ0 真的抢占了 CPU 密集型任务。任务退出后 `P3/31` 回到 3，再按 `P` 仍分配 PID 4，证明 ZOMBIE 回收与 PID 复用。
 - 按 `B`（扫描码 `0x30`）让 `idle` 任务执行 `task_block()`，面板第三行从 `3id r` 变成 `3id B` 并出现 `BLOCKED` 提示；再按 `B` 调 `task_wake()`，变回 `3id r`，证明 `RUNNING -> BLOCKED -> READY` 两条边成立。
 - 按 `T`（扫描码 `0x14`）进入全屏 `PREEMPTION DUEL`：创建 `spinA` / `spinB` 两个 CPU 密集型任务，循环里都不调用 `task_yield()`；两条 lane 的 `STEP` 同时增长，80 格抢占磁带出现青/洋红交替条纹，`PIT PREEMPTIONS` 持续增加。再按 `T` 停止，两个任务经 `task_exit()` 退出，画面恢复机械臂，面板回到 `P3/31`。
 - 按 `C`（扫描码 `0x2E`）进入全屏 `AEVUM / CPU TIME ACCOUNTING`：三行任务的 `CPU%` 应稳定在约 `50% / 38% / 12%`，`TICKS` 每秒增长，`PIT TICKS` 等于三行 `TICKS` 之和；再按 `C` 返回机械臂，帧号和 `sw` 继续增长。
+- 按 `F`（扫描码 `0x21`）进入全屏 `AEVUM / FPU CONTEXT LAB`：`fpuA` / `fpuB` 两个 CPU 密集型任务同时推进 `COUNT`，`TAG` 始终分别为 `A11CE` / `B22CE`，两条 lane 都显示 `CTX OK`；`SWITCHES` / `PREEMPTIONS` 持续增长。再按 `F` 停止，画面恢复机械臂。

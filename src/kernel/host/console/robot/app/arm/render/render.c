@@ -195,7 +195,7 @@ static void task_panel(void)
         buf[p] = 0;
         vga_text(x, 20, buf, C_GRAY);
         x += p;
-        n = (int)(((u64)info[i].stack_used * 6u) / (AEVUM_TASK_STACK_SIZE / 8u));
+        n = (int)(((u64)info[i].stack_used * 6u) / (AEVUM_TASK_STACK_USABLE / 8u));
         if (n > 6) n = 6;
         for (p = 0; p < 6; p++)
             vga_cell(x + p, 20, p < n ? (char)CH_FULL : (char)CH_LIGHT,
@@ -423,7 +423,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T/C ", C_WHITE);
+    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T/C/F ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;

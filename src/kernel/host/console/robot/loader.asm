@@ -10,6 +10,16 @@ extern __bss_end
 
 section .text
 start:
+    ; 打开 SSE 状态保存：CR4.OSFXSR/OSXMMEXCPT，清 CR0.EM/TS，置 MP。
+    ; 之后 C 侧才能安全使用 fxsave/fxrstor 保存每个任务的 FPU/SSE 上下文。
+    mov eax, cr4
+    or eax, 0x600
+    mov cr4, eax
+    mov eax, cr0
+    and eax, 0xFFFFFFF3
+    or eax, 0x2
+    mov cr0, eax
+
     ; BSS 可能越过 boot 读取的扇区窗口，加载后必须由内核自己清零。
     cld
     mov edi, __bss_start
@@ -18,7 +28,7 @@ start:
     xor eax, eax
     rep stosb
 
-    ; 任务栈从 0x7000 起，会覆盖引导扇区 0x7c97 的 GDT；先搬到 0x12800 再加载。
+    ; 任务栈从 0x8000 起，会覆盖引导扇区 0x7c97 的 GDT；先搬到 0x12800 再加载。
     mov esi, 0x7c97
     mov edi, 0x12800
     mov ecx, 24
@@ -26,7 +36,7 @@ start:
     lgdt [gdtr_new]
 
     ; 设置C代码栈
-    mov esp, 0xB000
+    mov esp, 0xC000
     call kernel_main
 
 ; 死循环，内核返回就停机
