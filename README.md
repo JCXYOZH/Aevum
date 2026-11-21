@@ -1,127 +1,277 @@
-# Aevum World
+# Aevum
 
-草香甜的是自由的气息。
+Aevum 是一个开源 3D 角色与世界运行时。当前仓库的重点是两条线：
 
-这个世界，送给你了。你不需要买门票，不需要注册，不需要登录，也不需要等谁点头；代码开源，你不需要花一分钱，就站在这里。你可以走，可以跑，可以在湖边看太阳落下去，也可以站在雨里，衣服不会湿。以后的人，生下来就拥有这个世界，不需要任何人的许可。他们不用感谢谁，也不用记住谁。这就是这个世界的魅力。
+- **渲染引擎**：WebGL2 角色渲染、PMX/MMD、VRM/glTF、Live2D，以及地形、天气、水体、植被和 LOD。
+- **内核**：可运行的 32 位 x86 裸机内核，和一套用于设计验证的 Fortuna 内核骨架。
 
-你打开它，天正在亮。草在动，湖在反光。你往前走，草和树才在你前面长出来；你一回头，来路还在。这里没有任务，没有等级，没有“欢迎回来，旅行者”。你只需要走，想往哪走就往哪走。
+代码使用 MPL-2.0。模型、动作和贴图保留各自授权，不因为放进仓库就自动变成 MPL-2.0。
 
-它不大，也不完美。但它是真的，不是循环视频，不是一张会动的壁纸。
-
-> The grass smells like freedom. This world is yours now. Not rented, not borrowed, not a seven-day trial. The code is open; you don't pay a cent to stand here. No account, no login, no ads, no permission from anyone. People who come later are born owning it. They don't have to thank anyone, or remember anyone. That is the whole charm of this world.
+> Aevum is an open-source runtime for 3D characters and worlds. The current repository focuses on two tracks: a WebGL2 render engine, and a kernel effort that includes a runnable 32-bit x86 bare-metal kernel plus the Fortuna kernel skeleton. Code is MPL-2.0; models, motions and textures keep their own licenses.
 
 ![晴天草地和湖](docs/assets/readme/world-clear-day.png)
 
-晴天。草是绿的，湖是蓝的，山像抹茶。没加滤镜，引擎自己跑的。
+当前构建的世界页面截图。地形、草地、树木、湖水和天空由引擎实时渲染。
 
-湖在低处。晴天蓝得有点假，傍晚接住整片橙色，雨天像一块没洗干净的铁。风从湖面过来，草会一起歪。你站在岸边，会看见山在水里晃。
+> Screenshot from the current world build. Terrain, grass, trees, lake and sky are rendered by the engine at runtime.
 
-你可以在里面等一场雨。雨来时草低头，雾把树藏起来，湖面变灰。雨停之后，天会慢慢放亮。你也可以站进雨里，衣服不会湿——这里还没做那么细。
+## 项目结构 / Repository Layout
 
-> The lake sits low. By evening it holds the whole orange sky; in rain it turns to dull iron. The wind comes across the water and the grass leans together. You can wait for a rain here, or stand in it without getting wet. The world changes on its own; you don't have to press a key.
+| 部分 | 路径 | 当前状态 |
+| --- | --- | --- |
+| 渲染引擎 | `engine/` | 可运行；`validate.html` 是主要验证入口 |
+| 32 位裸机内核 | `src/kernel/host/console/robot/` | 可在 QEMU 运行；已完成 ring3、独立 CR3、`int 0x80`、`#PF` 故障隔离 |
+| Fortuna 内核骨架 | `src/kernel/fortuna/` | 有 boot/mm/sched/fs/net/sandbox 等模块；设计验证阶段，没有稳定 CLI |
+| 串口桥 | `src/kernel/host/bridge/` | 把内核 COM1 差量帧转为 WebSocket |
+| Web / 桌面呈现层 | `interface/` | world、desktop、console；不属于引擎核心 |
+| 控制平面 | `control/` | 运行时登记、进程启停、状态汇总、纯内存中继 |
 
-## 同房间
+> The repository separates the render engine, the runnable bare-metal kernel, the Fortuna kernel skeleton, the serial bridge and the presentation layer. The engine and the robot kernel are the two parts with runnable entry points today.
 
-这里没有账号。你填一个名字，点应用，就进来了。房间叫 `my_era`，中继是 `broker.hivemq.com`。你不用开服务器，不用把 IP 发到群里，也不用问“谁还活着，开一下服”。
+## 渲染引擎 / Render Engine
 
-偶尔有人进来。你们不认识，也没有好友系统。他跑过去，你看见他跑；你停下，他也停下。聊两句，或者不聊。关掉页面，各自消失。
+### 定位
 
-聊天不存档。晚来的人只看见草地，看不见你们刚才聊了什么。关掉页面，Last Will 把你从别人屏幕上删掉。没有离线留言，也没有“在吗”。
+`engine/` 是独立的 WebGL2 角色渲染引擎。它不依赖桌面壳，也不把 UI 业务混进引擎目录。模型格式各自保留解析器和 GPU 管线，不把 PMX、VRM、Live2D 强行转换成同一种内部格式。
 
-房间里没人也别怀疑联机坏了，可能真的没人。公共房间没有 NPC 陪你，连假人都不舍得放。
+> `engine/` is a standalone WebGL2 character renderer. It does not depend on the desktop shell, and format-specific parsers and GPU pipelines stay separate.
 
-公共中继不保证稳定。适合两三个朋友同时打开走十分钟，不适合跨半个地球打副本。房间没密码，知道 `my_era` 就能进。别在里面发银行卡号，真的。
+### 当前能力
 
-> There are no accounts. You type a name, press apply, and you are in. The room is `my_era`, the broker is `broker.hivemq.com`. No server to host, no IP to paste into a group chat. Someone may wander in. You don't know each other; there is no friend list. They run, you see them run; you stop, they stop. Talk, or don't. Close the tab and each of you disappears. Chat is not stored. No offline messages, no “you there?”.
+| 能力 | 实现 |
+| --- | --- |
+| PMX / MMD | PMX 网格、材质、骨骼、Morph 解析；VMD 采样与播放；WebGL2 蒙皮、卡通着色、球面贴图、描边 |
+| VRM / glTF | GLB/VRM 解析、Humanoid 骨骼、glTF accessor、蒙皮渲染 |
+| Live2D | Cubism Core、moc3、纹理、参数、drawable、motion3、表情与动作 |
+| 动作 | 动作状态机、动作捕捉、动作串联、动作匹配、关节 IK、程序化动作、Mixamo 到 VRM 重定向 |
+| 世界 | 地形、天气、水体、植被、LOD、世界渲染管线 |
+| 图形基础设施 | WebGL2 上下文、shader、buffer、FBO、后处理、transform feedback 风场 |
 
-## 脸
+图形模块在 `engine/graphics/`，是 world 和 desktop 的唯一图形 owner。草摆动使用 `ComputeSimulator` 每帧生成风场，草顶点着色器读取 `GrassWind` UBO；world 源码不再保留等价的 inline 正弦摆动。
 
-这里不给你别人的脸。打开是一个代码拼的小人：几何身体、一个头、胸口一块亮色。丑，但版权干净。
+> PMX/MMD, VRM/glTF and Live2D each keep their own parser and renderer. Shared services cover math, resources, animation, skinning and world rendering. `engine/graphics/` is the single graphics owner; grass wind is driven by a transform-feedback compute pass and consumed by the grass vertex shader.
 
-你可以带自己的脸进来。点加载角色模型，选自己的 `.vrm`，或者把 `.vrm` 塞进 `.zip`。模型只在本地加载；别人看到的是你本地模型的克隆，不是从服务器下载的。各带各的脸，谁也别嫌谁。
+### 目录
 
-小人没有表情。你盯着它看，它也不会尴尬。这点比很多游戏强。
+```text
+engine/
+├─ validate.html              # 渲染验证入口
+├─ models.yaml                # 对外演示清单
+├─ math/                      # 向量、矩阵、四元数
+├─ core/                      # ECS、渲染循环、资源管线、调度、性能统计
+├─ graphics/                  # WebGL2、shader、buffer/FBO、后处理、compute
+├─ formats/                   # glTF/GLB、VRM、PMX、VMD、TGA、motion3 解析
+├─ loaders/                   # 格式适配、重定向缓存与 LOD
+├─ animation/                 # 状态机、捕捉、串联、匹配、IK、程序化动作
+├─ render/                    # VRM / PMX / Live2D / VMD / Morph / 视线 / 融合
+├─ character/                 # Live2D 桥接、皮肤材质、延迟渲染扩展
+├─ world/                     # 地形、天气、水体、植被、LOD、世界管线
+├─ legacy/orb/                # 旧 Orb 实现，按需加载
+└─ vendor/                    # Live2D Cubism Core 官方运行时
+```
 
-仓库里还留着开发期模型，但不进新包。公开前该从 git 历史里清掉。动作文件 `all_animations.glb` 能不能再分发，也得看原授权。代码是 MPL-2.0，不代表仓库里每样东西都是。
+### 运行
 
-> The build does not give you someone else's face. It opens with a small figure made of code: a geometric body, a head, a bright core. Ugly, but clean. You can bring your own `.vrm` or `.zip`; it loads locally, and others see a clone of what is on your machine, not a download from a server. No one has to like anyone else's face.
+在仓库根目录启动静态 HTTP 服务：
 
-## 进来
+```powershell
+python -m http.server 8766 --directory D:\Aevum
+```
 
-Windows 免安装版在 `interface\desktop\qml-world\dist\AevumWorld\AevumWorld.exe`。双击。第一次慢，Qt WebEngine 要热机。没有安装器，不写注册表，删目录就干净。
+渲染验证页：
 
-第一次进来，你站在草地上，左边是湖，远处是山。`WASD` 走，`Shift` 跑，鼠标拖视角，滚轮远近，双击回正。左侧 `NAME` 写名字，点加载角色模型换脸。就这些，没有连招。
+```text
+http://127.0.0.1:8766/engine/validate.html
+```
 
-窗口标题写 `0.2.0-preview.1`。版本号在 `interface\desktop\qml-world\VERSION` 里。它属于构建信息，不属于封面。
+世界页：
 
-黑屏先更新显卡驱动。不是草地针对你。
+```text
+http://127.0.0.1:8766/interface/web/world.html
+```
 
-浏览器里开发运行：
+模型路径只写在 `engine/models.yaml` 或本地 `engine/assets/models.local.yaml` 中。模型、动作和贴图资产不进 Git；换成自己的模型时只改清单，不把路径写进 JS。
+
+> Start a static HTTP server at the repository root, then open `engine/validate.html` or `interface/web/world.html`. Model paths live in `models.yaml` or the ignored local catalog; runtime code does not hard-code asset paths.
+
+### 截图
+
+| 世界天气 | 世界与角色 |
+| --- | --- |
+| ![雨天世界](docs/assets/readme/world-rain.png) | ![白天世界与角色](docs/assets/readme/desktop/desktop-noon.png) |
+
+### 当前边界
+
+- 未接 PBR / MToon。
+- VRM 未接 SpringBone、表情 Morph。
+- PMX 脚踝使用髋部补偿，不是逐骨骼足部 IK。
+- 动作融合按骨骼分区，没有接触状态权重。
+- Live2D 未接 physics3、PartOpacity 和完整 Cubism Framework 控制器。
+- world 的近景草、树、水和角色仍是测试级资产与材质。
+
+> Current limits: no PBR/MToon; no SpringBone or VRM expression morphs; PMX ankle handling is a hip compensation, not per-bone foot IK; animation blending is bone-partitioned; Live2D physics3 and full Cubism Framework control are not connected; close-up world assets remain test-grade.
+
+## 内核 / Kernel
+
+仓库里的“内核”分两条线，不能混为一谈：
+
+1. **可运行的裸机内核**：`src/kernel/host/console/robot/`，NASM + C，32 位 x86，当前在 QEMU 中启动。
+2. **Fortuna 内核骨架**：`src/kernel/fortuna/`，按 boot、内存、调度、文件系统、网络、沙箱拆模块，用于设计验证，不是当前 Web 主链路的运行依赖。
+
+> The repository contains two kernel tracks: a runnable 32-bit x86 bare-metal kernel under `host/console/robot`, and the Fortuna kernel skeleton under `fortuna`. Fortuna is a design-validation track, not a runtime dependency of the Web application.
+
+### 1. 32 位裸机内核 / Bare-metal kernel
+
+这个内核不依赖 libc，也不跑在桌面操作系统里。BIOS 引导扇区把 56 个扇区读到 `0x80000`，进入保护模式、建立 GDT、IDT、TSS 和 0–4 MB 恒等分页，然后运行内核任务。
+
+> This kernel does not use libc and does not run on top of a desktop OS. The BIOS boot sector loads 56 sectors to `0x80000`, enters protected mode, builds GDT/IDT/TSS and identity-maps 0–4 MB, then starts kernel tasks.
+
+#### 已实现
+
+| 模块 | 实现 |
+| --- | --- |
+| 启动 | `boot.asm` 一次 LBA 读 56 个扇区到 `0x80000`；`loader.asm` 清 BSS、加载 6 项 GDT、启用 FPU/SSE |
+| 中断 | 256 项 IDT；PIT 100Hz IRQ0；8259A PIC 重映射；`int 0x40` 软件调度门；`int 0x80` DPL3 系统调用门 |
+| 任务 | 6 个固定任务槽；独立内核栈；统一中断帧；`task_yield/block/wake/exit`；优先级加权 `vruntime` 调度 |
+| 上下文 | `fxsave/fxrstor` 保存 FPU/SSE；每个任务栈底预留 512 字节 FXSAVE 区 |
+| 内存 | 内核页目录/页表固定在 `0x10000/0x11000`；用户进程各自拥有 PD/PT 和 CR3 |
+| ring3 | 3 个用户地址空间；同一段用户代码映射到相同虚拟地址 `0x400000`，物理代码页和数据页不同 |
+| 系统调用 | 用户进程通过 `int 0x80` 让出或退出；内核记录调用次数和真实 `CS=0x1B` |
+| 故障隔离 | IDT 第 14 项 `#PF`；记录 `CR2/ERR/EIP/CS/PID`；用户态故障只 `task_exit()` 当前进程，内核态故障进入 panic 页 |
+
+#### 当前验收数据
+
+| 项 | 当前值 |
+| --- | --- |
+| `kernel.bin` | 28,488 字节，小于 56 扇区上限 28,672 字节 |
+| 加载基址 | `0x80000` |
+| BSS | `0x86F60..0x87F88` |
+| 常驻任务 | `control` / `render` / `idle` |
+| 用户任务 | `userA` / `userB` / `userC`；`CR3=0x40000 / 0x46000 / 0x4C000` |
+| 用户虚拟地址 | code `0x400000`、data `0x401000`、stack `0x402000`、control `0x403000` |
+| 故障样例 | `#PF pid 6 eip 00400029 cr2 000B8000 err 00000007` |
+| 故障结果 | `userC` 被单独回收，`userA/userB` 的 CR3 和计数器继续运行 |
+
+`userC` 在数据页写入 `mode=1`，计数到 20000 后故意写内核显存 `0xB8000`。CPU 触发 `#PF`，内核读取 `CR2=0xB8000`、`ERR=0x7`（P/W/U）、`EIP=0x400029`，只回收当前用户任务。机械臂主画面和 V 页的 q 值保持正常，说明故障路径没有破坏调度器和 FPU 状态。
+
+> `userC` sets `mode=1` in its private data page, counts to 20,000, then writes the kernel VGA buffer at `0xB8000`. The CPU raises `#PF`; the kernel records `CR2/ERR/EIP`, exits only that user task, and leaves `userA/userB` running. The arm page and joint values remain valid after the fault.
+
+#### 截图
+
+| 机械臂主画面 | ring3 + `#PF` 故障页 |
+| --- | --- |
+| ![机械臂主画面](docs/assets/readme/kernel/kernel-main.png) | ![ring3 与 #PF 故障隔离](docs/assets/readme/kernel/kernel-ring3-pf.png) |
+
+#### 构建与运行
+
+需要 Linux 或 WSL2，以及 `nasm`、支持 `-m32` 的 `gcc`、`binutils`、`make`、`qemu-system-i386`：
+
+```bash
+cd src/kernel/host/console/robot
+make clean && make all
+make run
+```
+
+只构建镜像：
+
+```bash
+make all
+# 产物：kernel.bin、disk.img、os.img
+```
+
+无界面启动：
+
+```bash
+qemu-system-i386 -drive format=raw,file=disk.img -display none
+```
+
+调试：
+
+```bash
+make debug
+# 另一个终端：gdb，target remote :1234
+```
+
+> Build with NASM, 32-bit GCC, binutils and QEMU on Linux/WSL2. `make all` produces `kernel.bin`, `disk.img` and `os.img`; `make run` starts QEMU; `make debug` waits for GDB on port 1234.
+
+#### 当前边界
+
+- 单核、平坦段、固定物理页池。
+- 没有 ELF 加载、按需分页、COW、完整 `wait/reap`。
+- `TASK_MAX=6`；`V` 运行三个用户任务时不能再创建 probe/tree/duel。
+- 地址空间槽只有 3 个。
+- 内核态 `#PF`、双重 fault、栈溢出仍是停机路径，不做恢复。
+- 这是教学与验证内核，不是生产内核。
+
+> Single-core, flat segments and a fixed physical page pool. No ELF loading, demand paging, COW or full wait/reap. `TASK_MAX=6` and three address-space slots are hard limits. Kernel-mode page faults, double faults and stack overflow still halt the machine. This is a teaching and validation kernel, not a production kernel.
+
+### 2. Fortuna 内核骨架 / Fortuna kernel skeleton
+
+`src/kernel/fortuna/` 按职责拆成 `arch/`、`boot/`、`core/`、`mm/`、`sched/`、`fs/`、`net/`、`sandbox/`、`security/`、`drivers/`、`irq/`、`ipc/` 等目录。目标是先把启动、内存、调度、文件系统、网络和沙箱的边界拆清楚，再逐块补实现和测试。
+
+现状：
+
+- 有模块和目录，不是完整可用的操作系统。
+- 没有稳定的命令行入口；开发时通过 Python 导入模块并跑局部测试。
+- 不是 Web 主链路的运行依赖。
+- 设计说明见 `docs/fortuna/design.md`，使用说明见 `docs/fortuna/usage.md`。
+
+> Fortuna is split by kernel responsibility into architecture, boot, core, memory, scheduler, filesystem, network, sandbox, security, drivers, IRQ and IPC modules. It is a design and validation skeleton, not a complete OS; there is no stable CLI yet and it is not a runtime dependency of the Web application.
+
+### 3. 串口桥 / Serial bridge
+
+`src/kernel/host/bridge/serial_bridge.py` 读取内核 COM1 输出的差量帧：
+
+```text
+A5 5A 01 COUNT [row col ch attr] CRC
+```
+
+然后把变化单元格转成 WebSocket 消息，供桌面「内核实况」窗口显示。没有这段桥，内核仍然会写 `0xB8000`，但桌面收不到画面。
+
+> The bridge reads the kernel's COM1 delta frames and forwards changed text cells over WebSocket to the desktop kernel view. Without it the kernel still writes VGA memory, but the desktop cannot display the frames.
+
+## 快速验证 / Quick Checks
+
+渲染引擎：
 
 ```powershell
 cd D:\Aevum
-python -m http.server 8799
+python -m http.server 8766 --directory D:\Aevum
 ```
 
-打开 `http://127.0.0.1:8799/interface/web/world.html`。默认就连 `broker.hivemq.com` 的 `my_era`；想换房间，在地址后加 `?room=名字`。
+打开：
 
-> The Windows build is a folder, not an installer. Double-click `AevumWorld.exe`; the first start is slow because Qt WebEngine has to warm up. Nothing is written to the registry; delete the folder and it is gone. `WASD` to walk, `Shift` to run, drag to look, wheel to zoom, double-click to reset. A name on the left, a face if you want one. That's the whole control scheme.
-
-## 它还不完美
-
-它没有移动端，没有 Windows 外验证，没有存档，没有任务，没有战斗，没有可爬的山，没有 NPC 对话，也没有服务器权威物理。两个人撞一起不会互相推开，走进湖里不会沉。不是不想做，是还没做。有些可能永远不做，反正也没收你钱。
-
-联机延迟、丢包、连续走十分钟会怎样，还没验收完。现在只能说“大概率能跑”，不能说“保证”。公共房间没密码，别把它当正式服务器。
-
-草、树、水、角色近看都是测试水平。远看是世界，近看是施工现场，蹲下看是“这里本来可以更好”。清单很长，先挑不瞎眼的修。
-
-它不适合想找 100 小时内容的人，也不适合想在里面开会的人。适合工作间隙想走两步、看一次日落、淋一次雨的人。打开后第一件事问“然后呢”的人，答案是没有然后，可以关掉。
-
-没有每日签到，没有体力，没有红点，你不上线也不会被催。
-
-> No mobile build, no testing outside Windows, no saves, no quests, no combat, no climbable mountains, no NPC dialogue, no authoritative physics. Two people can walk through each other; you can walk into the lake and not sink. Some of this may never be built. The relay is public and not guaranteed; the room has no password. Up close, the grass, trees, water and characters are still test-grade. From far away it is a world; up close it is a construction site.
-
-## 如果你想改
-
-如果你只想玩，看到这里就够了。下面不是给你的任务，是给你一把螺丝刀。看不懂也没关系，这部分不影响双击 exe。
-
-代码开源，世界就是你的。你想改草、改湖、改天气、改角色，直接改。你不需要向谁申请，也不需要等谁批准。改坏了也没关系，原版还在。你打开编辑器，世界就开始变成你的。
-
-> If you only want to play, you can stop here. What follows is not a task; it is a screwdriver. The code is open, so the world is yours. Change the grass, the lake, the weather, the characters. You don't need to ask, or wait for approval. If you break it, the original is still there. Open an editor and the world starts becoming yours.
-
-收集 world 页依赖：
-
-```powershell
-cd interface\desktop\qml-world
-.\collect_world.ps1
+```text
+http://127.0.0.1:8766/engine/validate.html
+http://127.0.0.1:8766/interface/web/world.html
 ```
 
-构建免安装目录：
+内核：
 
-```powershell
-cd interface\desktop\qml-world
-$env:AEVUM_PYTHON = 'D:\venv\Scripts\python.exe'
-.\build_world_shell.ps1 -Name AevumWorld
+```bash
+cd src/kernel/host/console/robot
+make clean && make all
+make run
 ```
 
-产物是 `dist\AevumWorld\AevumWorld.exe`。整个目录约 440 MB，大头是 Qt WebEngine；world 自己约 40 MB。剩下 400 MB 主要是让窗口能打开，以及让 Qt 有存在感。
+模型、动作、贴图和内核构建产物按各自目录规则管理；不要把本地资产或生成物直接提交到 Git。
 
-world 页面不是单文件。`world-scene.bundle.js` 由 `world-context.js`、`world-shaders.js`、`world-vegetation.js`、`world-terrain.js`、`world-runtime.js` 拼成。改完源文件不重新生成 bundle，你改的是注释，跑的还是旧代码。别问怎么知道的。
+> Use the engine validation page and world page for render checks. Build and run the robot kernel from its own directory. Keep local assets and generated files out of Git.
 
-页面把状态写在 DOM 上：`data-roam` 是位置、朝向、chunk 数和当前动作；`data-cam` 是镜头 yaw / pitch / distance；`data-net` 是联机状态和远端玩家；`data-room` 是房间与连接；`data-model` 是当前换模结果；`data-fps` 是实时帧率。排查时这些比“我觉得它动了”可靠。
+## 许可 / License
 
-目录大致是：`interface\web\world.html` 是页面入口；`interface\web\js\scene\world` 放世界、天气、地形、植被和联机；`interface\desktop\qml-world` 是桌面壳、收集与打包；`engine\assets` 放动作与开发期模型。
+代码是 **MPL-2.0**，见 [LICENSE](LICENSE)。行为准则见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)，参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。仓库地址：`https://gitcode.com/AevumArk/Aevum`，维护邮箱：`open@mrhua.cn`。
 
-> The portable folder is about 440 MB, mostly Qt WebEngine. The world itself is about 40 MB. The bundle is generated from five source files; edit them without rebuilding and you are editing comments. Runtime state is exposed on the DOM for debugging.
+角色模型、贴图和动作素材各自遵循原授权。代码许可证不覆盖这些资产。
 
-## 许可
+> Code is MPL-2.0. Models, textures and motion data keep their original licenses; the code license does not relicense them.
 
-代码是 **MPL-2.0**，见 [LICENSE](LICENSE)。许可证是护栏，不是这个世界的边界。
+## 相关文档 / Related Docs
 
-行为准则在 [CODE\_OF\_CONDUCT.md](CODE_OF_CONDUCT.md)，参与开发看 [CONTRIBUTING.md](CONTRIBUTING.md)。仓库是 `gitcode.com/AevumArk/Aevum`，维护邮箱是 `open@mrhua.cn`。
-
-角色模型、贴图和动作素材各自遵循原授权。放进这个仓库，不会自动变成 MPL-2.0。
-
-> Code is MPL-2.0. The license is a fence, not the edge of this world. Models, textures and motion data keep their own licenses; being in this repository does not make them MPL-2.0.
-
-就这样。喜欢就多站一会儿，不喜欢就关掉。世界已经是你的了，什么时候来都行。它不会给你发召回短信，也不会在后台偷偷更新。
+- 引擎架构：`engine/ARCHITECTURE.md`
+- 引擎逐文件清单：`engine/JS-MODULES.md`
+- 裸机内核说明：`src/kernel/host/console/robot/README.md`
+- 裸机内核施工说明：`src/kernel/host/console/robot/CONSTRUCTION.md`
+- 内核构建说明：`src/kernel/host/console/robot/INTRO.md`
+- Fortuna 设计：`docs/fortuna/design.md`
+- 目录边界：`STRUCTURE.md`
