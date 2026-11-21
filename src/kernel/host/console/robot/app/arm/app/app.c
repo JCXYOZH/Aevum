@@ -5,6 +5,9 @@
 #include "app/fpu/render.h"
 #include "app/tree/demo.h"
 #include "app/tree/render.h"
+#include "app/user/demo.h"
+#include "app/user/render.h"
+#include "kernel/mm/address_space.h"
 #include "kernel/task.h"
 #include "kernel/task/family.h"
 #include "kernel/error.h"
@@ -32,6 +35,7 @@ static volatile int duel_alive;
 static volatile int duel_live;
 static volatile int cpu_live;
 static volatile int tree_live;
+static volatile int user_live;
 static volatile u8 duel_tape[DUEL_TAPE];
 static volatile u32 duel_tape_head;
 static u32 probe_runs;
@@ -64,17 +68,17 @@ static void proc_render(void)
         struct arm_status status;
         u8 key = keyboard_poll();
 
-        if (key == 0x2E && !duel_live && !probe_live && !fpu_demo_live() && !tree_live) { /* C：CPU 时间统计 */
+        if (key == 0x2E && !duel_live && !probe_live && !fpu_demo_live() && !tree_live && !user_live) { /* C：CPU 时间统计 */
             cpu_live = !cpu_live;
             if (cpu_live) arm_render_cpu_init();
         }
 
-        if (key == 0x14 && !cpu_live && !fpu_demo_live() && !tree_live) {    /* T：开始/停止抢占决斗 */
+        if (key == 0x14 && !cpu_live && !fpu_demo_live() && !tree_live && !user_live) {    /* T：开始/停止抢占决斗 */
             if (duel_live) duel_stop = 1;
             else if (!probe_live) (void)arm_app_start_duel();
         }
 
-        if (key == 0x21 && !duel_live && !cpu_live && !probe_live && !tree_live) { /* F：FPU context lab */
+        if (key == 0x21 && !duel_live && !cpu_live && !probe_live && !tree_live && !user_live) { /* F：FPU context lab */
             if (fpu_demo_live()) {
                 fpu_demo_stop();
             } else {
@@ -88,7 +92,7 @@ static void proc_render(void)
             }
         }
 
-        if (key == 0x22 && !duel_live && !cpu_live && !probe_live && !fpu_demo_live()) { /* G：进程家族树 */
+        if (key == 0x22 && !duel_live && !cpu_live && !probe_live && !fpu_demo_live() && !user_live) { /* G：进程家族树 */
             if (tree_live) {
                 tree_demo_stop();
             } else {
@@ -103,12 +107,51 @@ static void proc_render(void)
             }
         }
 
-        if (!duel_live && !cpu_live && !probe_live && !fpu_demo_live() && !tree_live) {
+        if (key == 0x2F && !duel_live && !cpu_live && !probe_live && !fpu_demo_live() && !tree_live) { /* V：ring3 进程上下文 */
+            if (user_live) {
+                user_demo_stop();
+            } else {
+                u32 rc = user_demo_start();
+                if (rc) {
+                    struct aevum_error e = app_err_template;
+                    e.code = ERR_ARM_APP_TASK_CREATE;
+                    e.field = "user_demo_start";
+                    aevum_fail(&e);
+                }
+                user_live = 1;
+            }
+        }
+
+        if (!duel_live && !cpu_live && !probe_live && !fpu_demo_live() && !tree_live && !user_live) {
             if (key == 0x39) arm_control_toggle_nullspace();
             if (key == 0x19) (void)arm_app_spawn_probe();
             if (key == 0x30) {
                 if (idle_blocked) (void)task_wake(idle_pid);
                 else idle_block_req = 1;
+            }
+        }
+
+        /* ring3 进程上下文：地址空间由 mm 模块持有，render 只读。 */
+        if (user_live) {
+            u32 rc = user_demo_error();
+            if (rc) {
+                struct aevum_error e = app_err_template;
+                e.code = rc;
+                e.field = "user_demo";
+                aevum_fail(&e);
+            }
+            if (!user_demo_alive()) {
+                user_live = 0;
+            } else {
+                user_render_frame();
+                vga_flush();
+                if (task_yield()) {
+                    struct aevum_error e = app_err_template;
+                    e.code = ERR_ARM_APP_SWITCH;
+                    e.field = "task_yield(render/user)";
+                    aevum_fail(&e);
+                }
+                continue;
             }
         }
 

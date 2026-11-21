@@ -18,6 +18,7 @@
 #define AEVUM_RR_VGA           0x25
 #define AEVUM_RR_UART          0x26
 #define AEVUM_RR_KEYBOARD      0x27
+#define AEVUM_RR_MM            0x28
 
 #define AEVUM_ERR(rr, ff, tt)  ((((u32)(rr)) << 16) | (((u32)(ff)) << 8) | ((u32)(tt)))
 
@@ -33,6 +34,9 @@
 #define ERR_TASK_OUT_MISSING           AEVUM_ERR(AEVUM_RR_TASK, 0x05, 0x01)
 #define ERR_TASK_PRIORITY              AEVUM_ERR(AEVUM_RR_TASK, 0x06, 0x02)
 #define ERR_TASK_PID_EXHAUSTED         AEVUM_ERR(AEVUM_RR_TASK, 0x08, 0x03)
+
+/* 地址空间模块：字段 0 槽位 / 1 页表 / 2 用户页 */
+#define ERR_MM_NO_SPACE                AEVUM_ERR(AEVUM_RR_MM, 0x00, 0x04)
 
 /* 应用装配：任务创建是跨模块依赖 */
 #define ERR_ARM_APP_TASK_CREATE        AEVUM_ERR(AEVUM_RR_ARM_APP, 0x00, 0x04)

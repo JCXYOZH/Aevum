@@ -3,15 +3,43 @@
 global start
 global irq0_stub
 global int40_stub
+global int80_stub
+global gdt_new
 extern kernel_main
 extern task_schedule_irq
+extern syscall_dispatch
 extern __bss_start
 extern __bss_end
+
+; 中断帧的公共保存/恢复片段。ring3 帧比 ring0 帧多 CPU 自动压入的 esp/ss，
+; 但 iret 会按目标 CS 的 RPL 自行决定是否弹出这两个槽，所以同一段恢复代码通用。
+%macro SAVE_CTX 2
+    push dword %1
+    push dword %2
+    push ebp
+    push edi
+    push esi
+    push edx
+    push ecx
+    push ebx
+    push eax
+%endmacro
+
+%macro RESTORE_CTX 0
+    pop eax
+    pop ebx
+    pop ecx
+    pop edx
+    pop esi
+    pop edi
+    pop ebp
+    add esp, 8
+    iret
+%endmacro
 
 section .text
 start:
     ; 打开 SSE 状态保存：CR4.OSFXSR/OSXMMEXCPT，清 CR0.EM/TS，置 MP。
-    ; 之后 C 侧才能安全使用 fxsave/fxrstor 保存每个任务的 FPU/SSE 上下文。
     mov eax, cr4
     or eax, 0x600
     mov cr4, eax
@@ -28,62 +56,55 @@ start:
     xor eax, eax
     rep stosb
 
-    ; 任务栈从 0x8000 起，会覆盖引导扇区 0x7c97 的 GDT；先搬到 0x12800 再加载。
-    mov esi, 0x7c97
-    mov edi, 0x12800
-    mov ecx, 24
-    rep movsb
+    ; 内核自己的 GDT：ring0 代码/数据、ring3 代码/数据、TSS 槽。
+    ; TSS 描述符由 C 侧 tss_init() 写入，loader 只负责加载表和 ltr。
     lgdt [gdtr_new]
 
-    ; 设置C代码栈
     mov esp, 0xC000
     call kernel_main
 
-; 死循环，内核返回就停机
 hang_loop:
     hlt
     jmp hang_loop
 
-; IRQ0：CPU 已压入 EFLAGS/CS/EIP，这里补 error 和 vector。
 irq0_stub:
-    push dword 0
-    push dword 0x20
-    jmp irq_common
+    SAVE_CTX 0, 0x20
+    jmp task_common
 
 ; 软件调度门：task_yield/task_block/task_exit/task_start 共用。
 int40_stub:
-    push dword 0
-    push dword 0x40
-    jmp irq_common
+    SAVE_CTX 0, 0x40
+    jmp task_common
 
-; 统一帧布局（低地址到高地址）：
-; eax ebx ecx edx esi edi ebp vector err eip cs eflags
-; task_schedule_irq 返回下一个任务的帧指针，恢复后 iret 进入该任务。
-irq_common:
-    push ebp
-    push edi
-    push esi
-    push edx
-    push ecx
-    push ebx
+; ring3 系统调用门：不经过调度器，由 syscall_dispatch 处理并返回同一帧。
+int80_stub:
+    SAVE_CTX 0, 0x80
+    mov eax, esp
     push eax
+    call syscall_dispatch
+    add esp, 4
+    mov esp, eax
+    RESTORE_CTX
+
+task_common:
     mov eax, esp
     push eax
     call task_schedule_irq
     add esp, 4
     mov esp, eax
-    pop eax
-    pop ebx
-    pop ecx
-    pop edx
-    pop esi
-    pop edi
-    pop ebp
-    add esp, 8
-    iret
+    RESTORE_CTX
 
-; 新 GDT 位于 IDT(0x12000..0x127FF) 之后的 0x12800。
+; 内核 GDT 位于内核映像 .data，任务栈从 0x8000 起，不会覆盖。
 section .data
+align 8
+gdt_new:
+    dq 0
+    dq 0x00CF9A000000FFFF      ; 0x08 ring0 code
+    dq 0x00CF92000000FFFF      ; 0x10 ring0 data
+    dq 0x00CFFA000000FFFF      ; 0x18 ring3 code -> 0x1B
+    dq 0x00CFF2000000FFFF      ; 0x20 ring3 data -> 0x23
+    dq 0                        ; 0x28 TSS，由 tss_init() 填写
+gdt_new_end:
 gdtr_new:
-    dw 0x17
-    dd 0x12800
+    dw gdt_new_end - gdt_new - 1
+    dd gdt_new

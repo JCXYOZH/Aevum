@@ -15,6 +15,7 @@ enum task_state {
 };
 
 struct task_struct;
+struct address_space;
 
 /* 进程描述符的只读快照；渲染/监视器只能读，不能改任务字段。 */
 struct task_info {
@@ -32,6 +33,11 @@ struct task_info {
 void task_boot(void);
 u32 task_create(int priority, const char *name,
                 void (*entry)(void), u32 stack_top, struct task_struct **out);
+
+/* 用户任务：入口是用户虚拟地址，首次 iret 用 ring3 的 CS/SS 与用户栈。 */
+u32 task_create_user(int priority, const char *name, u32 user_eip,
+                     u32 kernel_stack_top, struct address_space *space,
+                     u32 user_stack_top, struct task_struct **out);
 void task_exit(void) __attribute__((noreturn));
 int task_current_pid(void);
 int task_pid_of(struct task_struct *task);

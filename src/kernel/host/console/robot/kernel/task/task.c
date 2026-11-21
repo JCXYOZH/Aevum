@@ -2,19 +2,17 @@
 #include "kernel/task/family.h"
 #include "kernel/error.h"
 #include "arch/x86/interrupt.h"
+#include "arch/x86/frame.h"
+#include "arch/x86/tss.h"
+#include "kernel/mm/address_space.h"
 #include "config/memory.h"
 
-#define CTX_FRAME_SLOTS 12
+#define CTX_FRAME_SLOTS      12
+#define CTX_FRAME_SLOTS_USER 14
 #define TASK_TRACE_N    64
 #define TASK_TRACE_DIV  32
 #define PID_MAX         31
 #define STACK_MAGIC     0xA5A5A5A5u
-
-/* 与 loader.asm 的 irq_common 帧逐槽对应。 */
-struct irq_frame {
-    u32 eax, ebx, ecx, edx, esi, edi, ebp;
-    u32 vector, err, eip, cs, eflags;
-};
 
 struct context {
     u32 esp;
@@ -25,13 +23,14 @@ struct task_struct {
     int  state;
     int  priority;
     char comm[TASK_NAME_MAX + 1];
-    void (*entry)(void);
     u32  stack_base;
     u32  stack_top;
     u32  switches;
     u32  cpu_ticks;
     u64  vruntime;
     u32  fpu_state;
+    int  user;
+    struct address_space *space;
     struct context ctx;
 };
 
@@ -103,13 +102,14 @@ static void task_zero(struct task_struct *task)
     task->state = TASK_UNUSED;
     task->priority = 0;
     for (i = 0; i <= TASK_NAME_MAX; i++) task->comm[i] = 0;
-    task->entry = 0;
     task->stack_base = 0;
     task->stack_top = 0;
     task->switches = 0;
     task->cpu_ticks = 0;
     task->vruntime = 0;
     task->fpu_state = 0;
+    task->user = 0;
+    task->space = 0;
     task->ctx.esp = 0;
 }
 
@@ -122,6 +122,7 @@ void task_boot(void)
     boot_task.comm[2] = 'i';
     boot_task.comm[3] = 't';
     boot_task.fpu_state = (u32)boot_fpu_state;
+    boot_task.space = address_space_kernel();
     current_task = &boot_task;
     pid_map = 0;
     family_boot();
@@ -135,8 +136,9 @@ void task_boot(void)
     fpu_save(boot_fpu_state);
 }
 
-u32 task_create(int priority, const char *name,
-                void (*entry)(void), u32 stack_top, struct task_struct **out)
+static u32 task_create_common(int priority, const char *name, u32 entry,
+                              u32 stack_top, struct address_space *space,
+                              int user, u32 user_stack, struct task_struct **out)
 {
     struct task_struct *task;
     u32 *sp;
@@ -148,6 +150,7 @@ u32 task_create(int priority, const char *name,
     if (!out) return ERR_TASK_OUT_MISSING;
     *out = 0;
     if (!entry) return ERR_TASK_ENTRY_MISSING;
+    if (!space) return ERR_TASK_BAD_STATE;
     if (priority < 0 || priority > 3) return ERR_TASK_PRIORITY;
     if (stack_top < AEVUM_TASK_STACK_MIN || stack_top > AEVUM_TASK_STACK_MAX ||
         (stack_top & 0xFu))
@@ -183,10 +186,11 @@ u32 task_create(int priority, const char *name,
     task->priority = priority;
     /* 新任务从当前虚拟时间起跑，不靠 0 值抢占已运行任务的时间片。 */
     task->vruntime = current_task ? current_task->vruntime : 0;
-    task->entry = entry;
     task->stack_base = stack_base;
     task->stack_top = stack_top;
     task->fpu_state = fpu_state;
+    task->user = user;
+    task->space = space;
     for (i = 0; i < TASK_NAME_MAX && name[i]; i++) task->comm[i] = name[i];
     task->comm[i] = 0;
 
@@ -202,13 +206,18 @@ u32 task_create(int priority, const char *name,
 
     /*
      * 新任务的初始帧必须和中断帧同构，第一次 iret 就会进入 entry。
+     * ring0 用 0x08 代码段；ring3 用 0x1B/0x23，并在帧尾补 user esp/ss。
      * eflags=0x202 打开 IF，任务开始运行后 PIT 才能真正抢占。
      */
-    sp = (u32 *)(stack_top - CTX_FRAME_SLOTS * 4);
-    for (i = 0; i < CTX_FRAME_SLOTS; i++) sp[i] = 0;
-    sp[9]  = (u32)entry;
-    sp[10] = 0x08;
+    sp = (u32 *)(stack_top - (user ? CTX_FRAME_SLOTS_USER : CTX_FRAME_SLOTS) * 4);
+    for (i = 0; i < (user ? CTX_FRAME_SLOTS_USER : CTX_FRAME_SLOTS); i++) sp[i] = 0;
+    sp[9]  = entry;
+    sp[10] = user ? 0x1B : 0x08;
     sp[11] = 0x202;
+    if (user) {
+        sp[12] = user_stack;
+        sp[13] = 0x23;
+    }
     task->ctx.esp = (u32)sp;
 
     /*
@@ -223,6 +232,22 @@ u32 task_create(int priority, const char *name,
         __asm__ __volatile__("push %0; popf" : : "r"(flags) : "memory", "cc");
     }
     return 0;
+}
+
+u32 task_create(int priority, const char *name,
+                void (*entry)(void), u32 stack_top, struct task_struct **out)
+{
+    return task_create_common(priority, name, (u32)entry, stack_top,
+                              address_space_kernel(), 0, 0, out);
+}
+
+u32 task_create_user(int priority, const char *name, u32 user_eip,
+                     u32 kernel_stack_top, struct address_space *space,
+                     u32 user_stack_top, struct task_struct **out)
+{
+    if (!space) return ERR_TASK_BAD_STATE;
+    return task_create_common(priority, name, user_eip, kernel_stack_top,
+                              space, 1, user_stack_top, out);
 }
 
 struct task_struct *task_current(void)
@@ -322,6 +347,7 @@ static void task_reap(void)
     for (i = 0; i < TASK_MAX; i++) {
         if (tasks[i].state == TASK_ZOMBIE) {
             pid_free(tasks[i].pid);
+            if (tasks[i].user) address_space_release(tasks[i].space);
             task_zero(&tasks[i]);
         }
     }
@@ -362,6 +388,8 @@ u32 task_schedule_irq(struct irq_frame *frame)
         next->state = TASK_RUNNING;
         current_task = next;
         task_note_switch(next);
+        address_space_switch(next->space);
+        tss_set_esp0(next->stack_top);
         fpu_save((void *)prev->fpu_state);
         fpu_restore((void *)next->fpu_state);
         sched_reason = SCHED_YIELD;
@@ -413,6 +441,8 @@ u32 task_schedule_irq(struct irq_frame *frame)
         fpu_restore((void *)next->fpu_state);
     }
     current_task = next;
+    address_space_switch(next->space);
+    tss_set_esp0(next->stack_top);
     sched_reason = SCHED_YIELD;
     return next->ctx.esp;
 }

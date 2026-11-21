@@ -43,13 +43,13 @@ static inline u8 inb(u16 port)
     return value;
 }
 
-static void idt_set_gate(int vector, void (*handler)(void))
+static void idt_set_gate_flags(int vector, void (*handler)(void), u8 flags)
 {
     u32 address = (u32)handler;
     idt[vector].off_low = (u16)(address & 0xFFFFu);
     idt[vector].selector = 0x08;
     idt[vector].zero = 0;
-    idt[vector].flags = 0x8E;             /* present, ring0, 32-bit interrupt gate */
+    idt[vector].flags = flags;
     idt[vector].off_high = (u16)(address >> 16);
 }
 
@@ -92,8 +92,8 @@ void interrupt_init(void)
         idt[i].off_high = 0;
     }
 
-    idt_set_gate(0x20, irq0_stub);
-    idt_set_gate(0x40, int40_stub);
+    idt_set_gate_flags(0x20, irq0_stub, 0x8E);
+    idt_set_gate_flags(0x40, int40_stub, 0x8E);
 
     idtr.limit = (u16)(sizeof(struct idt_entry) * IDT_ENTRIES - 1);
     idtr.base = IDT_BASE;
@@ -101,6 +101,11 @@ void interrupt_init(void)
 
     pic_remap();
     pit_init();
+}
+
+void interrupt_set_user_gate(int vector, void (*handler)(void))
+{
+    idt_set_gate_flags(vector, handler, 0xEE);
 }
 
 void interrupt_eoi(void)

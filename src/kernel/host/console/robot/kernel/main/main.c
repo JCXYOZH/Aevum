@@ -1,6 +1,9 @@
 #include "kernel/types.h"
 #include "kernel/error.h"
 #include "kernel/task.h"
+#include "kernel/mm/address_space.h"
+#include "arch/x86/tss.h"
+#include "arch/x86/syscall.h"
 #include "arch/x86/interrupt.h"
 #include "drivers/video/vga.h"
 #include "drivers/serial/uart.h"
@@ -12,7 +15,9 @@ void kernel_main(void)
 
     vga_init();
     uart_init();
+    address_space_boot();
     task_boot();
+    tss_init();
 
     rc = arm_app_init();
     if (rc) {
@@ -31,6 +36,7 @@ void kernel_main(void)
     /* 先装 IDT/PIC/PIT，再让第一个任务 iret 打开 IF；定时抢占从此刻开始。 */
     __asm__ __volatile__("cli");
     interrupt_init();
+    syscall_init();
     arm_app_start();
     for (;;) __asm__ __volatile__("cli; hlt");
 }

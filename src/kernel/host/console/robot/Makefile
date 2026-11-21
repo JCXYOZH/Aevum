@@ -22,7 +22,10 @@ SRCS = \
 	kernel/error/error.c \
 	kernel/task/task.c \
 	kernel/task/family/family.c \
+	kernel/mm/address_space/address_space.c \
 	arch/x86/cpu/interrupt/interrupt.c \
+	arch/x86/cpu/tss/tss.c \
+	arch/x86/cpu/syscall/syscall.c \
 	drivers/video/vga/text/vga.c \
 	drivers/serial/uart/uart.c \
 	drivers/input/keyboard/keyboard.c \
@@ -36,9 +39,11 @@ SRCS = \
 	app/fpu/demo/demo.c \
 	app/fpu/render/render.c \
 	app/tree/demo/demo.c \
-	app/tree/render/render.c
+	app/tree/render/render.c \
+	app/user/demo/demo.c \
+	app/user/render/render.c
 
-OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o))
+OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o)) build/user/ring3.o
 IMG     = os.img
 
 GENERATED = boot.bin $(IMG) disk.img kernel.bin kernel.elf $(BUILD)
@@ -58,14 +63,18 @@ $(BUILD)/loader.o: loader.asm
 	@mkdir -p $(BUILD)
 	$(AS) $(ASFLAGS_ELF32) loader.asm -o $@
 
+$(BUILD)/user/ring3.o: user/ring3/ring3.asm
+	@mkdir -p $(BUILD)/user
+	$(AS) $(ASFLAGS_ELF32) user/ring3/ring3.asm -o $@
+
 kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 	$(LD) -m elf_i386 -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf
 
 # 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
 kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 24576 / 48 sectors)"; \
-	if [ $$size -gt 24576 ]; then echo "ERROR: kernel.bin $$size bytes > 24576"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 27648 / 54 sectors)"; \
+	if [ $$size -gt 27648 ]; then echo "ERROR: kernel.bin $$size bytes > 27648"; exit 1; fi
 
 boot.bin: boot.asm
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin
