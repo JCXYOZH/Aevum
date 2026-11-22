@@ -12,7 +12,7 @@ BUILD   = build
 CFLAGS  = -m32 -mno-sse -ffreestanding -c -Os -g -fno-tree-loop-distribute-patterns -fno-pic -fno-pie \
           -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables \
           -falign-functions=1 -falign-jumps=1 -falign-loops=1 \
-          -Wall -Wextra -Iinclude -I.
+          -ffunction-sections -fdata-sections -Wall -Wextra -Iinclude -I.
 ASFLAGS_BIN   = -f bin
 ASFLAGS_ELF32 = -f elf32
 LDSCRIPT = kernel.ld
@@ -93,7 +93,7 @@ $(BUILD)/user/exec_pipe.o: user/exec-pipe/exec_pipe.asm
 	$(AS) $(ASFLAGS_ELF32) user/exec-pipe/exec_pipe.asm -o $@
 
 kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
-	$(LD) -m elf_i386 -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf
+	$(LD) -m elf_i386 --gc-sections -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf
 
 # 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
 kernel.bin: kernel.elf

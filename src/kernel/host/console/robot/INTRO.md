@@ -35,6 +35,10 @@
 - **交互**：空格扫描码 `0x39` 切换零空间；每 420 帧自动切换一次；`P`（扫描码 `0x19`）创建一个全屏 `probe` 任务；`B`（扫描码 `0x30`）把 `idle` 任务阻塞成 `3id B`，再按一次 `B` 唤醒；`T`（扫描码 `0x14`）进入/退出全屏抢占决斗；`C`（扫描码 `0x2E`）进入/退出 CPU 统计页；`F`（扫描码 `0x21`）进入/退出 FPU 页；`G`（扫描码 `0x22`）进入/退出家族树页；`V`（扫描码 `0x2F`）进入/退出 `V PAGE OBSERVABILITY` 四页（槽/树/地址/fd）；`K`（扫描码 `0x25`）触发内核态 `#PF` 诊断页，`R` 恢复、`H` 停机；`userC` 写 `0xB8000`、`userF` 写 guard 都会触发 `#PF`，D 的第二轮子进程 `1/0` 触发 `#DE` 并由用户 handler 捕获；C/F 只终止当前用户进程，D 子进程在 `sigreturn` 后继续执行并 `exit(9)`，第三轮子进程 exec 后 `exit(10)`，第四轮 exec 子进程通过继承的 fd 3 写 `PIPE` 后 `exit(12)`。
 - **错误**：错误身份是 `(owner, field)` 字符串对；失败时由 `aevum_fail()` 打印 owner、field、type、detail、at，并停机。
 
+## P5.3 100 轮 fork/wait 压测
+
+按 `S`（扫描码 `0x1F`）复用 P5.1 池页进入 `AEVUM / P5.3 FORK/WAIT STRESS`。父进程 `stressA` 做 100 轮 `fork`，子进程 `exit(7)`，父进程每轮 `wait` 并校验返回 PID 等于子 PID、status 等于 7，同时要求 100 轮复用同一 PID；全部通过后写 `POOL` 魔数并保持存活供观察，按 `S` 停止时 `exit(18)`。页面显示 `round 100/100 first 5 -> 5 live 1 state STRESS OK`、`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`。两轮独立启动都得到 PID 5、PHYS 6/255，ASID 从 1 到 102 后继续复用；说明 100 次子进程回收后 PID/页/AS/内核栈都回到单父进程基线。P5.3 同时给 C 目标加 `-ffunction-sections -fdata-sections`、链接加 `--gc-sections`，clean `kernel.bin=64,808`，余量 728 字节。
+
 ## 模块结构
 
 ```text
@@ -95,7 +99,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 65,536 字节（`boot.asm` 一次 LBA 读 128 个扇区到 `0x80000`）；当前 clean 构建 64,872 字节，BSS 结束于 `0x939F8`，镜像余量只有 664 字节；BSS 尾部 `0x90000..0x939F8` 由 loader 清零。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 65,536 字节（`boot.asm` 一次 LBA 读 128 个扇区到 `0x80000`）；当前 clean 构建 64,808 字节，BSS 结束于 `0x9395C`，镜像余量 728 字节；BSS 尾部 `0x90000..0x9395C` 由 loader 清零。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 

@@ -20,6 +20,8 @@
 ; 0x4010C0 pool 子进程数量，0x4010C4 "POOL" 魔数，0x4010C8 pool 只执行一次标记，
 ; 0x4010D0 P5.2 fork/wait 前的 yield 计数，让子进程 ZOMBIE 可被 V 页观察；
 ; 0x401100..0x40111F pool 8 个子进程 pid；
+; stress 复用 0x4010C0 round、0x4010C4 "POOL" 完成魔数、0x4010C8 只执行一次，
+; 0x401100 first PID、0x401104 last PID、0x401108 wait status；
 ; 0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
 ; stack 0x403000，control 0x404000，heap 0x405000 起。
@@ -34,6 +36,9 @@
 ; 模式 5：池压力；父进程连续 fork 8 个子进程并全部保持存活，pid 写入
 ;         0x401100..0x40111F，count 0x4010C0，魔数 0x4010C4；停止后父 exit(16)、
 ;         子 exit(17)。本模式不 wait，仅验证任务/PROC/AS/栈池同时容纳 9 个用户进程。
+; 模式 6：P5.3 压测；父进程连续 100 轮 fork，子进程 exit(7)，父 wait 校验
+;         返回 PID 与 status，首末 PID 应相同（PID 复用），轮次/首末 PID 写 0x4010C0/0x401100/0x401104；
+;         完成后保持存活供页面读取，停止时父 exit(18)。
 [bits 32]
 section .text
 global user_program_start
@@ -58,6 +63,8 @@ user_program_start:
     je .console_mode
     cmp dword [0x401004], 5
     je .pool_mode
+    cmp dword [0x401004], 6
+    je .stress_mode
 
     ; 模式 0：只做一次 heap/guard 指针验收。
     cmp dword [0x401030], 0
@@ -448,6 +455,59 @@ user_program_start:
     int 0x80
     jmp .hang
 
+; P5.3：100 轮 fork/wait。子进程只 exit(7)；父进程每轮校验 wait 返回的
+; 子 PID 和 status，并比较首末 PID 是否复用；完成后保持存活供页面观察。
+.stress_mode:
+    cmp dword [0x4010C8], 0
+    jne .stress_hold
+    mov dword [0x4010C8], 1
+    mov dword [0x4010C0], 0
+    mov dword [0x4010C4], 0
+    mov dword [0x401100], 0
+    mov dword [0x401104], 0
+.stress_loop:
+    cmp dword [0x4010C0], 100
+    jae .stress_done
+    mov eax, 6              ; fork
+    int 0x80
+    test eax, eax
+    jz .stress_child
+    mov [0x401104], eax
+    mov ebx, eax
+    mov ecx, 0x401108
+    mov eax, 4              ; wait: return child PID, status in 0x401108
+    int 0x80
+    cmp eax, ebx
+    jne .stress_hold        ; wait did not reap this child
+    cmp dword [0x401108], 7
+    jne .stress_hold        ; child status must be 7
+    cmp dword [0x401100], 0
+    jne .stress_pid_check
+    mov [0x401100], ebx
+.stress_pid_check:
+    cmp ebx, [0x401100]     ; all 100 rounds must reuse the first PID
+    jne .stress_hold
+    inc dword [0x4010C0]
+    jmp .stress_loop
+.stress_done:
+    mov dword [0x4010C4], 0x4C4F4F50 ; POOL magic = 100/100 validated
+.stress_hold:
+    cmp dword [0x404000], 0
+    jne .stress_stop
+    mov eax, 2
+    int 0x80
+    jmp .stress_hold
+.stress_stop:
+    mov eax, 3
+    mov ebx, 18
+    int 0x80
+    jmp .hang
+.stress_child:
+    mov eax, 3
+    mov ebx, 7
+    int 0x80
+    jmp .hang
+
 .child_exit:
     mov dword [0x401038], 0x43484C44   ; "CHLD"，触发子侧 COW 拆分
     mov eax, 3              ; syscall: exit
@@ -544,3 +604,4 @@ console_tail:
 console_tail_end:
 
 user_program_end:
+

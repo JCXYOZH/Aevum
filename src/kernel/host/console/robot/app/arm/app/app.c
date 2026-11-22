@@ -136,11 +136,27 @@ static void proc_render(void)
             continue;
         }
 
+        /* P5.3 压测页：S 进入；父进程 100 轮 fork/wait，子进程 exit(7)。 */
+        if (key == 0x1F && !console_live && !duel_live && !cpu_live &&
+            !probe_live && !fpu_demo_live() && !tree_live && !user_live &&
+            !pool_live) {
+            const char *rc = pool_demo_start(1);
+            if (rc) {
+                struct aevum_error e = app_dep_template;
+                e.field = rc;
+                e.at = "proc_render -> pool_demo_start(6)";
+                aevum_fail(&e);
+            }
+            pool_live = 1;
+            pool_exiting = 0;
+            continue;
+        }
+
         /* P5.1 池压力页：Y 进入；根进程 fork 8 个子进程，全部保持可调度。 */
         if (key == 0x15 && !console_live && !duel_live && !cpu_live &&
             !probe_live && !fpu_demo_live() && !tree_live && !user_live &&
             !pool_live) {
-            const char *rc = pool_demo_start();
+            const char *rc = pool_demo_start(0);
             if (rc) {
                 struct aevum_error e = app_dep_template;
                 e.field = rc;
@@ -155,7 +171,7 @@ static void proc_render(void)
         if (pool_live) {
             const char *rc;
 
-            if (key == 0x15) {
+            if (key == (pool_demo_is_stress() ? 0x1F : 0x15)) {
                 if (pool_demo_alive()) {
                     pool_exiting = 1;
                     pool_demo_stop();

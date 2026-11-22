@@ -4,7 +4,7 @@
 
 P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题；P4.1 加入内嵌 flat 镜像 `exec`，保留 PID/任务槽，替换用户 AS、入口、栈和信号状态；P4.2 给 `exec` 增加 `argv/envp` 解析、字符串迁移和 SysV 初始栈；P4.3 增加每进程 fd 表、匿名 pipe、`pipe/read/write/close`，并证明 exec 后 fd 表继续有效；P4.4 把 fd 0/1 接到 console 字符设备，验证键盘输入、VGA/COM1 输出、fork 继承和 close 边界。
 
-## 一、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2 现在的实现
+## 一、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3 现在的实现
 
 | 能力 | 当前实现 | 位置 |
 | --- | --- | --- |
@@ -262,21 +262,45 @@ clean 构建 `kernel.bin=64,872`、`boot.bin=512`、`disk.img=1,474,560`；kerne
 - page 4 FD/SIG：fd0 `CONR kind 3`、fd1 `CONW kind 4`、fd2..7 closed，`OPEN fd 2/8`；`EXC #DE cnt 1 pid 8 eip 00400606 sig 8 SIGFPE hdl 1`；`#PF pid 7 eip 004002A4 cr2 00401080 err 00000007 count 8`。
 - 滚动：`PgDn` 后 `window 3-12/12`，`SLOT 2..11` 全部出现；再 `Up` 两次选中槽 4，详情为 `TASK ZOMB ... AS CR3 0011A000 ASID 5`，窗口不变。
 
-## 十、后续阶段
+## 十、P5.3 100 轮 fork/wait 压测
+
+### 10.1 落点与归属
+
+P5.3 不新增页面：`S`（`0x1F`）复用 P5.1 的池页外壳，`pool_demo_start(int stress)` 仍是 `poolA/stressA` 创建、模式写入和首次 yield 的唯一入口，`stress ? 6u : 5u` 选择 ring3 mode 6 或 P5.1 mode 5。`pool_demo_is_stress()` 只供 `app/arm/app/app.c` 选择退出键（`S`/`Y`），页面仍由 `app/pool/render/render.c` 唯一绘制。
+
+数据布局复用 P5.1 用户页，不新增结构体：`0x4010C0` 已完成轮次，`0x4010C4` 完成魔数 `POOL`，`0x4010C8` 只执行一次标记，`0x401100/0x401104/0x401108` 首 PID/末 PID/wait status。`pool_demo_child_count()` 在 stress 下返回 0..100，且跳过 8 项 PID 缓存循环；`pool_demo_child_pid(0/1)` 读首/末 PID。
+
+### 10.2 ring3 校验
+
+父进程 100 轮：`eax=6 fork`；子进程 `eax=3, ebx=7 exit(7)`；父进程以本轮返回子 PID 调 `eax=4 wait`，校验返回值等于子 PID、status 等于 7；首轮 PID 写 `0x401100`，后续必须与首轮相同。任一失败立即停在 `<100` 且不写魔数；全部通过才写 `0x4010C4="POOL"` 并保持存活。`S` 停止时父进程 `exit(18)`，由现有 `process_wait/reap/cleanup` 路径回收 fd、task 槽、AS、PID、内核栈和物理页。
+
+### 10.3 构建预算
+
+新增代码后首次构建 66,120B 超限。最终把 `Makefile` 的 C 目标加 `-ffunction-sections -fdata-sections`、链接加 `--gc-sections`，回收约 1.3KB 不可达代码；clean `kernel.bin=64,808`，余量 728B，`__bss_end=0x9395C`，`AEVUM_KERNEL_END=0x94000`。
+
+### 10.4 QEMU 验收
+
+两轮都从 fresh boot 的机械臂主画面按 `S` 进入，每轮等 `round 100/100` 与 `STRESS OK` 后按 `S` 停止、回主画面再启动下一轮：
+
+- 第一轮：`round 100/100 first 5 -> 5 live 1 state STRESS OK`，`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`，进程表 `PID 4 LIVE stressA`、`PID 5 DEAD userE`；ASID 1。
+- 第二轮：`round 100/100 first 5 -> 5 live 1 state STRESS OK`，`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`；ASID 102，首末 PID 仍为 5。
+- 两轮间 PID、AS 槽、内核栈槽与物理页计数完全一致；ASID 变化只说明地址空间槽被重新分配后再次复用，没有累积。
+
+## 十一、后续阶段
 
 ### P5：规模与可观测性
 
 - P5.1 已完成：16/12/12 任务/进程/AS 槽位，12 个 4KB 用户内核栈位图池，`Y` 页 9 个 LIVE 进程与两轮槽位/栈复用。
 - P5.2 已完成：`V` 页 4 页分页/滚动，进程树、ZOMBIE、waiters、VMA、信号、fd 全部可观察；clean `kernel.bin=64,872`，距 65,536 上限余 664 字节。
-- 未完成：P5.3 压测，反复 fork/wait 100 轮，无 PID/页/栈泄漏；新增文案或页面必须先核算镜像体积。
+- P5.3 已完成：`S` 复用池页执行 100 轮 fork/wait，首末 PID 均为 5，两轮 `PHYS 6/255`、`proc/AS/KSTK 1/12`；clean `kernel.bin=64,808`，余量 728B。
 
-## 十一、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2 边界与已知取舍
+## 十二、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3 边界与已知取舍
 
 - `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；本轮给 yield 补了 vruntime 记账，并给 fork 子任务 `vruntime=0` 的起跑保证，避免父进程轮询时把子任务或其他 lane 饿死。P4.4 X 页为了保持交互帧率，父进程关闭 0/1 后不进入 `wait`，子进程完成后由页面 `out 14` / `EXIT 14` 判定。
-- P5.2 的 `V` 页固定 4 页，原第 5 页 `DEMO` 因 `kernel.bin` 达到 68,744B、超过 65,536B 上限被删除，旧证据压缩进 `ADDRESS` 页；最终 64,872B 只剩 664B，新增首页/文案前必须先算体积。
+- P5.2 的 `V` 页固定 4 页，原第 5 页 `DEMO` 因 `kernel.bin` 达到 68,744B、超过 65,536B 上限被删除，旧证据压缩进 `ADDRESS` 页。P5.3 clean 构建为 64,808B、余量 728B；`--gc-sections` 已回收不可达代码，但新增页面或长文案前仍必须先算体积。
 - `V` 页的页面状态是单个静态实例（`page_mode/page_slot/page_first`），四页共享同一个选中槽；`process_slot_space()` / `process_slot_fd_info()` 是只读快照，没有 seqlock，单核下仍可能在 PIT 切换窗口看到半更新字段，已知取舍是“可观察面优先、不做事务化快照”。
 - `PgDn` 把选中槽带到槽 10/11 后，空槽详情只显示 `EMPTY` 和池统计；要回到有内容槽需 `Up` 或 `Home`，这是当前交互语义，不是滚动丢失。
-- P5.2 没有新增持久对象或第二套页表；页面只读 `process_snapshot`、`address_space`、`proc_fd_snapshot` 和异常/COW 统计。P5.3 的 100 轮 fork/wait 压测尚未开始。
+- P5.3 没有新增持久对象、页面或第二套计数；只复用 P5.1 池页与用户数据槽，压测状态由 ring3 写、页面只读。`S` 与 `Y` 共用同一池页外壳，二者互斥，不能同时运行。
 
 - P3.2 已有用户 handler、signal frame 和 `sigreturn`；P4.1 已有内嵌 flat 镜像 `exec`、PID/任务槽保留、AS 替换和信号重置；P4.2 已有 `argv/envp` 解析、字符串迁移、SysV 初始栈和 `exec_argc/exec_envc` 元数据；P4.3 已有每进程 fd 表、匿名 pipe、`pipe/read/write/close` 和 exec 后 fd 保留；P4.4 已有全局 console fd 0/1、fork 继承、close 边界和 VGA/COM1 双写。仍没有 ELF loader、文件系统/路径 `open`、console 会话/前台焦点、`kill()`、信号排队、真正阻塞的 mask、`SA_SIGINFO`/`SA_RESTART` 等 POSIX 语义。
 - `sig_mask` 只随 frame 保存/恢复，不阻止信号投递；handler 执行期间同一信号仍可能再次进入。

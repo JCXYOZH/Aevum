@@ -1,5 +1,6 @@
 #include "app/pool/demo.h"
 #include "kernel/task.h"
+#include "kernel/task/stack.h"
 #include "kernel/proc.h"
 #include "kernel/mm/address_space.h"
 #include "arch/x86/page_fault.h"
@@ -19,14 +20,12 @@ static struct address_space *pool_space;
 static int pool_pid;
 static u32 pool_pids[POOL_DEMO_CHILDREN];
 static const char *volatile pool_error;
+static int pool_stress;
 
-const char *pool_demo_start(void)
+static void pool_reset(void)
 {
-    u32 code_size;
+    int i;
 
-    if (pool_demo_alive()) return "pool_demo_live";
-
-    code_size = (u32)user_program_end - (u32)user_program_start;
     pool_error = 0;
     process_cleanup();
     page_fault_clear();
@@ -34,20 +33,29 @@ const char *pool_demo_start(void)
     pool_proc = 0;
     pool_space = 0;
     pool_pid = 0;
-    {
-        int i;
-        for (i = 0; i < POOL_DEMO_CHILDREN; i++) pool_pids[i] = 0;
-    }
+    pool_stress = 0;
+    for (i = 0; i < POOL_DEMO_CHILDREN; i++) pool_pids[i] = 0;
+}
 
-    pool_proc = process_create_user(1, "poolA", user_program_start,
-                                    code_size, AEVUM_USER_STACK_TOP);
+const char *pool_demo_start(int stress)
+{
+    u32 code_size;
+
+    if (pool_demo_alive()) return "pool_demo_live";
+    code_size = (u32)user_program_end - (u32)user_program_start;
+    pool_reset();
+    pool_stress = stress ? 1 : 0;
+
+    pool_proc = process_create_user(1, stress ? "stressA" : "poolA",
+                                    user_program_start, code_size,
+                                    AEVUM_USER_STACK_TOP);
     if (!pool_proc) {
         pool_error = "process_create_user";
         return pool_error;
     }
     pool_space = process_space(pool_proc);
     pool_pid = process_pid_of(pool_proc);
-    address_space_set_mode(pool_space, 5u);
+    address_space_set_mode(pool_space, stress ? 6u : 5u);
     if (task_yield()) {
         pool_error = "task_yield";
         pool_demo_stop();
@@ -69,7 +77,13 @@ void pool_demo_cleanup(void)
     pool_proc = 0;
     pool_space = 0;
     pool_pid = 0;
+    pool_stress = 0;
     for (i = 0; i < POOL_DEMO_CHILDREN; i++) pool_pids[i] = 0;
+}
+
+int pool_demo_is_stress(void)
+{
+    return pool_stress;
 }
 
 int pool_demo_alive(void)
@@ -101,6 +115,10 @@ u32 pool_demo_child_count(void)
     if (!pool_space || !address_space_user_active(pool_space))
         return 0;
     count = address_space_user_read32(pool_space, AEVUM_USER_DATA_VA + POOL_COUNT_OFF);
+    if (pool_stress) {
+        if (count > POOL_STRESS_ROUNDS) count = POOL_STRESS_ROUNDS;
+        return count;
+    }
     if (count > POOL_DEMO_CHILDREN) count = POOL_DEMO_CHILDREN;
     for (i = 0; i < (int)count; i++)
         pool_pids[i] = address_space_user_read32(

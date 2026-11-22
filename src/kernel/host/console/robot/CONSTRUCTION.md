@@ -232,13 +232,23 @@ P5.2 把 `V` 页从单体渲染推进为“UI 状态 + 页面绘制”分离，�
 
 边界：32 位、平坦段、单核、255 页固定物理池的最小实现。没有 ELF 加载、文件系统、路径 `open` 或 console 会话/前台焦点，也没有多核；`exec` 只接受内嵌 flat 镜像 1/2，`argv/envp` 只支持最多 4 项、每串最多 31 字符，不是通用装载器。fd 表只有 8 槽，fd 0/1 是单个全局 console 的读/写端点，pipe 池只有 4 个对象、每对象 64 字节且非阻塞，不具备阻塞队列、命名 pipe 或文件语义。信号已有每进程 handler 表、signal frame、`sigreturn` 和 SIGCHLD pending，但没有 `kill()`、信号排队或真正阻塞的 mask；`#DE` 只解码 `F6/F7`，其他同步异常直接 `ret` 会重试 faulting 指令。`fork` 是 COW，但 `wait` 是 yield 轮询；`family` 和 `process` 是两套树；非探针内核 trap 仍终止性停机。
 
+### 3.9 100 轮 fork/wait 压测（P5.3）
+
+P5.3 在 P5.1 的 `Y` 池页外壳上增加 `S` 模式，不新增页面、不新增第二套计数：
+
+- `include/app/pool/demo.h` 只增加 `POOL_STRESS_ROUNDS=100`、`pool_demo_start(int stress)` 与 `pool_demo_is_stress()`；`pool_demo_start` 仍唯一持有 `poolA/stressA` 的创建、模式写入和首次 yield，`stress ? 6u : 5u` 决定 ring3 压测还是 P5.1 池压力。
+- `user/ring3/ring3.asm` mode 6：父进程 100 轮 `eax=6 fork`，子进程直接 `eax=3, ebx=7 exit(7)`；父进程以本轮返回子 PID 调 `eax=4 wait`，校验返回 PID 等于子 PID、`0x401108` status 等于 7，首轮子 PID 写 `0x401100`，后续 99 轮必须与首轮相同（PID 复用）。全部通过后写 `0x4010C4="POOL"` 并保持存活，按 `S` 停止时 `exit(18)`。
+- 压测复用 P5.1 数据布局，不复制结构体：`0x4010C0` 是已完成轮次，`0x4010C4` 是完成魔数，`0x4010C8` 是只执行一次标记，`0x401100/0x401104/0x401108` 是首 PID/末 PID/wait status。页面仍由 `app/pool/render/render.c` 唯一绘制；`pool_demo_child_count()` 在 stress 下返回 0..100 轮次，并跳过 8 项 PID 缓存循环，避免越界。
+- 页面复用现有池统计，不额外调用 `process_live_count/process_slot_used/address_space_slot_used/kernel_stack_used`：`round 100/100 first 5 -> 5 live 1 state STRESS OK`，`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`。`state STRESS OK` 只在魔数写入后出现；任何一轮 wait 返回 PID/status 不符或 PID 未复用，轮次停在 `<100`、不写魔数，页面显示 `RUN`。
+- 构建预算：`Makefile` 的 C 目标增加 `-ffunction-sections -fdata-sections`，链接增加 `--gc-sections`，按 `ENTRY(start)` 保留可达函数/数据。该裁剪回收约 1.3KB 不可达代码，使 P5.3 仍为 64,808 字节。
+
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
 | `0x80000` | 内核镜像起点 |
-| `0x80000..0x90000` | boot 一次 LBA 读取的 128 扇区（64KB）窗口；当前 clean `kernel.bin` 64,872 字节 |
-| `0x8FD80..0x939F8` | `.bss`，由 loader 的 `rep stosb` 清零；尾部 `0x90000..0x939F8` 高于加载窗口 |
+| `0x80000..0x90000` | boot 一次 LBA 读取的 128 扇区（64KB）窗口；当前 clean `kernel.bin` 64,808 字节 |
+| `0x8FD40..0x9395C` | `.bss`，由 loader 的 `rep stosb` 清零；尾部 `0x90000..0x9395C` 高于加载窗口 |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
 | `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -263,7 +273,7 @@ P5.2 把 `V` 页从单体渲染推进为“UI 状态 + 页面绘制”分离，�
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 用一次 LBA 读 128 个扇区到 `0x80000`，所以 `kernel.bin` 必须不超过 65,536 字节。
-当前 clean 构建 64,872 字节，BSS 结束于 `0x939F8`；镜像余量只有 664 字节。BSS 尾部 `0x90000..0x939F8` 不在加载窗口内，loader 按链接符号清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
+当前 clean 构建 64,808 字节，BSS 结束于 `0x9395C`；镜像余量 728 字节。BSS 尾部 `0x90000..0x9395C` 不在加载窗口内，loader 按链接符号清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时同步 `kernel.ld` 与 `config/memory.h` 的 `AEVUM_KERNEL_END`，并确认 BSS 不越过内核主线程栈底 `0xC000`。`AEVUM_TASK_STACK_MIN=0x8000`，
 `AEVUM_TASK_STACK_MAX=0x20C000`，`AEVUM_KSTACK_COUNT=12`，`AEVUM_TASK_STACK_SIZE=0x1000`，`AEVUM_AS_MAX=12`，`PROC_MAX=12`，`TASK_MAX=16`，`AEVUM_PHYS_POOL_BASE=0x100000`，`AEVUM_PHYS_POOL_END=0x1FF000`。
@@ -280,7 +290,7 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 通过标准：
 
-- `kernel.bin` 不超过 65,536 字节，链接无 undefined symbol；P5.2 clean 构建 64,872 字节。
+- `kernel.bin` 不超过 65,536 字节，链接无 undefined symbol；P5.3 clean 构建 64,808 字节。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
 - 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C/F/G/V/K`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
@@ -301,5 +311,8 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - `V` 页数字 `4` 切到 `page 4/4 FD/SIG`：fd0 `CONR kind 3`、fd1 `CONW kind 4`、fd2..7 closed，`OPEN fd 2/8`；`EXC #DE cnt 1 pid 8 eip 00400606 sig 8 SIGFPE hdl 1`；`#PF pid 7 eip 004002A4 cr2 00401080 err 00000007 count 8`；`PIPE obj 0`。
 - `V` 页 `PgDn` 后窗口变 `3-12/12`，`SLOT 2..11` 全部出现；再 `Up` 两次选中槽 4，详情仍显示 `TASK ZOMB ... AS CR3 0011A000 ASID 5`。空槽详情显示 `SELECTED slot 6 EMPTY; use UP/DOWN to a used PCB slot`，底部仍保留 `POOL/PHYS/SCROLL` 统计。
 - P5.2 clean 构建 `kernel.bin=64,872`、`boot.bin=512`、`disk.img=1,474,560` 字节；SHA256 分别为 kernel `48b046eb...`、boot `d9a70ce2...`、disk `97379832...`。增量构建与 `make clean && make all` 的 kernel 哈希一致，证明截图对应的是 clean 产物。
+- P5.3 clean 构建 `kernel.bin=64,808`、`boot.bin=512`、`disk.img=1,474,560` 字节；SHA256 分别为 kernel `a39a6bd5...`、boot `d9a70ce2...`、disk `b1490110...`。`__bss_end=0x9395C`，`AEVUM_KERNEL_END=0x94000`；两轮 QEMU 压测截图与文本均来自该 clean 产物。
+- 按 `S`（扫描码 `0x1F`）进入 `AEVUM / P5.3 FORK/WAIT STRESS`：第一轮 `round 100/100 first 5 -> 5 live 1 state STRESS OK`，`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`；按 `S` 停止回主画面，再按 `S` 第二轮仍为 `round 100/100`、首末 PID `5 -> 5`、`PHYS 6/255`、`proc/AS/KSTK 1/12`，ASID 从 1 变为 102。两轮都完成 100 次 `wait` 且 PID 复用，证明子进程回收后 PID/AS/内核栈/物理页不泄漏。
+
 
 - 在机械臂主画面按 `K`（扫描码 `0x25`）：页面切到 `AEVUM / KERNEL PAGE FAULT`，显示 `task 2 render`、`CS=0x0008 / CPL 0`、`EIP=0x000837C1`、`CR2=0x00400000`、`ERR=0x00000002`、`CR3=0x00010000`、`P=0 W/R=1 U/S=0 RSVD=0 I/D=0`、`fault count 1`、`recoveries 0` 和 `kernel image 0x00080000..0x0008F400`；按 `R` 后回到机械臂，q 值继续变化。先跑完整 V 后按 `K`，累计 `fault count 6`：V 页自身 3 次、V 停止路径额外 2 次、K 探针 1 次；这个 count 不是单次 probe 次数。按 `H` 才停机。

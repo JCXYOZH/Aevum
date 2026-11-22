@@ -54,8 +54,8 @@ void pool_render_frame(void)
 {
     static u32 page_frames;
     struct process_info info;
-    int i, row, tasks, procs, spaces, stacks, live;
-    u32 count, magic;
+    int i, row, tasks, procs, spaces, stacks, live, stress;
+    u32 count, magic, first, last;
 
     page_frames++;
     tasks = task_slot_used();
@@ -65,11 +65,19 @@ void pool_render_frame(void)
     live = process_live_count();
     count = pool_demo_child_count();
     magic = pool_demo_magic();
+    stress = pool_demo_is_stress();
+    first = stress ? pool_demo_child_pid(0) : 0;
+    last = stress ? pool_demo_child_pid(1) : 0;
 
     vga_clear(C_BG);
     vga_fill(0, 0, 79, 0, ' ', C_HDR);
-    vga_text(4, 0, "AEVUM / P5.1 SLOT POOL", C_HDR);
-    vga_text(2, 1, "task / proc / AS / kernel-stack slots, all static pools", C_CYAN);
+    if (stress) {
+        vga_text(4, 0, "AEVUM / P5.3 FORK/WAIT STRESS", C_HDR);
+        vga_text(2, 1, "100 rounds: fork, child exit(7), wait, PID reused", C_CYAN);
+    } else {
+        vga_text(4, 0, "AEVUM / P5.1 SLOT POOL", C_HDR);
+        vga_text(2, 1, "task / proc / AS / kernel-stack slots, all static pools", C_CYAN);
+    }
 
     vga_text(2, 3, "task", C_GRAY);
     put_ratio(7, 3, tasks, task_slot_capacity());
@@ -80,20 +88,43 @@ void pool_render_frame(void)
     vga_text(36, 3, "kstack", C_GRAY);
     put_ratio(43, 3, stacks, kernel_stack_capacity());
 
-    vga_text(2, 4, "live", C_GRAY);
-    put_dec(7, 4, (u32)live, C_WHITE);
-    vga_text(11, 4, "root", C_GRAY);
-    put_dec(16, 4, (u32)pool_demo_pid(), C_WHITE);
-    vga_text(20, 4, "children", C_GRAY);
-    put_dec(29, 4, count, C_WHITE);
-    vga_text(32, 4, "/", C_GRAY);
-    put_dec(34, 4, POOL_DEMO_CHILDREN, C_WHITE);
-    if (magic == 0x4C4F4F50u)
-        vga_text(39, 4, "POOL OK", C_GREEN);
-    else
-        vga_text(39, 4, "POOL ..", C_YELLOW);
-    vga_text(51, 4, "frames", C_GRAY);
-    put_dec(58, 4, page_frames, C_WHITE);
+    if (stress) {
+        vga_text(2, 4, "round", C_GRAY);
+        put_dec(8, 4, count, C_WHITE);
+        vga_text(11, 4, "/100", C_GRAY);
+        vga_text(17, 4, "first", C_GRAY);
+        put_dec(23, 4, first, C_CYAN);
+        vga_text(25, 4, "->", C_GRAY);
+        put_dec(27, 4, last, C_CYAN);
+        vga_text(32, 4, "live", C_GRAY);
+        put_dec(37, 4, (u32)live, C_WHITE);
+        vga_text(41, 4, "state", C_GRAY);
+        vga_text(47, 4, magic == 0x4C4F4F50u ? "STRESS OK" : "RUN",
+                 magic == 0x4C4F4F50u ? C_GREEN : C_YELLOW);
+        vga_text(2, 5, "PHYS", C_GRAY);
+        put_ratio(7, 5, address_space_phys_used(), address_space_phys_total());
+        vga_text(18, 5, "proc", C_GRAY);
+        put_ratio(23, 5, procs, process_count());
+        vga_text(31, 5, "AS", C_GRAY);
+        put_ratio(34, 5, spaces, address_space_slot_capacity());
+        vga_text(40, 5, "KSTK", C_GRAY);
+        put_ratio(46, 5, stacks, kernel_stack_capacity());
+    } else {
+        vga_text(2, 4, "live", C_GRAY);
+        put_dec(7, 4, (u32)live, C_WHITE);
+        vga_text(11, 4, "root", C_GRAY);
+        put_dec(16, 4, (u32)pool_demo_pid(), C_WHITE);
+        vga_text(20, 4, "children", C_GRAY);
+        put_dec(29, 4, count, C_WHITE);
+        vga_text(32, 4, "/", C_GRAY);
+        put_dec(34, 4, POOL_DEMO_CHILDREN, C_WHITE);
+        if (magic == 0x4C4F4F50u)
+            vga_text(39, 4, "POOL OK", C_GREEN);
+        else
+            vga_text(39, 4, "POOL ..", C_YELLOW);
+        vga_text(51, 4, "frames", C_GRAY);
+        put_dec(58, 4, page_frames, C_WHITE);
+    }
 
     vga_fill(2, 6, 77, 6, ' ', C_HDR);
     vga_text(2, 6, "PID  PPID  STATE  COMM     ASID   KSTACK TOP", C_HDR);
@@ -110,9 +141,8 @@ void pool_render_frame(void)
         row++;
     }
 
-    vga_text(2, 21, "pool: 0x200000..0x20C000, 12 x 4KB, bitmap owned by task/stack", C_GRAY);
-    vga_text(2, 22, "PROC and AS slots are scanned on create; PID bitmap independent", C_GRAY);
-    vga_text(2, 23, "POOL OK means parent wrote 8 child pids and all stay schedulable", C_GREEN);
-
-    vga_text(2, 24, "Y:exit pool page", C_YELLOW);
+    vga_text(2, 21, "task/proc/AS/kstack are static slots; PHYS counts 4KB frames", C_GRAY);
+    vga_text(2, 22, "Y: 8 children stay live; S: 100 fork/wait, child exit 7, wait checked", C_GRAY);
+    vga_text(2, 23, "POOL magic = all waits returned 7 and reused one PID; repeat S", C_GREEN);
+    vga_text(2, 24, stress ? "S:exit stress page" : "Y:exit pool page", C_YELLOW);
 }
