@@ -1,9 +1,13 @@
-; boot.asm 主引导扇区 512字节
+; robot/boot.asm — 唯一内核引导扇区。
+; 规则: 读盘失败必须打印可见消息；只负责把 kernel.bin 装到 0x80000。
+; 公共的 GDT/保护模式/恒等分页在同目录 boot_common.inc。
 [bits 16]
 [org 0x7c00]
 
+%include "boot_common.inc"
+
 start:
-    mov ax, 0
+    xor ax, ax
     mov ds, ax
     mov es, ax
     ; 96 个扇区一次 LBA 读到 0x80000。内核不再落在 BIOS 低内存暂存区，
@@ -12,63 +16,20 @@ start:
     mov si, dap
     mov dl, 0x80
     int 0x13
-    jc disk_error       ; 读盘失败跳转
-
-
-    cli 
-    lgdt [gdt_desc]
-
-    mov eax, cr0
-    or eax, 1
-    mov cr0, eax
-
-    jmp 0x08:pm_entry   ; 远跳转，刷新CS进入保护模式
-
-[bits 32]
-pm_entry:
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov ss, ax
-    mov esp, 0x7c00
-
-    ; 清空页目录 0x10000
-    mov edi, 0x10000
-    mov ecx, 1024
-    xor eax, eax
-    rep stosd
-
-    ; 页目录第0项：指向页表0x11000，Present+RW
-    mov dword [0x10000], 0x11003
-
-    ; 清空页表 0x11000
-    mov edi, 0x11000
-    mov ecx, 1024
-    xor eax, eax
-    rep stosd
-
-    ; 填充页表：映射虚拟地址0~4MB 到物理地址0~4MB
-    mov ebx, 0x11000
-    mov eax, 0x00000003
-    mov ecx, 1024
-fill_pt:
-    mov [ebx], eax
-    add ebx, 4
-    add eax, 0x1000
-    loop fill_pt
-
-    mov eax, 0x10000
-    mov cr3, eax        ; CR3 = 页目录物理地址
-
-    mov eax, cr0
-    or eax, 0x80000000
-    mov cr0, eax        ; 开启分页
-
-    jmp dword 0x08:0x80000 ; 跳到 0x80000 的内核入口
+    jc disk_error
+    jmp boot_load_ok
 
 disk_error:
+    mov si, msg_disk_error
+    call boot_print_rm
     cli
     hlt
+
+boot_load_ok:
+    BOOT_ENTER_PM
+    BOOT_BUILD_PAGETABLE
+    BOOT_ENABLE_PAGING
+    jmp BOOT_GDT_CODE_SEL:0x80000
 
 align 4
 dap:
@@ -78,27 +39,11 @@ dap:
     dw 0x8000
     dq 1
 
-gdt_start:
-    dq 0
-gdt_code:
-    dw 0xffff
-    dw 0
-    db 0
-    db 0x9a
-    db 0xcf
-    db 0
-gdt_data:
-    dw 0xffff
-    dw 0
-    db 0
-    db 0x92
-    db 0xcf
-    db 0
-gdt_end:
+msg_disk_error: db "AEVUM robot boot: disk read failed", 0
 
-gdt_desc:
-    dw gdt_end - gdt_start - 1
-    dd gdt_start
+; 数据与 16 位打印例程放在执行流之外
+BOOT_GDT_DATA
+BOOT_PRINT_RM
 
 times 510 - ($-$$) db 0
 dw 0xaa55

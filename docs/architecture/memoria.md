@@ -8,7 +8,7 @@ interface/web        展示页、看板（静态文件，可 nginx 托管）
 archive/backend-python/monitor      /api/model、/api/trainer、/api/errors、/api/health
 control/relay                纯内存中继：会话、上下文、分片
 src/kernel/host/bridge       串口帧 -> WebSocket
-src/kernel/host/console       引导、状态机、结构化错误、80×25 单元格
+src/kernel/host/console/robot  引导、状态机、结构化错误、80×25 单元格
    │
    ▼
 src/architecture/memoria               C++ 训练/生成；由 monitor 作为子进程拉起
@@ -32,4 +32,4 @@ src/architecture/memoria               C++ 训练/生成；由 monitor 作为子
 | `interface/desktop` | `interface/desktop` |
 | `data/tinyshakespeare_3000.txt` | `data/tinyshakespeare_3000.txt` |
 
-`src/kernel/host/console`、`bridge`、`relay` 沿用开源仓库原有结构；本轮只把实际实现覆盖进去，不改变职责划分。
+`src/kernel/host/console/robot`、`bridge`、`relay` 沿用开源仓库原有结构；本轮只把实际实现覆盖进去，不改变职责划分。

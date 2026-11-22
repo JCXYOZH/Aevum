@@ -16,12 +16,12 @@
 | 纯内存中继 | `control/relay/` | 已实现 | 会话、上下文、分片、在线计数；无落盘 |
 | 监控服务 | `archive/backend-python/monitor/desktop_server.py` | 已实现 | 读检查点、训练指标、错误码；起模型子进程 |
 | 串口桥接 | `src/kernel/host/bridge/serial_bridge.py` | 已实现 | 串口帧转 WebSocket |
-| 内核 | `src/kernel/host/console/` | 维护中 | 引导、状态机、结构化错误、80×25 单元格 |
+| 内核 | `src/kernel/host/console/robot/` | 维护中 | 唯一引导扇区、任务/进程、结构化错误、80×25 单元格 |
 | Memoria C++ | `src/architecture/memoria/` + `src/architecture/memoria/include/` | 可编译 | 17 个 `.cpp`、17 个头文件；训练/生成/检查点 |
 | 桌面壳 | `interface/desktop/` | 可打包 | Electron 窗口、拉起监控；`dist:installer` 出 Inno Setup，`dist:dir` 出目录 |
 | 训练语料 | `data/tinyshakespeare_3000.txt` | 已入库 | 3000 行公开文本，不包含权重 |
 | 模型权重 | 不入库 | 明确边界 | `.gitignore` 挡 `*.pt`、`*.safetensors`、`checkpoint*/`、`build/` |
-| fortuna | `src/kernel/fortuna/` | 有代码 | 内核与引导相关实现、文档；仍与 `src/kernel/host/console` 并行维护 |
+| fortuna | `src/kernel/fortuna/` | 有代码 | 内核与引导相关实现、文档；仍与 `src/kernel/host/console/robot` 并行维护 |
 | libertas | `src/architecture/libertas/` | 有代码 | 身份、安全、工具、回路等模块；不再是空骨架 |
 | 3D 桌面 | `interface/web/desktop.html` | 可打开 | 窗口、启动项先渲染；VRM / PMX 角色随后载入；桌面操作和十级角色文化并进「总览」纯文字 |
 | MrHua 与订阅 | `interface/web/mrhua/`、`interface/console/shell/` | 已接入 | MrHua 是 3D 桌面启动项；订阅走 3D 原生窗口，不用 iframe |
@@ -52,7 +52,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - 展示页改成连续工作台结构：左侧 rail 常驻灵体、状态与锚点，右侧用 `.chain` 和行式清单代替卡片展台。
 - 看板与展示页共用 `styles/presence.css`，灵体在 rail 和 dock 各有位置。
 - 配色回到纸黄系（展示页与看板 token 已替换），保留深色终端块作为局部面板。
-- 中继、串口桥接、内核入口分别收在 `control/relay/`、`src/kernel/host/bridge/`、`src/kernel/host/console/`。
+- 中继、串口桥接、内核入口分别收在 `control/relay/`、`src/kernel/host/bridge/`、`src/kernel/host/console/robot/`。
 - Memoria C++ 内核迁入 `src/architecture/memoria/`，公共头文件在 `src/architecture/memoria/include/`；统一入口为 `src/architecture/memoria/include/aevum_core.h`，源码用 `#include <include/aevum_core.h>`，构建提供 `-I src/architecture/memoria`。
 - Electron 桌面壳接入 `interface/desktop/`；`npm run dist:installer` 出 Inno Setup 安装包，`npm run dist:dir` 为免安装目录；安装包约 95 MB，产物不进 Git。
 - 3000 行公开语料入库；模型权重、构建产物、`node_modules` 明确忽略。

@@ -79,7 +79,7 @@ kernel.bin: kernel.elf
 	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 49152 / 96 sectors)"; \
 	if [ $$size -gt 49152 ]; then echo "ERROR: kernel.bin $$size bytes > 49152"; exit 1; fi
 
-boot.bin: boot.asm
+boot.bin: boot.asm boot_common.inc
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin
 
 $(IMG): boot.bin kernel.bin

@@ -170,7 +170,8 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 | 文件 | 作用 |
 | --- | --- |
-| `boot.asm` | 主引导扇区（512 字节）。用 `INT 13h` 的 LBA 扩展一次读 96 个扇区到 `0x80000`；设置 GDT；建立 `0x10000` 页目录 + `0x11000` 页表（恒等映射 0~4MB）；开启分页后跳到 `0x80000`。 |
+| `boot.asm` | 唯一引导扇区（512 字节）。用 `INT 13h` 的 LBA 扩展一次读 96 个扇区到 `0x80000`；读盘失败打印可见消息；调用 `boot_common.inc` 的 `BOOT_ENTER_PM` / `BOOT_BUILD_PAGETABLE` 完成 GDT、保护模式和 0~4MB 恒等分页；开启分页后跳到 `0x80000`。 |
+| `boot_common.inc` | `boot.asm` 的公共引导实现：临时 GDT、16→32 位保护模式切换、`0x10000/0x11000` 页表与 4MB 恒等映射、BIOS 打印例程。 |
 | `loader.asm` | 保护模式入口 `start`。打开 CR4.OSFXSR/OSXMMEXCPT、清 CR0.EM/TS；加载 6 项内核 GDT（ring0/ring3 代码、数据、TSS 槽），清 BSS，主栈设 `0xC000`，调用 `kernel_main`；提供 IRQ0、`int 0x40`、`int 0x80`、`#PF` 和 `#DE/#BP/#UD/#GP` 异常 stub，返回后死循环。 |
 | `kernel/main/main.c` | 组合根：初始化 VGA、串口、任务、机械臂应用、IDT/PIC/PIT，最后切入第一个任务。 |
 | `kernel/error/error.c` | 唯一错误屏与停机入口，打印 `owner/field/type/detail/at`。 |

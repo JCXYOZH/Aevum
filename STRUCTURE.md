@@ -112,7 +112,7 @@ python -m relay --port 8790
 | `apps/console/ui` | `interface/console` |
 | `apps/console/monitor` | `archive/backend-python/monitor` |
 | `apps/console/bridge` | `src/kernel/host/bridge` |
-| `apps/console/kernel` | `src/kernel/host/console` |
+| `apps/console/kernel` | `src/kernel/host/console/robot` |
 | `apps/relay` | `control/relay` |
 | `apps/console/deploy` | `ops/deploy/systemd` |
 | `deployment` | `ops/deploy/platform` |

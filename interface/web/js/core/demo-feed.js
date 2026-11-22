@@ -16,7 +16,7 @@
   let col = 0;
 
   function emitBootLine() {
-    const line = "[aevum] stage2 ok";
+    const line = "[aevum] kernel offline demo";
     const cells = [];
     for (let i = 0; i < line.length; i++) {
       cells.push([0, i, line.charCodeAt(i), 0x07]);

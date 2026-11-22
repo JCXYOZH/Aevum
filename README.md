@@ -124,13 +124,13 @@ http://127.0.0.1:8766/interface/web/world.html
 
 这个内核不依赖 libc，也不跑在桌面操作系统里。BIOS 引导扇区把 96 个扇区读到 `0x80000`，进入保护模式、建立 GDT、IDT、TSS 和 0–4 MB 恒等分页，然后运行内核任务。
 
-> This kernel does not use libc and does not run on top of a desktop OS. The BIOS boot sector loads 80 sectors to `0x80000`, enters protected mode, builds GDT/IDT/TSS and identity-maps 0–4 MB, then starts kernel tasks.
+> This kernel does not use libc and does not run on top of a desktop OS. The BIOS boot sector loads 96 sectors to `0x80000`, enters protected mode, builds GDT/IDT/TSS and identity-maps 0–4 MB, then starts kernel tasks.
 
 #### 已实现
 
 | 模块 | 实现 |
 | --- | --- |
-| 启动 | `boot.asm` 一次 LBA 读 96 个扇区到 `0x80000`；`loader.asm` 清 BSS、加载 6 项 GDT、启用 FPU/SSE |
+| 启动 | `robot/boot.asm` 一次 LBA 读 96 个扇区到 `0x80000`；`loader.asm` 清 BSS、加载 6 项 GDT、启用 FPU/SSE |
 | 中断 | 256 项 IDT；PIT 100Hz IRQ0；8259A PIC 重映射；`int 0x40` 软件调度门；`int 0x80` DPL3 系统调用门；`#DE/#BP/#UD/#GP` 同步异常门 |
 | 任务 | 10 个固定任务槽（3 内核 + 6 用户 + 1 余量）；独立内核栈；统一中断帧；`task_yield/block/wake/exit`；优先级加权 `vruntime` 调度 |
 | 上下文 | `fxsave/fxrstor` 保存 FPU/SSE；每个任务栈底预留 512 字节 FXSAVE 区 |

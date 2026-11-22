@@ -33,7 +33,6 @@ die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 CONSOLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "$CONSOLE_DIR/../../.." && pwd)"
 IMAGE="$APP_ROOT/src/kernel/host/console/robot/disk.img"
-[ -f "$IMAGE" ] || IMAGE="$APP_ROOT/src/kernel/host/console/disk.img"
 BUILD_DIR="$APP_ROOT/build/linux"
 MODEL_EXE="$BUILD_DIR/memoria_gen_cpu"
 MODEL_DATA="$APP_ROOT/data/tinyshakespeare_3000.txt"
@@ -194,11 +193,8 @@ log "检查内核镜像"
 [ -f "$IMAGE" ] || die "缺少 $IMAGE：请在开发机上构建 src/kernel/host/console/robot/disk.img 后提交到仓库"
 IMAGE_SIZE="$(stat -c%s "$IMAGE")"
 printf '    %s（%s 字节）\n' "$IMAGE" "$IMAGE_SIZE"
-# boot.asm 从第 2 扇区读 16 个扇区；镜像至少要能容下这 8KB 内核。
-[ "$IMAGE_SIZE" -ge 16384 ] || die "disk.img 太小（$IMAGE_SIZE 字节），至少需要 16384 字节"
-if [ "$IMAGE_SIZE" -ne 16384 ] && [ "$IMAGE_SIZE" -ne 1474560 ]; then
-    log "警告：disk.img 不是 16KB 或 1.44MB，确认 QEMU 的 BIOS 能按这个几何读到第 2~17 扇区"
-fi
+# robot/boot.asm 一次 LBA 读 96 个扇区；Makefile 固定生成 1.44MB 镜像。
+[ "$IMAGE_SIZE" -eq 1474560 ] || die "robot disk.img 必须是 1,474,560 字节（$IMAGE_SIZE 字节）"
 
 # ---------------------------------------------------------------- 3.1 模型
 # 模型生成器不是页面启动的必要条件：没有编译产物时，看板与 MrHua/内核照常，

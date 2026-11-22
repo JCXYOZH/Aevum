@@ -6,7 +6,7 @@
 src/kernel/
   fortuna            内核
   host/bridge        串口 -> WebSocket
-  host/console       引导、状态机、结构化错误、80×25
+  host/console/robot 引导、状态机、结构化错误、80×25
 src/architecture/
   libertas           AI 运行时：身份、工具、通知、治理、安全
   memoria            C++ 训练/生成核心；include 为公共头文件

@@ -17,7 +17,7 @@
 | --- | --- |
 | `src/kernel/fortuna/` | 引导、内存、调度、文件系统、网络、沙箱 |
 | `src/kernel/host/bridge/` | 串口帧转 WebSocket |
-| `src/kernel/host/console/` | 引导、状态机、结构化错误、80×25 单元格 |
+| `src/kernel/host/console/robot/` | 引导、状态机、结构化错误、80×25 单元格 |
 
 ## AI 运行时模块
 

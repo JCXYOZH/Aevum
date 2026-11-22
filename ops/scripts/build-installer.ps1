@@ -137,13 +137,9 @@ Copy-Item -LiteralPath (Join-Path $root "control\relay\contracts\errors.json") -
 Copy-Item -LiteralPath (Join-Path $root "data\tinyshakespeare_3000.txt") -Destination (Join-Path $resources "data") -Force
 
 # The kernel disk image is part of the product, not an external checkout.
-Copy-Item -LiteralPath (Join-Path $root "src\kernel\host\console\disk.img") -Destination (Join-Path $resources "kernel") -Force
-foreach ($name in @("boot.bin", "stage2.bin", "contract-rules.txt")) {
-    $source = Join-Path $root "src\kernel\host\console\$name"
-    if (Test-Path -LiteralPath $source) {
-        Copy-Item -LiteralPath $source -Destination (Join-Path $resources "kernel") -Force
-    }
-}
+$robotKernelDir = Join-Path $resources "kernel\robot"
+New-Item -ItemType Directory -Force -Path $robotKernelDir | Out-Null
+Copy-Item -LiteralPath (Join-Path $root "src\kernel\host\console\robot\disk.img") -Destination $robotKernelDir -Force
 
 if (-not $SkipModel) {
     Copy-Item -LiteralPath $ModelExe -Destination (Join-Path $buildDest "memoria_gen_cpu.exe") -Force

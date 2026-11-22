@@ -12,7 +12,7 @@
 
 ## 能做什么
 
-- **引导**：`boot.asm` 用 LBA 扩展一次读 96 个扇区到 `0x80000`，建立 GDT、0~4MB 恒等页表，跳到内核入口；`loader.asm` 加载内核自己的 6 项 GDT（ring0/ring3 代码、数据、TSS 槽），清 BSS，再 `ltr 0x28` 启用 TSS。内核完全避开 BIOS 低内存暂存区、`0x7C00` boot 代码与 `0xC0000..0xFFFFF` VGA BIOS 影子 ROM。
+- **引导**：`boot.asm` 用 LBA 扩展一次读 96 个扇区到 `0x80000`；读盘失败打印可见消息；调用 `boot_common.inc` 建立 GDT、0~4MB 恒等页表，跳到内核入口；`loader.asm` 加载内核自己的 6 项 GDT（ring0/ring3 代码、数据、TSS 槽），清 BSS，再 `ltr 0x28` 启用 TSS。内核完全避开 BIOS 低内存暂存区、`0x7C00` boot 代码与 `0xC0000..0xFFFFF` VGA BIOS 影子 ROM。
 - **多任务**：`task.c` 管理 10 个任务槽（3 内核 + 6 用户 + 1 余量），三个常驻任务按 READY/RUNNING 状态轮转；PIT 通道 0 以 100Hz 触发 IRQ0，CPU 密集型任务也会被定时抢占；主动让出统一走 `int 0x40`，调度策略归 `task.c`，应用层不再指定“下一个是谁”。
 - **任务描述符**：每个任务保存 PID、状态、优先级、栈底/栈顶、上下文、切出次数、`cpu_ticks`、`vruntime`、`fpu_state`、`space`（地址空间指针）和 `user` 标志；栈底填魔数，运行时扫描得到真实栈水位。每个任务栈底部还预留 512 字节 FXSAVE 区，切换时保存/恢复 FPU/SSE。**PID 由 `task.c` 的 31 位位图分配**；用户进程先 `task_pid_reserve()` 保留 PID，再由 `process.c` 把它写进 PCB，`task_create` 不再接收显式 PID，应用层也不写 1/2/3；内核任务 `task_exit()` 后置为 ZOMBIE，调度器下一次进入时回收 PID；用户进程退出后先变 ZOMBIE，由父进程 `wait` 或 orphan reaper 回收 PID。
 - **状态链路**：`UNUSED -> READY -> RUNNING`；`RUNNING -> READY` 由 `task_yield()` 或 PIT IRQ0；`RUNNING -> BLOCKED` 由 `task_block()`，`BLOCKED -> READY` 由 `task_wake(pid)`；`RUNNING -> ZOMBIE` 由 `task_exit()`，`ZOMBIE -> UNUSED` 由 `task_reap()`。这三种 `RUNNING` 离开方式都收敛到 `task_set_current_state(state)`，状态字段只由 `task.c` 写入；`B` 键演示阻塞/唤醒，`P` 键演示 PID 分配/回收，`T` 键演示 PIT 抢占下的双任务同时推进，`C` 键查看每任务 CPU 时间。

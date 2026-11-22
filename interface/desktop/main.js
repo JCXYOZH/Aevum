@@ -207,8 +207,7 @@ function qemuPath() {
 }
 
 function qemuLaunch() {
-  const robotDisk = path.join(serviceDir("kernel"), "robot", "disk.img");
-  const disk = fs.existsSync(robotDisk) ? robotDisk : path.join(serviceDir("kernel"), "disk.img");
+  const disk = path.join(serviceDir("kernel"), "robot", "disk.img");
   if (!fs.existsSync(disk)) return null;
   const serial = `tcp:127.0.0.1:${PORTS.serial},server=on,wait=off`;
   return {
