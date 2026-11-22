@@ -78,6 +78,15 @@ u32 proc_fd_count(const struct proc_fd_table *table)
     return n;
 }
 
+int proc_fd_snapshot(const struct proc_fd_table *table, int fd,
+                     struct proc_fd_info *out)
+{
+    if (!table || !out || fd < 0 || fd >= PROC_FD_MAX) return 0;
+    out->kind = table->entries[fd].kind;
+    out->used = out->kind != PROC_FD_CLOSED;
+    return out->used;
+}
+
 int proc_fd_pipe(struct proc_fd_table *table, struct address_space *space,
                  u32 user_fds)
 {

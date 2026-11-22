@@ -7,6 +7,7 @@ struct address_space;
 struct task_struct;
 struct irq_frame;
 struct proc_fd_table;
+struct proc_fd_info;
 
 #define PROC_MAX 12
 #define PROC_NAME_MAX 15
@@ -142,6 +143,9 @@ int process_count(void);
 int process_slot_used(void);
 int process_pid_of(struct process *proc);
 struct address_space *process_space(struct process *proc);
+/* 只读观察入口：按 PCB 槽取 AS/fd，不转移所有权；DEAD 槽返回空。 */
+struct address_space *process_slot_space(int slot);
+int process_slot_fd_info(int slot, int fd, struct proc_fd_info *out);
 /* 每进程 fd 表归 kernel/proc/fd；exec 不重建它，fork 复制引用。 */
 struct proc_fd_table *process_fds(struct process *proc);
 u32 process_read32(int pid, u32 va);

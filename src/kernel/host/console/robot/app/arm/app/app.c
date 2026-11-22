@@ -6,6 +6,7 @@
 #include "app/tree/demo.h"
 #include "app/tree/render.h"
 #include "app/user/demo.h"
+#include "app/user/page.h"
 #include "app/user/render.h"
 #include "app/console/demo.h"
 #include "app/console/render.h"
@@ -239,9 +240,13 @@ static void proc_render(void)
                     e.at = "proc_render -> user_demo_start";
                     aevum_fail(&e);
                 }
+                user_page_reset();
                 user_live = 1;
             }
         }
+
+        /* V 页的 TAB/数字/方向/PgUp/PgDn/Home/End 只改 UI 状态，不动进程。 */
+        if (user_live) (void)user_page_key(key);
 
         if (key == 0x25 && !duel_live && !cpu_live && !probe_live && !fpu_demo_live() && !tree_live && !user_live) { /* K：内核实控 #PF panic 页 */
             page_fault_probe();

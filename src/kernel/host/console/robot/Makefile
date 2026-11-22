@@ -48,7 +48,13 @@ SRCS = \
 	app/tree/demo/demo.c \
 	app/tree/render/render.c \
 	app/user/demo/demo.c \
+	app/user/page/page.c \
 	app/user/render/render.c \
+	app/user/render/draw.c \
+	app/user/render/slots.c \
+	app/user/render/tree.c \
+	app/user/render/address.c \
+	app/user/render/fd.c \
 	app/console/demo/demo.c \
 	app/console/render/render.c \
 	app/pool/demo/demo.c \

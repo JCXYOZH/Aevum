@@ -18,6 +18,7 @@
 ; 0x4010B8 console wait 返回值，0x4010BC console 验收字，0x4010F0 console 只执行一次标记，
 ; 0x401120 console 输入缓冲，0x401130 console 输出构造缓冲；
 ; 0x4010C0 pool 子进程数量，0x4010C4 "POOL" 魔数，0x4010C8 pool 只执行一次标记，
+; 0x4010D0 P5.2 fork/wait 前的 yield 计数，让子进程 ZOMBIE 可被 V 页观察；
 ; 0x401100..0x40111F pool 8 个子进程 pid；
 ; 0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
@@ -119,7 +120,14 @@ user_program_start:
     jz .child_exit
 
     ; 父进程：wait 前不写数据页，保留 COW 共享，等子进程先写 CHLD。
+    ; P5.2：先让出若干轮，使子进程退出后短暂处于 ZOMBIE，供 V 页观察。
     mov ebx, eax
+    mov dword [0x4010D0], 262144
+.wait_gap:
+    mov eax, 2              ; syscall: yield
+    int 0x80
+    dec dword [0x4010D0]
+    jnz .wait_gap
     mov ecx, 0x401010
     mov eax, 4              ; syscall: wait
     int 0x80

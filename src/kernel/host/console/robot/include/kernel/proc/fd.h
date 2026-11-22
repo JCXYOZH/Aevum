@@ -30,6 +30,12 @@ struct proc_fd_table {
     struct proc_fd_entry entries[PROC_FD_MAX];
 };
 
+/* 只读快照：V 页观察 fd 槽，不暴露 pipe 对象指针。used=0 表示关闭/越界。 */
+struct proc_fd_info {
+    int used;
+    u32 kind;
+};
+
 void proc_fd_table_init(struct proc_fd_table *table);
 void proc_fd_table_close_all(struct proc_fd_table *table);
 
@@ -40,6 +46,8 @@ void proc_fd_console_open(struct proc_fd_table *table);
 int proc_fd_table_copy(struct proc_fd_table *dst,
                        const struct proc_fd_table *src);
 u32 proc_fd_count(const struct proc_fd_table *table);
+int proc_fd_snapshot(const struct proc_fd_table *table, int fd,
+                     struct proc_fd_info *out);
 
 /* 系统调用语义：pipe 写两个 u32 fd；read/write 返回字节数或 -1。 */
 int proc_fd_pipe(struct proc_fd_table *table, struct address_space *space,

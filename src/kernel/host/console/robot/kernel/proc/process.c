@@ -1000,6 +1000,20 @@ struct address_space *process_space(struct process *proc)
     return proc ? proc->space : 0;
 }
 
+struct address_space *process_slot_space(int slot)
+{
+    if (slot < 0 || slot >= PROC_MAX) return 0;
+    if (procs[slot].state == PROC_FREE) return 0;
+    return procs[slot].space;
+}
+
+int process_slot_fd_info(int slot, int fd, struct proc_fd_info *out)
+{
+    if (slot < 0 || slot >= PROC_MAX) return 0;
+    if (procs[slot].state == PROC_FREE) return 0;
+    return proc_fd_snapshot(&procs[slot].fds, fd, out);
+}
+
 struct proc_fd_table *process_fds(struct process *proc)
 {
     return proc ? &proc->fds : 0;
