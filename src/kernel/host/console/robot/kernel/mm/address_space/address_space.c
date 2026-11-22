@@ -113,6 +113,107 @@ void address_space_release(struct address_space *space)
     space->user = 0;
 }
 
+/*
+ * fork 的地址空间：复制父进程的 PD/PT 和四个用户页。P1 是 eager copy，
+ * 父写子写互不影响；COW 留到 P2。用户页在低 4MB 恒等映射内，直接 memcpy。
+ */
+struct address_space *address_space_clone(const struct address_space *src)
+{
+    struct address_space *space = 0;
+    u32 *pd;
+    u32 *pt;
+    u32 base;
+    int i;
+
+    if (!src || !src->used || !src->user) return 0;
+    for (i = 0; i < AEVUM_AS_MAX; i++) {
+        if (!spaces[i].used) {
+            space = &spaces[i];
+            break;
+        }
+    }
+    if (!space) return 0;
+
+    base = AEVUM_AS_BASE + (u32)i * AEVUM_AS_STRIDE;
+    space->used = 1;
+    space->user = 1;
+    space->id = ++next_id;
+    space->pd = base;
+    space->pt = base + 0x1000u;
+    space->code = base + 0x2000u;
+    space->data = base + 0x3000u;
+    space->stack = base + 0x4000u;
+    space->control = base + 0x5000u;
+
+    zero_page(space->pd);
+    zero_page(space->pt);
+    zero_page(space->code);
+    zero_page(space->data);
+    zero_page(space->stack);
+    zero_page(space->control);
+
+    copy_page(space->code, (const u8 *)src->code, AEVUM_PAGE_SIZE);
+    copy_page(space->data, (const u8 *)src->data, AEVUM_PAGE_SIZE);
+    copy_page(space->stack, (const u8 *)src->stack, AEVUM_PAGE_SIZE);
+    copy_page(space->control, (const u8 *)src->control, AEVUM_PAGE_SIZE);
+
+    pd = (u32 *)space->pd;
+    pd[0] = AEVUM_KERNEL_PT | PAGE_PRESENT | PAGE_RW;
+    pd[1] = space->pt | USER_RW;
+
+    pt = (u32 *)space->pt;
+    pt[0] = space->code | USER_RO;
+    pt[1] = space->data | USER_RW;
+    pt[2] = space->stack | USER_RW;
+    pt[3] = space->control | USER_RO;
+    return space;
+}
+
+int address_space_user_range_ok(const struct address_space *space, u32 va,
+                                u32 len, int write)
+{
+    u32 first, last, i;
+    u32 *pt;
+
+    if (!space || !space->used || !space->user || !len) return 0;
+    if (va < AEVUM_USER_VA_BASE) return 0;
+    if (va > 0xFFFFFFFFu - (len - 1u)) return 0;
+    if (va + len - 1u >= AEVUM_USER_VA_BASE + 4u * AEVUM_PAGE_SIZE) return 0;
+
+    first = (va - AEVUM_USER_VA_BASE) / AEVUM_PAGE_SIZE;
+    last = (va + len - 1u - AEVUM_USER_VA_BASE) / AEVUM_PAGE_SIZE;
+    pt = (u32 *)space->pt;
+    for (i = first; i <= last; i++) {
+        u32 pte = pt[i];
+        if (!(pte & PAGE_PRESENT) || !(pte & PAGE_USER)) return 0;
+        if (write && !(pte & PAGE_RW)) return 0;
+    }
+    return 1;
+}
+
+u32 address_space_user_read32(const struct address_space *space, u32 va)
+{
+    u32 index, pte, phys;
+
+    if (!address_space_user_range_ok(space, va, 4, 0)) return 0;
+    index = (va - AEVUM_USER_VA_BASE) / AEVUM_PAGE_SIZE;
+    pte = ((u32 *)space->pt)[index];
+    phys = (pte & 0xFFFFF000u) + (va & 0xFFFu);
+    return *(volatile u32 *)phys;
+}
+
+int address_space_user_write32(struct address_space *space, u32 va, u32 value)
+{
+    u32 index, pte, phys;
+
+    if (!address_space_user_range_ok(space, va, 4, 1)) return 0;
+    index = (va - AEVUM_USER_VA_BASE) / AEVUM_PAGE_SIZE;
+    pte = ((u32 *)space->pt)[index];
+    phys = (pte & 0xFFFFF000u) + (va & 0xFFFu);
+    *(volatile u32 *)phys = value;
+    return 1;
+}
+
 void address_space_switch(struct address_space *space)
 {
     if (!space || space == active_space) return;

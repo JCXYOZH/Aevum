@@ -1,6 +1,7 @@
 #include "kernel/types.h"
 #include "kernel/error.h"
 #include "kernel/task.h"
+#include "kernel/proc.h"
 #include "kernel/mm/address_space.h"
 #include "arch/x86/tss.h"
 #include "arch/x86/syscall.h"
@@ -18,6 +19,7 @@ void kernel_main(void)
     uart_init();
     address_space_boot();
     task_boot();
+    process_boot();
     tss_init();
 
     rc = arm_app_init();

@@ -1,5 +1,6 @@
 #include "app/user/demo.h"
 #include "kernel/task.h"
+#include "kernel/proc.h"
 #include "kernel/mm/address_space.h"
 #include "arch/x86/page_fault.h"
 #include "config/memory.h"
@@ -8,23 +9,23 @@
 extern u8 user_program_start[];
 extern u8 user_program_end[];
 
-static struct task_struct *tasks[USER_DEMO_LANES];
+static struct process *procs[USER_DEMO_LANES];
 static struct address_space *spaces[USER_DEMO_LANES];
 static int pids[USER_DEMO_LANES];
 static volatile u32 demo_error;
 
 static const char *const lane_names[USER_DEMO_LANES] = {
-    "userA", "userB", "userC"
+    "userA", "userB", "userC", "userD"
 };
 static const u32 lane_stacks[USER_DEMO_LANES] = {
-    AEVUM_STACK_USER_A, AEVUM_STACK_USER_B, AEVUM_STACK_USER_C
+    AEVUM_STACK_USER_A, AEVUM_STACK_USER_B,
+    AEVUM_STACK_USER_C, AEVUM_STACK_USER_D
 };
 
 static int lane_alive(int lane)
 {
-    struct task_info info;
-    return pids[lane] && address_space_user_active(spaces[lane]) &&
-           task_snapshot_pid(pids[lane], &info);
+    return pids[lane] && process_alive(pids[lane]) &&
+           address_space_user_active(spaces[lane]);
 }
 
 u32 user_demo_start(void)
@@ -37,50 +38,37 @@ u32 user_demo_start(void)
 
     code_size = (u32)user_program_end - (u32)user_program_start;
     demo_error = 0;
+    process_cleanup();
     /* 新演示从干净的 #PF 记录开始；旧记录的 PID 可能被下一次复用。 */
     page_fault_clear();
 
     for (i = 0; i < USER_DEMO_LANES; i++) {
-        spaces[i] = address_space_create_user(user_program_start, code_size);
-        if (!spaces[i]) {
+        procs[i] = process_create_user(1, lane_names[i], user_program_start,
+                                       code_size, lane_stacks[i],
+                                       AEVUM_USER_STACK_TOP);
+        if (!procs[i]) {
             demo_error = ERR_MM_NO_SPACE;
+            user_demo_stop();
             return demo_error;
         }
-        /* 同一段用户代码，用数据页里的 mode 区分正常任务和故障探针。 */
-        address_space_set_mode(spaces[i], i == USER_DEMO_FAULT_LANE ? 1u : 0u);
-    }
-
-    for (i = 0; i < USER_DEMO_LANES; i++) {
-        u32 rc = task_create_user(
-            1,
-            lane_names[i],
-            AEVUM_USER_CODE_VA,
-            lane_stacks[i],
-            spaces[i],
-            AEVUM_USER_STACK_TOP,
-            &tasks[i]);
-        if (rc) {
-            demo_error = rc;
-            user_demo_stop();
-            return rc;
-        }
-        pids[i] = task_pid_of(tasks[i]);
+        spaces[i] = process_space(procs[i]);
+        pids[i] = process_pid_of(procs[i]);
+        /* 同一段用户代码，用数据页里的 mode 区分正常/故障/fork-wait。 */
+        address_space_set_mode(spaces[i], i == USER_DEMO_FAULT_LANE ? 1u :
+                              (i == 3 ? 2u : 0u));
     }
     return 0;
 }
 
 void user_demo_stop(void)
 {
-    int i;
-    for (i = 0; i < USER_DEMO_LANES; i++)
-        if (spaces[i]) address_space_set_stop(spaces[i], 1);
+    process_stop_all();
 }
 
-/* V 页只等两个正常用户任务退完；userC 故障后由 #PF 单独回收。 */
 int user_demo_alive(void)
 {
     int i;
-    for (i = 0; i < USER_DEMO_NORMAL; i++)
+    for (i = 0; i < USER_DEMO_LANES; i++)
         if (lane_alive(i)) return 1;
     return 0;
 }
@@ -105,4 +93,39 @@ int user_demo_faulted(int lane)
     struct page_fault_info info;
     if (lane != USER_DEMO_FAULT_LANE) return 0;
     return page_fault_last(&info) && info.pid == (u32)pids[lane];
+}
+
+int user_demo_lane_count(void)
+{
+    return USER_DEMO_LANES;
+}
+
+u32 user_demo_fork_child(int lane)
+{
+    if (lane != 3 || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x0Cu);
+}
+
+u32 user_demo_wait_pid(int lane)
+{
+    if (lane != 3 || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x14u);
+}
+
+u32 user_demo_wait_status(int lane)
+{
+    if (lane != 3 || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x10u);
+}
+
+u32 user_demo_wait_ret(int lane)
+{
+    if (lane != 3 || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x18u);
+}
+
+u32 user_demo_wait_magic(int lane)
+{
+    if (lane != 3 || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x1Cu);
 }

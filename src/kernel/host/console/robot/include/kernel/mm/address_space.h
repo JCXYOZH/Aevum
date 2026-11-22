@@ -12,6 +12,7 @@ struct address_space;
 void address_space_boot(void);
 struct address_space *address_space_kernel(void);
 struct address_space *address_space_create_user(const u8 *code, u32 code_size);
+struct address_space *address_space_clone(const struct address_space *src);
 void address_space_release(struct address_space *space);
 
 /* 切到目标地址空间；内核地址空间和当前空间相同时不重复写 CR3。 */
@@ -25,5 +26,11 @@ u32 address_space_counter(const struct address_space *space);
 void address_space_set_stop(struct address_space *space, u32 stop);
 void address_space_set_mode(struct address_space *space, u32 mode);
 int address_space_user_active(const struct address_space *space);
+
+/* 系统调用用户指针校验：只接受当前四个用户页，写操作还要求 PTE.RW。 */
+int address_space_user_range_ok(const struct address_space *space, u32 va,
+                                u32 len, int write);
+u32 address_space_user_read32(const struct address_space *space, u32 va);
+int address_space_user_write32(struct address_space *space, u32 va, u32 value);
 
 #endif

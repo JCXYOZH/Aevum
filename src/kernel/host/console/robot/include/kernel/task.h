@@ -4,7 +4,7 @@
 #include "kernel/types.h"
 
 #define TASK_NAME_MAX 15
-#define TASK_MAX 6
+#define TASK_MAX 10
 
 enum task_state {
     TASK_UNUSED = 0,
@@ -16,6 +16,8 @@ enum task_state {
 
 struct task_struct;
 struct address_space;
+struct process;
+struct irq_frame;
 
 /* 进程描述符的只读快照；渲染/监视器只能读，不能改任务字段。 */
 struct task_info {
@@ -34,13 +36,28 @@ void task_boot(void);
 u32 task_create(int priority, const char *name,
                 void (*entry)(void), u32 stack_top, struct task_struct **out);
 
-/* 用户任务：入口是用户虚拟地址，首次 iret 用 ring3 的 CS/SS 与用户栈。 */
-u32 task_create_user(int priority, const char *name, u32 user_eip,
-                     u32 kernel_stack_top, struct address_space *space,
-                     u32 user_stack_top, struct task_struct **out);
+/* 用户任务：进程表先保留 PID，任务模块只负责把该 PID 变成可调度的 ring3 任务。 */
+u32 task_create_user_with_pid(int priority, const char *name, u32 user_eip,
+                              u32 kernel_stack_top, struct address_space *space,
+                              u32 user_stack_top, struct process *proc, int pid,
+                              struct task_struct **out);
+
+/* fork：复制父进程当前 ring3 中断帧、用户栈和 FPU 状态；子任务 eax=0。 */
+u32 task_fork_user(int pid, const char *name, struct irq_frame *frame,
+                   u32 kernel_stack_top, struct address_space *space,
+                   struct process *proc, struct task_struct **out);
+
+/* PID 由进程/任务共用；进程表保留 PID 后，任务创建不再二次分配。 */
+int task_pid_reserve(void);
+void task_pid_release(int pid);
+
+/* 用户 ZOMBIE 由 process_wait/reaper 回收：清任务槽但不释放 PID/地址空间。 */
+int task_release_slot(int pid);
 void task_exit(void) __attribute__((noreturn));
 int task_current_pid(void);
 int task_pid_of(struct task_struct *task);
+struct process *task_process_current(void);
+struct process *task_process_of(struct task_struct *task);
 int task_pid_used(void);
 int task_pid_capacity(void);
 struct task_struct *task_current(void);

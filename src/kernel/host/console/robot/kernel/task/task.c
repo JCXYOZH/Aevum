@@ -1,5 +1,6 @@
 #include "kernel/task.h"
 #include "kernel/task/family.h"
+#include "kernel/proc.h"
 #include "kernel/error.h"
 #include "arch/x86/interrupt.h"
 #include "arch/x86/frame.h"
@@ -31,6 +32,7 @@ struct task_struct {
     u32  fpu_state;
     int  user;
     struct address_space *space;
+    struct process *proc;
     struct context ctx;
 };
 
@@ -110,6 +112,7 @@ static void task_zero(struct task_struct *task)
     task->fpu_state = 0;
     task->user = 0;
     task->space = 0;
+    task->proc = 0;
     task->ctx.esp = 0;
 }
 
@@ -138,7 +141,8 @@ void task_boot(void)
 
 static u32 task_create_common(int priority, const char *name, u32 entry,
                               u32 stack_top, struct address_space *space,
-                              int user, u32 user_stack, struct task_struct **out)
+                              int user, u32 user_stack, struct process *proc,
+                              int pid_hint, struct task_struct **out)
 {
     struct task_struct *task;
     u32 *sp;
@@ -155,6 +159,8 @@ static u32 task_create_common(int priority, const char *name, u32 entry,
     if (stack_top < AEVUM_TASK_STACK_MIN || stack_top > AEVUM_TASK_STACK_MAX ||
         (stack_top & 0xFu))
         return ERR_TASK_STACK_INVALID;
+    if (user && !proc) return ERR_TASK_BAD_STATE;
+    if (!user && proc) return ERR_TASK_BAD_STATE;
 
     stack_base = stack_top - AEVUM_TASK_STACK_SIZE;
     if (stack_base < AEVUM_TASK_STACK_MIN) return ERR_TASK_STACK_INVALID;
@@ -178,8 +184,14 @@ static u32 task_create_common(int priority, const char *name, u32 entry,
     }
     if (!task) return ERR_TASK_SLOT_FULL;
 
-    pid = pid_alloc();
-    if (!pid) return ERR_TASK_PID_EXHAUSTED;
+    if (pid_hint) {
+        if (pid_hint < 1 || pid_hint > PID_MAX) return ERR_TASK_PID_DUP;
+        if (!(pid_map & (1u << (pid_hint - 1)))) return ERR_TASK_PID_DUP;
+        pid = pid_hint;
+    } else {
+        pid = pid_alloc();
+        if (!pid) return ERR_TASK_PID_EXHAUSTED;
+    }
 
     task_zero(task);
     task->pid = pid;
@@ -191,11 +203,13 @@ static u32 task_create_common(int priority, const char *name, u32 entry,
     task->fpu_state = fpu_state;
     task->user = user;
     task->space = space;
+    task->proc = proc;
     for (i = 0; i < TASK_NAME_MAX && name[i]; i++) task->comm[i] = name[i];
     task->comm[i] = 0;
 
-    /* 父子关系在 READY 发布前登记，树形页不会看到没有父亲的活任务。 */
-    family_add(pid, current_task ? current_task->pid : 0);
+    /* 用户进程的父子关系归 process 表；family 只维护内核任务树。 */
+    if (!proc)
+        family_add(pid, current_task ? current_task->pid : 0);
 
     /* 新任务的 FPU/SSE 从 boot 初始模板复制，不要从零初始化。 */
     for (i = 0; i < (int)(AEVUM_FPU_STATE_SIZE / 4); i++)
@@ -238,16 +252,64 @@ u32 task_create(int priority, const char *name,
                 void (*entry)(void), u32 stack_top, struct task_struct **out)
 {
     return task_create_common(priority, name, (u32)entry, stack_top,
-                              address_space_kernel(), 0, 0, out);
+                              address_space_kernel(), 0, 0, 0, 0, out);
 }
 
-u32 task_create_user(int priority, const char *name, u32 user_eip,
-                     u32 kernel_stack_top, struct address_space *space,
-                     u32 user_stack_top, struct task_struct **out)
+u32 task_create_user_with_pid(int priority, const char *name, u32 user_eip,
+                              u32 kernel_stack_top, struct address_space *space,
+                              u32 user_stack_top, struct process *proc, int pid,
+                              struct task_struct **out)
 {
-    if (!space) return ERR_TASK_BAD_STATE;
+    if (!space || !proc || pid <= 0) return ERR_TASK_BAD_STATE;
     return task_create_common(priority, name, user_eip, kernel_stack_top,
-                              space, 1, user_stack_top, out);
+                              space, 1, user_stack_top, proc, pid, out);
+}
+
+int task_pid_reserve(void)
+{
+    return pid_alloc();
+}
+
+void task_pid_release(int pid)
+{
+    pid_free(pid);
+}
+
+/*
+ * fork 的子任务不是从模板起跑：复制父进程的 ring3 中断帧、通用寄存器和
+ * FPU 状态，只把 eax 改成 0。用户栈页已由 address_space_clone() 复制。
+ */
+u32 task_fork_user(int pid, const char *name, struct irq_frame *frame,
+                   u32 kernel_stack_top, struct address_space *space,
+                   struct process *proc, struct task_struct **out)
+{
+    struct task_struct *task;
+    u32 *sp;
+    u32 rc;
+    int i;
+
+    if (!frame || !space || !proc || pid <= 0) return ERR_TASK_BAD_STATE;
+    rc = task_create_common(1, name, frame->eip, kernel_stack_top, space,
+                            1, frame->user_esp, proc, pid, out);
+    if (rc) return rc;
+    task = *out;
+    sp = (u32 *)task->ctx.esp;
+    sp[0] = 0;                 /* 子进程 fork 返回 0 */
+    sp[1] = frame->ebx;
+    sp[2] = frame->ecx;
+    sp[3] = frame->edx;
+    sp[4] = frame->esi;
+    sp[5] = frame->edi;
+    sp[6] = frame->ebp;
+    sp[11] = frame->eflags;
+    sp[12] = frame->user_esp;
+    sp[13] = frame->ss;
+
+    /* 子进程继承父进程的 XMM/FPU 现场，而不是 boot 模板。 */
+    fpu_save((void *)current_task->fpu_state);
+    for (i = 0; i < (int)(AEVUM_FPU_STATE_SIZE / 4); i++)
+        ((u32 *)task->fpu_state)[i] = ((u32 *)current_task->fpu_state)[i];
+    return 0;
 }
 
 struct task_struct *task_current(void)
@@ -263,6 +325,16 @@ int task_current_pid(void)
 int task_pid_of(struct task_struct *task)
 {
     return task ? task->pid : 0;
+}
+
+struct process *task_process_current(void)
+{
+    return current_task ? current_task->proc : 0;
+}
+
+struct process *task_process_of(struct task_struct *task)
+{
+    return task ? task->proc : 0;
 }
 
 char task_state_char(int state)
@@ -345,12 +417,28 @@ static void task_reap(void)
 {
     int i;
     for (i = 0; i < TASK_MAX; i++) {
-        if (tasks[i].state == TASK_ZOMBIE) {
+        if (tasks[i].state == TASK_ZOMBIE && !tasks[i].proc) {
             pid_free(tasks[i].pid);
             if (tasks[i].user) address_space_release(tasks[i].space);
             task_zero(&tasks[i]);
         }
     }
+}
+
+/* 用户 ZOMBIE 由 process_wait/reaper 调用；这里只清任务槽，不释放 PID/AS。 */
+int task_release_slot(int pid)
+{
+    int i;
+
+    if (pid <= 0) return ERR_TASK_BAD_STATE;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].pid == pid && tasks[i].state == TASK_ZOMBIE) {
+            if (&tasks[i] == current_task) return ERR_TASK_BAD_STATE;
+            task_zero(&tasks[i]);
+            return 0;
+        }
+    }
+    return ERR_TASK_BAD_STATE;
 }
 
 /*
@@ -406,9 +494,9 @@ u32 task_schedule_irq(struct irq_frame *frame)
             prev->state = TASK_READY;       /* yield 或 PIT 时间片到期 */
     }
 
-    /* 父任务死亡时先重挂直接子进程，再由 task_reap() 回收 PID。 */
+    /* 内核任务死亡时仍走 family 树；用户进程的父子关系归 process 表。 */
     if (prev->state == TASK_ZOMBIE) {
-        family_exit(prev->pid);
+        if (!prev->proc) family_exit(prev->pid);
         /*
          * ZOMBIE 会在 task_reap() 里被 task_zero()，之后 fpu_state 会变成 0；
          * 必须在清槽前保存自己的 FPU 状态，不能让 task_zero 后的指针进入 fxsave。
@@ -418,6 +506,7 @@ u32 task_schedule_irq(struct irq_frame *frame)
     }
 
     task_reap();
+    process_reap_orphans();
     next = task_pick_next(prev);
 
     if (!next) {

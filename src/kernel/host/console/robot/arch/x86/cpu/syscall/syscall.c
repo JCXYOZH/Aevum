@@ -1,6 +1,7 @@
 #include "arch/x86/syscall.h"
 #include "arch/x86/interrupt.h"
 #include "kernel/task.h"
+#include "kernel/proc.h"
 
 extern void int80_stub(void);
 
@@ -22,7 +23,23 @@ u32 syscall_dispatch(struct irq_frame *frame)
             (void)task_yield();
             break;
         case 3:
+            (void)process_exit_current(frame->ebx);
             task_exit();
+        case 4:
+            frame->eax = (u32)process_wait((int)frame->ebx, frame->ecx);
+            break;
+        case 5:
+            frame->eax = (u32)process_getpid_current();
+            break;
+        case 6:
+            {
+                struct process *child = process_fork(frame);
+                frame->eax = child ? (u32)process_pid_of(child) : (u32)-1;
+            }
+            break;
+        case 7:
+            frame->eax = (u32)process_getppid_current();
+            break;
         default:
             frame->eax = (u32)-1;
             break;
