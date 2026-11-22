@@ -1,7 +1,6 @@
 #include "kernel/task.h"
 #include "kernel/task/family.h"
 #include "kernel/proc.h"
-#include "kernel/error.h"
 #include "arch/x86/interrupt.h"
 #include "arch/x86/frame.h"
 #include "arch/x86/tss.h"
@@ -139,7 +138,7 @@ void task_boot(void)
     fpu_save(boot_fpu_state);
 }
 
-static u32 task_create_common(int priority, const char *name, u32 entry,
+static const char *task_create_common(int priority, const char *name, u32 entry,
                               u32 stack_top, struct address_space *space,
                               int user, u32 user_stack, struct process *proc,
                               int pid_hint, struct task_struct **out)
@@ -151,29 +150,29 @@ static u32 task_create_common(int priority, const char *name, u32 entry,
     u32 fpu_state;
     int i, pid;
 
-    if (!out) return ERR_TASK_OUT_MISSING;
+    if (!out) return "out";
     *out = 0;
-    if (!entry) return ERR_TASK_ENTRY_MISSING;
-    if (!space) return ERR_TASK_BAD_STATE;
-    if (priority < 0 || priority > 3) return ERR_TASK_PRIORITY;
+    if (!entry) return "entry";
+    if (!space) return "space";
+    if (priority < 0 || priority > 3) return "priority";
     if (stack_top < AEVUM_TASK_STACK_MIN || stack_top > AEVUM_TASK_STACK_MAX ||
         (stack_top & 0xFu))
-        return ERR_TASK_STACK_INVALID;
-    if (user && !proc) return ERR_TASK_BAD_STATE;
-    if (!user && proc) return ERR_TASK_BAD_STATE;
+        return "stack";
+    if (user && !proc) return "user/proc";
+    if (!user && proc) return "user/proc";
 
     stack_base = stack_top - AEVUM_TASK_STACK_SIZE;
-    if (stack_base < AEVUM_TASK_STACK_MIN) return ERR_TASK_STACK_INVALID;
+    if (stack_base < AEVUM_TASK_STACK_MIN) return "stack";
 
     /*
      * 每个任务栈底部预留 512 字节 FXSAVE 区，余下 3.5KB 才是可用栈。
      * 这样不把 6×512 字节塞进 BSS，也不越过 BSS 与任务栈之间的保护空隙。
      */
     if (stack_base + AEVUM_FPU_STATE_SIZE > stack_top)
-        return ERR_TASK_STACK_INVALID;
+        return "stack";
     fpu_state = stack_base;
     stack_base += AEVUM_FPU_STATE_SIZE;
-    if (stack_base > stack_top) return ERR_TASK_STACK_INVALID;
+    if (stack_base > stack_top) return "stack";
 
     task = 0;
     for (i = 0; i < TASK_MAX; i++) {
@@ -182,15 +181,15 @@ static u32 task_create_common(int priority, const char *name, u32 entry,
             break;
         }
     }
-    if (!task) return ERR_TASK_SLOT_FULL;
+    if (!task) return "slot";
 
     if (pid_hint) {
-        if (pid_hint < 1 || pid_hint > PID_MAX) return ERR_TASK_PID_DUP;
-        if (!(pid_map & (1u << (pid_hint - 1)))) return ERR_TASK_PID_DUP;
+        if (pid_hint < 1 || pid_hint > PID_MAX) return "pid_hint.range";
+        if (!(pid_map & (1u << (pid_hint - 1)))) return "pid_hint.used";
         pid = pid_hint;
     } else {
         pid = pid_alloc();
-        if (!pid) return ERR_TASK_PID_EXHAUSTED;
+        if (!pid) return "pid_pool";
     }
 
     task_zero(task);
@@ -248,19 +247,19 @@ static u32 task_create_common(int priority, const char *name, u32 entry,
     return 0;
 }
 
-u32 task_create(int priority, const char *name,
+const char *task_create(int priority, const char *name,
                 void (*entry)(void), u32 stack_top, struct task_struct **out)
 {
     return task_create_common(priority, name, (u32)entry, stack_top,
                               address_space_kernel(), 0, 0, 0, 0, out);
 }
 
-u32 task_create_user_with_pid(int priority, const char *name, u32 user_eip,
+const char *task_create_user_with_pid(int priority, const char *name, u32 user_eip,
                               u32 kernel_stack_top, struct address_space *space,
                               u32 user_stack_top, struct process *proc, int pid,
                               struct task_struct **out)
 {
-    if (!space || !proc || pid <= 0) return ERR_TASK_BAD_STATE;
+    if (!space || !proc || pid <= 0) return "space/proc/pid";
     return task_create_common(priority, name, user_eip, kernel_stack_top,
                               space, 1, user_stack_top, proc, pid, out);
 }
@@ -290,16 +289,16 @@ void task_pid_release(int pid)
  * fork 的子任务不是从模板起跑：复制父进程的 ring3 中断帧、通用寄存器和
  * FPU 状态，只把 eax 改成 0。用户栈页已由 address_space_clone() 复制。
  */
-u32 task_fork_user(int pid, const char *name, struct irq_frame *frame,
+const char *task_fork_user(int pid, const char *name, struct irq_frame *frame,
                    u32 kernel_stack_top, struct address_space *space,
                    struct process *proc, struct task_struct **out)
 {
     struct task_struct *task;
     u32 *sp;
-    u32 rc;
+    const char *rc;
     int i;
 
-    if (!frame || !space || !proc || pid <= 0) return ERR_TASK_BAD_STATE;
+    if (!frame || !space || !proc || pid <= 0) return "frame/space/proc/pid";
     rc = task_create_common(1, name, frame->eip, kernel_stack_top, space,
                             1, frame->user_esp, proc, pid, out);
     if (rc) return rc;
@@ -441,15 +440,15 @@ int task_release_slot(int pid)
 {
     int i;
 
-    if (pid <= 0) return ERR_TASK_BAD_STATE;
+    if (pid <= 0) return -1;
     for (i = 0; i < TASK_MAX; i++) {
         if (tasks[i].pid == pid && tasks[i].state == TASK_ZOMBIE) {
-            if (&tasks[i] == current_task) return ERR_TASK_BAD_STATE;
+            if (&tasks[i] == current_task) return -1;
             task_zero(&tasks[i]);
             return 0;
         }
     }
-    return ERR_TASK_BAD_STATE;
+    return -1;
 }
 
 /*
@@ -562,11 +561,11 @@ u32 task_schedule_irq(struct irq_frame *frame)
  * 当前任务状态的唯一写入口。状态不是随便赋值：
  * READY/BLOCKED/ZOMBIE 都必须立刻进入调度器，否则 RUNNING 位会失真。
  */
-u32 task_set_current_state(int state)
+const char *task_set_current_state(int state)
 {
     struct task_struct *prev = current_task;
 
-    if (!prev || prev->state != TASK_RUNNING) return ERR_TASK_BAD_STATE;
+    if (!prev || prev->state != TASK_RUNNING) return "state";
     if (state == TASK_RUNNING) return 0;
 
     if (state == TASK_READY) {
@@ -576,7 +575,7 @@ u32 task_set_current_state(int state)
     } else if (state == TASK_ZOMBIE) {
         sched_reason = SCHED_EXIT;
     } else {
-        return ERR_TASK_BAD_STATE;
+        return "state";
     }
 
     sched_failed = 0;
@@ -585,7 +584,7 @@ u32 task_set_current_state(int state)
     if (state == TASK_ZOMBIE)
         for (;;) __asm__ __volatile__("cli; hlt");
 
-    return sched_failed ? ERR_TASK_BAD_STATE : 0;
+    return sched_failed ? "schedule" : 0;
 }
 
 void task_exit(void)
@@ -594,12 +593,12 @@ void task_exit(void)
     for (;;) __asm__ __volatile__("cli; hlt");
 }
 
-u32 task_block(void)
+const char *task_block(void)
 {
     return task_set_current_state(TASK_BLOCKED);
 }
 
-u32 task_wake(int pid)
+const char *task_wake(int pid)
 {
     int i;
     for (i = 0; i < TASK_MAX; i++) {
@@ -608,10 +607,10 @@ u32 task_wake(int pid)
             return 0;
         }
     }
-    return ERR_TASK_BAD_STATE;
+    return "pid";
 }
 
-u32 task_yield(void)
+const char *task_yield(void)
 {
     return task_set_current_state(TASK_READY);
 }

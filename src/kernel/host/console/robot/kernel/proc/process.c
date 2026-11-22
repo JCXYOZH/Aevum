@@ -3,7 +3,6 @@
 #include "kernel/mm/address_space.h"
 #include "arch/x86/frame.h"
 #include "config/memory.h"
-#include "kernel/error.h"
 
 #define PROC_STACK_COUNT 6
 
@@ -194,7 +193,7 @@ static void process_reap(struct process *p)
 static int proc_copy_name(struct process *p, const char *name)
 {
     int i;
-    if (!name) return ERR_TASK_ENTRY_MISSING;
+    if (!name) return -1;
     for (i = 0; i < PROC_NAME_MAX && name[i]; i++) p->comm[i] = name[i];
     p->comm[i] = 0;
     return 0;
@@ -209,7 +208,7 @@ struct process *process_create_user(int priority, const char *name,
     struct address_space *space;
     int pid;
     u32 stack_top;
-    u32 rc;
+    const char *rc;
 
     if (!name || !code || !code_size) return 0;
 
@@ -266,7 +265,7 @@ struct process *process_fork(struct irq_frame *frame)
     struct address_space *space;
     int pid;
     u32 stack_top;
-    u32 rc;
+    const char *rc;
 
     if (!frame) return 0;
     parent = (task_current() && task_process_current())
@@ -322,9 +321,9 @@ int process_exit_current(u32 code)
 {
     struct process *self;
 
-    if (!task_current() || !task_process_current()) return ERR_TASK_BAD_STATE;
+    if (!task_current() || !task_process_current()) return -1;
     self = task_process_current();
-    if (self->state != PROC_LIVE) return ERR_TASK_BAD_STATE;
+    if (self->state != PROC_LIVE) return -1;
     self->state = PROC_ZOMBIE;
     self->term_sig = 0;
     self->exit_code = code & 0xFFu;
@@ -339,10 +338,10 @@ int process_terminate_current(int sig)
 {
     struct process *self;
 
-    if (sig <= 0 || sig > 31) return ERR_TASK_BAD_STATE;
-    if (!task_current() || !task_process_current()) return ERR_TASK_BAD_STATE;
+    if (sig <= 0 || sig > 31) return -1;
+    if (!task_current() || !task_process_current()) return -1;
     self = task_process_current();
-    if (self->state != PROC_LIVE) return ERR_TASK_BAD_STATE;
+    if (self->state != PROC_LIVE) return -1;
 
     proc_signal_pending(self, sig);
     self->state = PROC_ZOMBIE;

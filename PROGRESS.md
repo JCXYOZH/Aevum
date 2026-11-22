@@ -16,7 +16,7 @@
 | 纯内存中继 | `control/relay/` | 已实现 | 会话、上下文、分片、在线计数；无落盘 |
 | 监控服务 | `archive/backend-python/monitor/desktop_server.py` | 已实现 | 读检查点、训练指标、错误码；起模型子进程 |
 | 串口桥接 | `src/kernel/host/bridge/serial_bridge.py` | 已实现 | 串口帧转 WebSocket |
-| 内核 | `src/kernel/host/console/` | 维护中 | 引导、状态机、错误码、80×25 单元格 |
+| 内核 | `src/kernel/host/console/` | 维护中 | 引导、状态机、结构化错误、80×25 单元格 |
 | Memoria C++ | `src/architecture/memoria/` + `src/architecture/memoria/include/` | 可编译 | 17 个 `.cpp`、17 个头文件；训练/生成/检查点 |
 | 桌面壳 | `interface/desktop/` | 可打包 | Electron 窗口、拉起监控；`dist:installer` 出 Inno Setup，`dist:dir` 出目录 |
 | 训练语料 | `data/tinyshakespeare_3000.txt` | 已入库 | 3000 行公开文本，不包含权重 |

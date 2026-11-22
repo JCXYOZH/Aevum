@@ -14,7 +14,7 @@
 
 void kernel_main(void)
 {
-    u32 rc;
+    const char *rc;
 
     vga_init();
     uart_init();
@@ -26,13 +26,11 @@ void kernel_main(void)
     rc = arm_app_init();
     if (rc) {
         struct aevum_error e = {
-            ERR_KERNEL_MAIN_ARM_APP,
-            "kernel_main",
-            "arm_app_init",
-            "arm app assembly failed",
-            "kernel_main",
+            "arm_app",
             rc,
-            (u8)((rc >> 16) & 0xFF)
+            "dependency",
+            "arm app task assembly failed",
+            "kernel_main -> arm_app_init"
         };
         aevum_fail(&e);
     }

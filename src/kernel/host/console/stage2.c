@@ -56,30 +56,18 @@ static inline void vga_puts_at(int row, int col, const char *s, uint8_t attr) {
 }
 
 /* ============================================================
- * R14: 失败汇聚（接管 R8 字段写权）
+ * R14: 失败汇聚（可见消息，不再写错误码）
  * ============================================================ */
-static void r14_fail_report(uint32_t err) {
-    volatile uint32_t *code  = (volatile uint32_t *)BI_R8_ERROR_CODE;
-    volatile uint8_t  *stage = (volatile uint8_t  *)BI_R8_ERROR_STAGE;
-    volatile uint8_t  *field = (volatile uint8_t  *)BI_R8_ERROR_FIELD;
-    volatile uint8_t  *type  = (volatile uint8_t  *)BI_R8_ERROR_TYPE;
-    *code = err;
-    *stage = (err >> 16) & 0xFF;
-    *field = (err >>  8) & 0xFF;
-    *type  =  err        & 0xFF;
-
-    vga_puts_at(0, 0, "[ERR] 0x", VGA_ATTR_HILIGHT);
-    const char hex[] = "0123456789ABCDEF";
-    for (int i = 0, p = 8; i < 8; i++, p++) {
-        vga_put(0, p, hex[(err >> ((7 - i) * 4)) & 0xF], VGA_ATTR_HILIGHT);
-    }
+static void r14_fail_report(const char *msg) {
+    vga_puts_at(0, 0, "[ERR] ", VGA_ATTR_HILIGHT);
+    vga_puts_at(0, 6, msg, VGA_ATTR_HILIGHT);
     for (;;) __asm__ volatile ("cli; hlt");
 }
 
 /* ============================================================
  * R15: 串口输出（唯一碰 outb 的职责）
  * ============================================================ */
-static uint32_t r15_serial_init(void) {
+static const char *r15_serial_init(void) {
     outb(SERIAL_COM1 + 1, 0x00);   /* disable interrupts */
     outb(SERIAL_COM1 + 3, 0x80);   /* enable DLAB */
     outb(SERIAL_COM1 + 0, 0x01);   /* divisor low: 115200 */
@@ -93,7 +81,7 @@ static uint32_t r15_serial_init(void) {
     outb(SERIAL_COM1 + 0, 0xAE);
     if (inb(SERIAL_COM1 + 0) != 0xAE) {
         outb(SERIAL_COM1 + 4, 0x0F);
-        return ERR_R15_SERIAL_INIT_FAIL;
+        return "serial init failed";
     }
     outb(SERIAL_COM1 + 4, 0x0F);
     return 0;
@@ -164,19 +152,19 @@ static void r16_scan_and_send(void) {
 /* ============================================================
  * R10/R11/R13: 与之前一致
  * ============================================================ */
-static uint32_t r10_check_boot_info(void) {
+static const char *r10_check_boot_info(void) {
     volatile uint32_t *entry  = (volatile uint32_t *)BI_R7_STAGE2_ENTRY;
     volatile uint32_t *mapped = (volatile uint32_t *)BI_R4_MAPPED_BYTES;
-    if (*entry  != 0x1000u)   return ERR_R10_STAGE2_ENTRY_MISMATCH;
-    if (*mapped != 0x400000u) return ERR_R10_MAPPED_BYTES_MISMATCH;
+    if (*entry  != 0x1000u)   return "stage2 entry mismatch";
+    if (*mapped != 0x400000u) return "mapped bytes mismatch";
     return 0;
 }
 
-static uint32_t r11_init_vga(void) {
+static const char *r11_init_vga(void) {
     volatile uint16_t *vga = (volatile uint16_t *)VGA_TEXT_BASE;
     uint16_t save = vga[0];
     vga[0] = 0x0F2D;
-    if (vga[0] != 0x0F2D) return ERR_R11_VGA_INIT_FAIL;
+    if (vga[0] != 0x0F2D) return "vga init failed";
     vga[0] = save;
     vga_clear();
     return 0;
@@ -226,7 +214,7 @@ uint32_t stage2_main(void) {
         : : "r"(STAGE2_STACK_TOP) : "memory"
     );
 
-    uint32_t err;
+    const char *err;
 
     err = r10_check_boot_info(); if (err) r14_fail_report(err);
     err = r11_init_vga();        if (err) r14_fail_report(err);

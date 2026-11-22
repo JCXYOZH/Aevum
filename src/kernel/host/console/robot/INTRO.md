@@ -24,19 +24,19 @@
 - **COW 写时复制**：`address_space_clone()` 只分配新 PD/PT，把 data/stack/heap 和内核可写的 control 页清 `RW`、置 PTE bit 9 后共享，代码页只读共享；首次写触发 `#PF` 时分配新页、复制内容并恢复 VMA 权限，旧页引用计数减一。V 页实测第一轮 `forks 2 shared 8 live 2 breaks 4 last AS4 old 00115000 -> 00118000`，第二轮累计 `forks 4 shared 16 live 2 breaks 9`。
 - **brk / guard / copyin-copyout**：`eax=8 brk` 增长 heap 并零填新页、缩回释放、越界拒绝；`eax=9 peek` / `eax=10 poke` 逐字节按 VMA+PTE 翻译用户指针，写 COW 页先拆分。A/B 的 `brk(0x406000)`、`poke(0x405800,"HELP")`、`peek=0x48454C50` 成立；`brk(0x500000)` 返回 `0xFFFFFFFF`；写 guard `0x402000` 返回 0。
 - **`#PF` 故障隔离**：`userC` 在私有数据页置 `mode=1`，数到 5000 后故意写内核显存 `0xB8000`；`userF` 在 `mode=3` 直接写 guard `0x402000`。内核只修 heap 内、brk 以下的缺页和 COW 写页；guard/RO/非法地址走 `process_terminate_current(SIGSEGV)`，C/F 的 `EXIT` 显示 `SIG11`。全屏页显示 `#PF count 3`、`cr2 000B8000`、`P/W/U`，A/B 的 CR3 与计数器继续推进。
-- **内核态 #PF 诊断页**：按 `K` 从 render 的 kernel task 写 `0x00400000`，越过 0–4 MB 恒等映射，CPL0 触发 `#PF`。panic 页先 `cli`，再显示 PID/comm、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count、recoveries 和 kernel image 范围 `0x80000..0x8C300`；按 `R` 临时映射诊断页、执行完出错写并 `iret` 返回，按 `H` 停机。
+- **内核态 #PF 诊断页**：按 `K` 从 render 的 kernel task 写 `0x00400000`，越过 0–4 MB 恒等映射，CPL0 触发 `#PF`。panic 页先 `cli`，再显示 PID/comm、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count、recoveries 和 kernel image 范围 `0x80000..0x8C140`；按 `R` 临时映射诊断页、执行完出错写并 `iret` 返回，按 `H` 停机。
 - **CPU 统计**：按 `C` 打开全屏 `AEVUM / CPU TIME ACCOUNTING`，三行任务显示 PID、TASK、PRI、WT、STATE、CPU%、TICKS、SHARE，底部是 PIT TICKS、SWITCHES、PREEMPTIONS。百分比来自每个任务的 `cpu_ticks`，并随 PIT 持续变化。
 - **机械臂**：三自由度平面臂，Q16.16 定点运算；阻尼最小范数控制、零空间投影、2×2 雅可比奇异值面板。
 - **显示**：80×25 VGA 文本，影子显存在 `0x20000`，整块刷新到 `0xB8000`；右侧 `TASK SCHED` 第二行显示每任务 CPU 百分比，第三行保留栈水位条，底部是滚动调度时间轴。
 - **串口**：COM1 差量帧 `A5 5A 01 COUNT [row col ch attr] CRC`，每 8 帧扫描一次，每 120 次扫描强制全帧。
 - **交互**：空格扫描码 `0x39` 切换零空间；每 420 帧自动切换一次；`P`（扫描码 `0x19`）创建一个全屏 `probe` 任务；`B`（扫描码 `0x30`）把 `idle` 任务阻塞成 `3id B`，再按一次 `B` 唤醒；`T`（扫描码 `0x14`）进入/退出全屏抢占决斗；`C`（扫描码 `0x2E`）进入/退出 CPU 统计页；`F`（扫描码 `0x21`）进入/退出 FPU 页；`G`（扫描码 `0x22`）进入/退出家族树页；`V`（扫描码 `0x2F`）进入/退出 COW fork + 信号 + 物理池页；`K`（扫描码 `0x25`）触发内核态 `#PF` 诊断页，`R` 恢复、`H` 停机；`userC` 写 `0xB8000`、`userF` 写 guard 都会触发 `#PF`，D 的第二轮子进程 `1/0` 触发 `#DE`，都只终止当前用户进程。
-- **错误**：统一 `0xRRFFTT` 错误码；失败时由 `aevum_fail()` 打印错误码、owner、field、detail，并停机。
+- **错误**：错误身份是 `(owner, field)` 字符串对；失败时由 `aevum_fail()` 打印 owner、field、type、detail、at，并停机。
 
 ## 模块结构
 
 ```text
 config/memory.h                 物理内存布局（只读常量）
-include/kernel/                 基础类型、错误码、任务接口
+include/kernel/                 基础类型、结构化错误、任务接口
 include/arch/x86/               端口 I/O、IDT/PIC/PIT 接口
 include/drivers/                VGA、UART、键盘接口
 include/lib/                    定点、三角、格式化接口
@@ -77,7 +77,7 @@ app/tree/demo/ + app/tree/render/ famP/famA/famB + 家族树页
 app/user/demo/ + app/user/render/ A/B/C/D/F + 两轮 fork/wait + 信号页
 ```
 
-更细的字段归属、错误码表和验收口径见 `CONSTRUCTION.md`。
+更细的字段归属、结构化错误表和验收口径见 `CONSTRUCTION.md`。
 
 ## 构建与运行
 
@@ -86,7 +86,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 49,152 字节（`boot.asm` 一次 LBA 读 96 个扇区到 `0x80000`）；当前构建 42,920 字节，BSS 结束于 `0x8C1E0`，镜像余量 6,232 字节；BSS 尾部 `0x8C000..0x8C1E0` 由 loader 清零。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 49,152 字节（`boot.asm` 一次 LBA 读 96 个扇区到 `0x80000`）；当前构建 42,792 字节，BSS 结束于 `0x8C140`，镜像余量 6,360 字节；BSS 尾部 `0x8C000..0x8C140` 由 loader 清零。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 
@@ -123,4 +123,4 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 按 `K` 后，画面变成 `AEVUM / KERNEL PAGE FAULT`：`task 2 render` 写 `0x00400000`，`CS=0x0008`、`CPL 0`，`CR2=0x00400000`、`ERR=0x00000002`、`CR3=0x00010000`，`P=0 W/R=1 U/S=0`。页面标题是 `RING0 FAULT - CONTROLLED PROBE`，并提供 `R = recover + re-arm` / `H = halt`；按 `R` 后回到机械臂。独立启动后直接按 `K` 是 `fault count 1`；先跑完整 V 再按 `K` 是累计 `fault count 6`（V 页 3 次、V 停止路径额外 2 次、K 探针 1 次），这个 count 不是单次 probe 次数。
 
-更细的字段归属、错误码表和验收口径见 `CONSTRUCTION.md`；机器人学下一目标见 `ROBOTICS.md`。
+更细的字段归属、结构化错误表和验收口径见 `CONSTRUCTION.md`；机器人学下一目标见 `ROBOTICS.md`。

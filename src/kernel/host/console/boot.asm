@@ -1,11 +1,11 @@
 ; ============================================================
-; aevum boot.asm (v3)
-; 遵循: AEVUM BOOT 契约规则文档 v3
-; 方针: 归属唯一、定位有码
+; aevum boot.asm (v4)
+; 遵循: AEVUM BOOT 契约规则文档 v4
+; 方针: 归属唯一、失败可见
 ; 关键变更 vs v2:
 ;   [1] R2 字段前置到 lgdt 之前写入 (第四节: 写入时机规则)
-;   [2] R8 拆 R8_rm / R8_pm 两个入口 (第二节: 双入口说明)
-;   [3] PML4 改名 PD (第三节/第六节/第十一节)
+;   [2] 取消 0xRRFFTT，失败改为 BIOS teletype 可见消息
+;   [3] PML4 改名 PD (第三节/第十一节)
 ; ============================================================
 [bits 16]
 [org 0x7c00]
@@ -16,7 +16,6 @@
 ; ---------- R1 ----------
 %define R1_READ_DISK_OFF                    0x0000
 %define R1_READ_DISK_STAGE2_SECTORS_READ    (BOOT_INFO_BASE + R1_READ_DISK_OFF + 0)
-%define R1_READ_DISK_ERROR_CODE             (BOOT_INFO_BASE + R1_READ_DISK_OFF + 1)
 
 ; ---------- R2 ----------
 %define R2_BUILD_GDT_OFF                    0x0010
@@ -49,29 +48,9 @@
 %define R7_HANDOFF_IDT_READY                (BOOT_INFO_BASE + R7_HANDOFF_OFF + 4)
 %define R7_HANDOFF_REGS_STATE_MASK          (BOOT_INFO_BASE + R7_HANDOFF_OFF + 5)
 
-; ---------- R8 ----------
-%define R8_FAIL_REPORT_OFF                  0x0070
-%define R8_FAIL_REPORT_ERROR_CODE           (BOOT_INFO_BASE + R8_FAIL_REPORT_OFF + 0)
-%define R8_FAIL_REPORT_ERROR_STAGE          (BOOT_INFO_BASE + R8_FAIL_REPORT_OFF + 4)
-%define R8_FAIL_REPORT_ERROR_FIELD          (BOOT_INFO_BASE + R8_FAIL_REPORT_OFF + 5)
-%define R8_FAIL_REPORT_ERROR_TYPE           (BOOT_INFO_BASE + R8_FAIL_REPORT_OFF + 6)
-
 ; ---------- R9 ----------
 %define R9_A20_STATE_OFF                    0x0090
 %define R9_A20_STATE_VALUE                  (BOOT_INFO_BASE + R9_A20_STATE_OFF + 0)
-
-; ============================================================
-; 错误码 (0xRRFFTT)
-; ============================================================
-%define ERR_R1_STAGE2_SECTORS_READ_EXT_FAIL  0x010004
-%define ERR_R1_STAGE2_SECTORS_READ_DEP_UNMET 0x010003
-%define ERR_R2_GDT_PHYS_DEP_UNMET            0x020003
-%define ERR_R3_PM_ENABLED_EXT_FAIL           0x030004
-%define ERR_R4_PD_PHYS_CONFLICT              0x040002
-%define ERR_R5_PAGING_ENABLED_EXT_FAIL       0x050004
-%define ERR_R6_STACK_LIMIT_DEP_UNMET         0x060003
-%define ERR_R7_STAGE2_ENTRY_DEP_UNMET        0x070003
-%define ERR_R9_A20_STATE_MISSING             0x090001
 
 ; ============================================================
 ; 布局常量
@@ -138,31 +117,36 @@ start:
     jmp R2_BUILD_GDT_CODE_SEL:R3_enter_pm_entry
 
 R1_read_disk_external_fail:
-    mov [R1_READ_DISK_ERROR_CODE], ah
-    mov eax, ERR_R1_STAGE2_SECTORS_READ_EXT_FAIL
-    jmp R8_fail_report_rm
+    mov si, msg_r1_external
+    jmp R1_fail_print
 
 R1_read_disk_dep_unmet:
-    mov eax, ERR_R1_STAGE2_SECTORS_READ_DEP_UNMET
-    jmp R8_fail_report_rm
+    mov si, msg_r1_short
 
 ; ============================================================
-; R8_rm: 实模式失败汇聚入口 (16 位指令)
-; 入参: EAX = 0x00RRFFTT
-; 数据布局与 R8_pm 完全相同
+; R1 失败报告：BIOS teletype 直接打印，随后停机
+; 不再写 0xRRFFTT，也不需要 stage2 解码
 ; ============================================================
-R8_fail_report_rm:
-    ; 32 位错误码分两次写 (实模式不能 A3 吃 4 字节偏移)
-    mov [R8_FAIL_REPORT_ERROR_CODE], ax
-    mov ebx, eax
-    shr ebx, 16
-    mov [R8_FAIL_REPORT_ERROR_CODE + 2], bx
-    ; 拆分: AL=TT, AH=FF, BL=RR
-    mov [R8_FAIL_REPORT_ERROR_TYPE], al
-    mov [R8_FAIL_REPORT_ERROR_FIELD], ah
-    mov [R8_FAIL_REPORT_ERROR_STAGE], bl
+R1_fail_print:
+    call print_rm
     cli
     hlt
+
+; SI 指向以 0 结尾的字符串；DS 已为 0
+print_rm:
+    mov ah, 0x0E
+    mov bx, 0x0007
+.next:
+    lodsb
+    test al, al
+    jz .done
+    int 0x10
+    jmp .next
+.done:
+    ret
+
+msg_r1_external: db "AEVUM boot: disk read failed", 0
+msg_r1_short:    db "AEVUM boot: stage2 short read", 0
 
 ; ============================================================
 ; 保护模式入口
@@ -224,23 +208,6 @@ R4_build_pagetable_fill_pt:
     mov byte [R7_HANDOFF_REGS_STATE_MASK], R7_HANDOFF_REGS_STATE_EIP_VALID
 
     jmp R2_BUILD_GDT_CODE_SEL:R1_READ_DISK_STAGE2_LOAD_ADDR
-
-; ============================================================
-; R8_pm: 保护模式失败汇聚入口 (32 位指令)
-; 入参: EAX = 0x00RRFFTT
-; 数据布局与 R8_rm 完全相同
-; ============================================================
-R8_fail_report_pm:
-    mov [R8_FAIL_REPORT_ERROR_CODE], eax
-    mov ebx, eax
-    shr ebx, 16
-    mov [R8_FAIL_REPORT_ERROR_STAGE], bl
-    mov ebx, eax
-    shr ebx, 8
-    mov [R8_FAIL_REPORT_ERROR_FIELD], bl
-    mov [R8_FAIL_REPORT_ERROR_TYPE], al
-    cli
-    hlt
 
 ; ============================================================
 ; R2 静态数据: 临时 GDT

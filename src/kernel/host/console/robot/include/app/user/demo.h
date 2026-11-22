@@ -16,10 +16,10 @@ struct address_space;
  * 验证 #PF 故障隔离；userD 先 fork 出 userE 验证正常 exit(7)+COW，
  * 再 fork 第二个 E 触发 #DE，验证 wait 的 SIGFPE 状态；userF 写 guard 页。
  */
-u32 user_demo_start(void);
+const char *user_demo_start(void);
 void user_demo_stop(void);
 int user_demo_alive(void);
-u32 user_demo_error(void);
+const char *user_demo_error(void);
 int user_demo_pid(int lane);
 struct address_space *user_demo_space(int lane);
 int user_demo_lane_count(void);

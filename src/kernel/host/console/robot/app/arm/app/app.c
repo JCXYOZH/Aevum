@@ -26,7 +26,6 @@ static struct task_struct *p_control;
 static struct task_struct *p_render;
 static struct task_struct *p_idle;
 static int probe_live;
-static u32 app_dep_code;
 static struct task_struct *p_duel_a;
 static struct task_struct *p_duel_b;
 static volatile u32 duel_stop;
@@ -44,8 +43,12 @@ static volatile int idle_pid;
 static volatile u32 idle_block_req;
 static volatile u32 idle_blocked;
 
-static const struct aevum_error app_err_template = {
-    0, "arm_app", "task_create", "arm app task assembly failed", 0, 0, 0
+static const struct aevum_error app_dep_template = {
+    "arm_app", "task_create", "dependency", "arm app task assembly failed", 0
+};
+
+static const struct aevum_error app_state_template = {
+    "arm_app", "task_yield", "state", "arm app task switch failed", 0
 };
 
 static void proc_control(void)
@@ -53,8 +56,7 @@ static void proc_control(void)
     for (;;) {
         arm_control_step();
         if (task_yield()) {
-            struct aevum_error e = app_err_template;
-            e.code = ERR_ARM_APP_SWITCH;
+            struct aevum_error e = app_state_template;
             e.field = "task_yield(control)";
             aevum_fail(&e);
         }
@@ -83,11 +85,11 @@ static void proc_render(void)
             if (fpu_demo_live()) {
                 fpu_demo_stop();
             } else {
-                u32 rc = fpu_demo_start();
+                const char *rc = fpu_demo_start();
                 if (rc) {
-                    struct aevum_error e = app_err_template;
-                    e.code = ERR_ARM_APP_TASK_CREATE;
-                    e.field = "fpu_demo_start";
+                    struct aevum_error e = app_dep_template;
+                    e.field = rc;
+                    e.at = "proc_render -> fpu_demo_start";
                     aevum_fail(&e);
                 }
             }
@@ -97,11 +99,11 @@ static void proc_render(void)
             if (tree_live) {
                 tree_demo_stop();
             } else {
-                u32 rc = tree_demo_start();
+                const char *rc = tree_demo_start();
                 if (rc) {
-                    struct aevum_error e = app_err_template;
-                    e.code = ERR_ARM_APP_TASK_CREATE;
-                    e.field = "tree_demo_start";
+                    struct aevum_error e = app_dep_template;
+                    e.field = rc;
+                    e.at = "proc_render -> tree_demo_start";
                     aevum_fail(&e);
                 }
                 tree_live = 1;
@@ -112,11 +114,11 @@ static void proc_render(void)
             if (user_live) {
                 user_demo_stop();
             } else {
-                u32 rc = user_demo_start();
+                const char *rc = user_demo_start();
                 if (rc) {
-                    struct aevum_error e = app_err_template;
-                    e.code = ERR_ARM_APP_TASK_CREATE;
-                    e.field = "user_demo_start";
+                    struct aevum_error e = app_dep_template;
+                    e.field = rc;
+                    e.at = "proc_render -> user_demo_start";
                     aevum_fail(&e);
                 }
                 user_live = 1;
@@ -138,11 +140,11 @@ static void proc_render(void)
 
         /* ring3 进程上下文：地址空间由 mm 模块持有，render 只读。 */
         if (user_live) {
-            u32 rc = user_demo_error();
+            const char *rc = user_demo_error();
             if (rc) {
-                struct aevum_error e = app_err_template;
-                e.code = rc;
-                e.field = "user_demo";
+                struct aevum_error e = app_dep_template;
+                e.field = rc;
+                e.at = "proc_render -> user_demo";
                 aevum_fail(&e);
             }
             if (!user_demo_alive()) {
@@ -151,8 +153,7 @@ static void proc_render(void)
                 user_render_frame();
                 vga_flush();
                 if (task_yield()) {
-                    struct aevum_error e = app_err_template;
-                    e.code = ERR_ARM_APP_SWITCH;
+                    struct aevum_error e = app_state_template;
                     e.field = "task_yield(render/user)";
                     aevum_fail(&e);
                 }
@@ -162,11 +163,11 @@ static void proc_render(void)
 
         /* 进程家族树：family.c 负责关系，render 只读；G 停止后等任务退完再回机械臂。 */
         if (tree_live) {
-            u32 rc = tree_demo_error();
+            const char *rc = tree_demo_error();
             if (rc) {
-                struct aevum_error e = app_err_template;
-                e.code = ERR_ARM_APP_TASK_CREATE;
-                e.field = "tree_demo_child";
+                struct aevum_error e = app_dep_template;
+                e.field = rc;
+                e.at = "proc_render -> tree_demo";
                 aevum_fail(&e);
             }
             if (!tree_demo_alive()) {
@@ -175,8 +176,7 @@ static void proc_render(void)
                 tree_render_frame();
                 vga_flush();
                 if (task_yield()) {
-                    struct aevum_error e = app_err_template;
-                    e.code = ERR_ARM_APP_SWITCH;
+                    struct aevum_error e = app_state_template;
                     e.field = "task_yield(render/tree)";
                     aevum_fail(&e);
                 }
@@ -192,8 +192,7 @@ static void proc_render(void)
                 arm_render_duel_status(duel_a, duel_b, (const u8 *)duel_tape, duel_tape_head);
                 vga_flush();
                 if (task_yield()) {
-                    struct aevum_error e = app_err_template;
-                    e.code = ERR_ARM_APP_SWITCH;
+                    struct aevum_error e = app_state_template;
                     e.field = "task_yield(render/duel)";
                     aevum_fail(&e);
                 }
@@ -206,8 +205,7 @@ static void proc_render(void)
             fpu_render_frame();
             vga_flush();
             if (task_yield()) {
-                struct aevum_error e = app_err_template;
-                e.code = ERR_ARM_APP_SWITCH;
+                struct aevum_error e = app_state_template;
                 e.field = "task_yield(render/fpu)";
                 aevum_fail(&e);
             }
@@ -219,8 +217,7 @@ static void proc_render(void)
             arm_render_cpu_frame();
             vga_flush();
             if (task_yield()) {
-                struct aevum_error e = app_err_template;
-                e.code = ERR_ARM_APP_SWITCH;
+                struct aevum_error e = app_state_template;
                 e.field = "task_yield(render/cpu)";
                 aevum_fail(&e);
             }
@@ -230,8 +227,7 @@ static void proc_render(void)
         /* 探针占用全屏时，render 不再抢画，但仍在调度器里正常让出。 */
         if (probe_live) {
             if (task_yield()) {
-                struct aevum_error e = app_err_template;
-                e.code = ERR_ARM_APP_SWITCH;
+                struct aevum_error e = app_state_template;
                 e.field = "task_yield(render/probe-live)";
                 aevum_fail(&e);
             }
@@ -252,8 +248,7 @@ static void proc_render(void)
         frames++;
 
         if (task_yield()) {
-            struct aevum_error e = app_err_template;
-            e.code = ERR_ARM_APP_SWITCH;
+            struct aevum_error e = app_state_template;
             e.field = "task_yield(render)";
             aevum_fail(&e);
         }
@@ -362,18 +357,17 @@ static void proc_idle(void)
             idle_blocked = 0;
         }
         if (task_yield()) {
-            struct aevum_error e = app_err_template;
-            e.code = ERR_ARM_APP_SWITCH;
+            struct aevum_error e = app_state_template;
             e.field = "task_yield(idle)";
             aevum_fail(&e);
         }
     }
 }
 
-u32 arm_app_spawn_probe(void)
+const char *arm_app_spawn_probe(void)
 {
     struct task_struct *probe;
-    u32 rc;
+    const char *rc;
 
     if (probe_live) return 0;
     rc = task_create(1, "probe", proc_probe, AEVUM_STACK_PROBE, &probe);
@@ -384,9 +378,9 @@ u32 arm_app_spawn_probe(void)
     return rc;
 }
 
-u32 arm_app_start_duel(void)
+const char *arm_app_start_duel(void)
 {
-    u32 rc;
+    const char *rc;
 
     if (duel_live || probe_live) return 0;
 
@@ -416,31 +410,21 @@ u32 arm_app_start_duel(void)
     return 0;
 }
 
-u32 arm_app_init(void)
+const char *arm_app_init(void)
 {
-    u32 rc;
+    const char *rc;
 
-    app_dep_code = 0;
     arm_control_init();
     arm_render_init();
 
     rc = task_create(3, "control", proc_control, AEVUM_STACK_P1, &p_control);
-    if (rc) {
-        app_dep_code = rc;
-        return ERR_ARM_APP_TASK_CREATE;
-    }
+    if (rc) return rc;
 
     rc = task_create(2, "render", proc_render, AEVUM_STACK_P2, &p_render);
-    if (rc) {
-        app_dep_code = rc;
-        return ERR_ARM_APP_TASK_CREATE;
-    }
+    if (rc) return rc;
 
     rc = task_create(0, "idle", proc_idle, AEVUM_STACK_IDLE, &p_idle);
-    if (rc) {
-        app_dep_code = rc;
-        return ERR_ARM_APP_TASK_CREATE;
-    }
+    if (rc) return rc;
     family_set_reaper(task_pid_of(p_idle));
 
     return 0;
@@ -449,16 +433,11 @@ u32 arm_app_init(void)
 void arm_app_start(void)
 {
     if (!p_control || !p_render || !p_idle) {
-        struct aevum_error e = app_err_template;
-        e.code = ERR_ARM_APP_TASK_CREATE;
+        struct aevum_error e = app_dep_template;
         e.field = "p_control/p_render/p_idle";
+        e.at = "arm_app_start";
         aevum_fail(&e);
     }
 
     task_start(p_control);
-}
-
-u32 arm_app_dep_code(void)
-{
-    return app_dep_code;
 }

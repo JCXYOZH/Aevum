@@ -1,4 +1,4 @@
-# 内核施工说明（归属唯一 / 定位有码）
+# 内核施工说明（归属唯一 / 失败可见）
 
 本目录是 32 位裸机多进程教学内核。`kernel.c` 已拆成模块目录，构建入口仍是
 `make clean && make all`，产物仍是 `disk.img` 给桌面「内核实况」读取。
@@ -33,7 +33,7 @@
 | 运动学 | `app/arm/kinematics/kinematics.c` | 纯函数，无状态 | `arm_fk/arm_jacobian/arm_solve` |
 | 控制 | `app/arm/control/control.c` | `q/dq/points/target/...` 与 `arm_status` 快照 | `arm_control_init/step/toggle_nullspace/status` |
 | 渲染 | `app/arm/render/render.c` | 轨迹环形缓冲 `trace[]`；只读 `arm_status` | `arm_render_init/frame/trace_push` |
-| 应用装配 | `app/arm/app/app.c` | `p_control/p_render/p_idle/app_dep_code`；创建三个常驻任务；键盘分发（含 `V` / `K`） | `arm_app_init/start/dep_code` |
+| 应用装配 | `app/arm/app/app.c` | `p_control/p_render/p_idle`；创建三个常驻任务；键盘分发（含 `V` / `K`） | `arm_app_init/start` |
 | FPU 上下文实验 | `app/fpu/demo/demo.c` | `active/stop/done[]/lanes[]`；两个任务各自维护 XMM0 标签与计数 | `fpu_demo_start/stop/live/read` |
 | FPU 实验渲染 | `app/fpu/render/render.c` | 全屏 VGA 布局；只读 `struct fpu_lane` 快照 | `fpu_render_frame` |
 | 家族树演示 | `app/tree/demo/demo.c` | `famP/famA/famB` 的创建、停止、done 标志；父进程退出由 `task_exit()` 触发 | `tree_demo_start/stop/alive/error` |
@@ -47,33 +47,36 @@
 - VGA 只通过 `vga.c` 写；串口只通过 `uart.c` 写。
 - `kernel_main` 不持有业务状态，只按依赖顺序装配并处理装配失败。
 
-## 二、错误码
+## 二、结构化错误
 
-格式 `0xRRFFTT`：
+错误身份是 `(owner, field)` 字符串对，不再分配 `0xRRFFTT` 数字码。
 
-- `RR`：职责号
-- `FF`：职责内字段号（`0x00` 通用，`0x01` 入口，`0x02` 栈，`0x03` PID，`0x04` 状态，`0x05` 出参，`0x06` 优先级，`0x08` PID 池）
-- `TT`：错误类型（`0x01` 字段缺失，`0x02` 字段冲突，`0x03` 依赖未满足，`0x04` 外部操作失败）
+- `owner`：出错模块
+- `field`：失败字段名，失败函数直接返回该字符串
+- `type`：分类标签（`missing` / `conflict` / `dependency` / `external` / `state`）
+- `detail`：具体原因
+- `at`：调用点
 
-| 代码 | 常量 | 场景 |
-| --- | --- | --- |
-| `0x200004` | `ERR_KERNEL_MAIN_ARM_APP` | 应用装配失败 |
-| `0x210004` | `ERR_TASK_SLOT_FULL` | 任务槽满 |
-| `0x210101` | `ERR_TASK_ENTRY_MISSING` | 入口为空 |
-| `0x210203` | `ERR_TASK_STACK_INVALID` | 栈顶越界或未 16 字节对齐 |
-| `0x210302` | `ERR_TASK_PID_DUP` | 旧 PID 重复模板，`task_create` 已不再使用 |
-| `0x210803` | `ERR_TASK_PID_EXHAUSTED` | PID 位图 1..31 已耗尽 |
-| `0x210403` | `ERR_TASK_BAD_STATE` | 状态非法或任务指针为空 |
-| `0x210501` | `ERR_TASK_OUT_MISSING` | 出参为空 |
-| `0x220004` | `ERR_ARM_APP_TASK_CREATE` | 应用创建任务失败 |
-| `0x220003` | `ERR_ARM_APP_SWITCH` | 应用任务切换失败 |
-| `0x280004` | `ERR_MM_NO_SPACE` | 地址空间槽已耗尽或用户页分配失败 |
+失败函数成功返回 `0`，失败返回字段名字面量，例如：
 
-职责号：`0x20` main、`0x21` task、`0x22` arm_app、`0x23` arm_control、
-`0x24` arm_render、`0x25` vga、`0x26` uart、`0x27` keyboard、`0x28` mm。
+| 返回值 | 场景 |
+| --- | --- |
+| `"out"` | 出参为空 |
+| `"entry"` | 入口为空 |
+| `"stack"` | 栈顶越界或未 16 字节对齐 |
+| `"slot"` | 任务槽满 |
+| `"pid_hint.range"` | PID 提示越界 |
+| `"pid_hint.used"` | PID 提示已被占用 |
+| `"pid_pool"` | PID 位图 1..31 已耗尽 |
+| `"state"` | 状态非法或当前任务不是 RUNNING |
+| `"schedule"` | 调度器无法选出下一个 READY 任务 |
+| `"pid"` | 唤醒时找不到 BLOCKED 任务 |
+| `"space/proc/pid"` | 用户任务创建参数不全 |
+| `"frame/space/proc/pid"` | fork 参数不全 |
+| `"process_create_user"` | 用户演示创建进程失败 |
 
-`aevum_fail()` 是唯一停机入口，错误屏必须带四要素：错误码、owner、field、detail；
-有上游依赖时再带 `dep_code/dep_rr`。
+`aevum_fail()` 是唯一停机入口，错误屏必须带五要素：`owner`、`field`、
+`type`、`detail`、`at`。`aevum_fail` 只打印这些结构化字段，不再打印十六进制错误码。
 
 ## 三、进程状态
 
@@ -92,7 +95,7 @@
 `RUNNING` 的三种离开方式现在统一走 `task_set_current_state(state)`：
 `TASK_READY` 等价 `task_yield()`，`TASK_BLOCKED` 等价 `task_block()`，`TASK_ZOMBIE` 等价
 `task_exit()`。设置 `TASK_RUNNING` 是无副作用 no-op；非 `RUNNING` 的当前任务传其他状态返回
-`ERR_TASK_BAD_STATE`。这样 `state` 仍只有 `task.c` 一个写者，不会出现应用直接改状态后不切调度的情况。
+`"state"`。这样 `state` 仍只有 `task.c` 一个写者，不会出现应用直接改状态后不切调度的情况。
 
 `task_pick_next()` 只选择 `READY`，因此 `BLOCKED` 和 `ZOMBIE` 不会被调度。
 PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x40` 两条入口上做同一套调度；
@@ -168,7 +171,7 @@ P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从�
 地址空间和用户进程：
 
 - 内核空间固定使用 `0x10000` 页目录，`0..4MB` 恒等映射保持 supervisor-only；VGA BIOS 影子 ROM `0xC0000..0xFFFFF` 不放进页池。
-- 用户物理页池 `0x100000..0x1FEFFF` 共 255 页，位图分配，每页一个引用计数；避开内核 `0x80000..0x8C300`、VGA/BIOS 和 `0x200000` 起的任务栈。
+- 用户物理页池 `0x100000..0x1FEFFF` 共 255 页，位图分配，每页一个引用计数；避开内核 `0x80000..0x8C140`、VGA/BIOS 和 `0x200000` 起的任务栈。
 - 每个用户空间有独立 PD/PT；用户 VA 固定为 code `0x400000`（RX）、data `0x401000`（RW）、guard `0x402000`（VMA 无 PTE）、stack `0x403000`（RW，栈顶 `0x404000`）、control `0x404000`（R）、heap `0x405000..0x410000`（RW）。`fork` 只分配新 PD/PT，可写用户页共享为 COW，control 页因内核要写停止字也走 COW。
 - 6 个 VMA 是 `code/data/guard/stack/control/heap`；`address_space_user_range_ok()` 按 VMA 权限 + PTE present/user/RW 双重校验，`handle_user_fault()` 只对 heap VMA 内、brk 以下的缺页零填并 `iret` 重试，guard/RO/非法地址一律返回 0。
 - 用户内核栈顶为 A `0x201000`、B `0x202000`、C `0x203000`、D `0x204000`、E `0x205000`、F `0x206000`；`AEVUM_TASK_STACK_MAX=0x206000`。每栈底部 512 字节仍是 FXSAVE 区。
@@ -194,8 +197,8 @@ P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从�
 | 地址 | 用途 |
 | --- | --- |
 | `0x80000` | 内核镜像起点 |
-| `0x80000..0x8C000` | boot 一次 LBA 读取的 96 扇区（48KB）窗口；当前 `kernel.bin` 42,920 字节 |
-| `0x8A7C0..0x8C1E0` | `.bss`，由 loader 的 `rep stosb` 清零；尾部 `0x8C000..0x8C1E0` 高于加载窗口 |
+| `0x80000..0x8C000` | boot 一次 LBA 读取的 96 扇区（48KB）窗口；当前 `kernel.bin` 42,792 字节 |
+| `0x8A740..0x8C140` | `.bss`，由 loader 的 `rep stosb` 清零；尾部 `0x8C000..0x8C140` 高于加载窗口 |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
 | `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -225,7 +228,7 @@ P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从�
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 用一次 LBA 读 96 个扇区到 `0x80000`，所以 `kernel.bin` 必须不超过 49,152 字节。
-当前构建 42,920 字节，BSS 结束于 `0x8C1E0`；镜像余量 6,232 字节。BSS 尾部 `0x8C000..0x8C1E0` 不在加载窗口内，loader 按链接符号清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
+当前构建 42,792 字节，BSS 结束于 `0x8C140`；镜像余量 6,360 字节。BSS 尾部 `0x8C000..0x8C140` 不在加载窗口内，loader 按链接符号清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时同步 `kernel.ld` 与 `config/memory.h` 的 `AEVUM_KERNEL_END`，并确认 BSS 不越过 `0x9000`。`AEVUM_TASK_STACK_MIN=0x8000`，
 `AEVUM_TASK_STACK_MAX=0x206000`，`AEVUM_AS_MAX=6`，`PROC_MAX=8`，`TASK_MAX=10`，`AEVUM_PHYS_POOL_BASE=0x100000`，`AEVUM_PHYS_POOL_END=0x1FF000`。

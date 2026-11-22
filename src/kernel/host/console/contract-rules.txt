@@ -1,17 +1,17 @@
 ================================================================
 AEVUM BOOT 契约规则文档
-版本: v1
-范围: boot.asm 引导程序职责、字段归属、错误码、交接约定
-方针: 归属唯一、定位有码
+版本: v4
+范围: boot.asm 引导程序职责、字段归属、失败报告、交接约定
+方针: 归属唯一、失败可见
 ================================================================
 
 
 一、核心方针
 ----------------------------------------------------------------
 1. 归属唯一:  每个字段有且只有一个写者职责,读者可多,写者唯一.
-2. 定位有码:  每个可能失败的步骤有唯一阶段 ID,
-              错误码 = (职责 ID << 16) | (字段 ID << 8) | 错误类型.
-3. 字段是职责的产物,错误码是字段的产物.
+2. 失败可见:  每个可能失败的步骤必须打印一条可见消息,
+              不再分配 0xRRFFTT 数字错误码.
+3. 字段是职责的产物; 失败消息是字段违约的产物.
 4. 必须性与值有效性依赖必须显式声明,不允许沉默假设.
 
 
@@ -25,25 +25,16 @@ R4   建立初始页表                    保护模式后, 开分页前
 R5   开启分页                        cr3 + cr0.PG, 只一次
 R6   设置交接栈                      保护模式后, 跳转前
 R7   交接跳转到 stage2               唯一交接点, 写 boot info
-R8   失败汇聚与报告                  唯一失败汇聚, 双入口 _rm/_pm
 R9   A20 状态声明                    实模式, R3 之前
 
 职责不重复: R10/R11 已并入 R7, 交接职责唯一.
 每个职责只在自己的位置执行, 不在别处补写.
-
-R8 双入口说明:
-  R8_rm: 实模式失败汇聚入口 (16 位指令)
-  R8_pm: 保护模式失败汇聚入口 (32 位指令)
-  两个入口写入同一组 R8 字段, 数据布局完全相同,
-  职责仍唯一归属于 R8; 入口数增加不改变职责归属.
-  实模式失败跳 R8_rm, 保护模式失败跳 R8_pm, 不得交叉跳转.
 
 
 三、字段归属表
 ----------------------------------------------------------------
 字段                                    唯一写者  必须性
 R1_READ_DISK_STAGE2_SECTORS_READ        R1        MANDATORY
-R1_READ_DISK_ERROR_CODE                 R1        DEGRADABLE
 R2_BUILD_GDT_PHYS                       R2        MANDATORY
 R2_BUILD_GDT_LIMIT                      R2        MANDATORY
 R2_BUILD_GDT_TEMPORARY                  R2        MANDATORY
@@ -57,10 +48,6 @@ R6_SETUP_STACK_LIMIT                    R6        MANDATORY
 R7_HANDOFF_STAGE2_ENTRY                 R7        MANDATORY
 R7_HANDOFF_IDT_READY                    R7        MANDATORY
 R7_HANDOFF_REGS_STATE_MASK              R7        DEGRADABLE
-R8_FAIL_REPORT_ERROR_CODE               R8        MANDATORY(诊断)
-R8_FAIL_REPORT_ERROR_STAGE              R8        MANDATORY(诊断)
-R8_FAIL_REPORT_ERROR_FIELD              R8        MANDATORY(诊断)
-R8_FAIL_REPORT_ERROR_TYPE               R8        MANDATORY(诊断)
 R9_A20_STATE_VALUE                      R9        MANDATORY
 
 
@@ -73,7 +60,6 @@ R9_A20_STATE_VALUE                      R9        MANDATORY
 
 字段                                    值有效性依赖
 R1_READ_DISK_STAGE2_SECTORS_READ        int 0x13 返回的 AL, 不得假设读满
-R1_READ_DISK_ERROR_CODE                 仅失败时有效
 R2_BUILD_GDT_PHYS/LIMIT                 0x7C00 附近未被覆盖; 且先于 lgdt 写入
 R2_BUILD_GDT_TEMPORARY                  恒为 1, 声明失效点; 先于 lgdt 写入
 R3_ENTER_PM_ENABLED                     远跳转已完成
@@ -83,42 +69,31 @@ R6_SETUP_STACK_TOP/LIMIT                stage2 必须尽快切换栈
 R7_HANDOFF_STAGE2_ENTRY                 stage2 镜像已就位
 R7_HANDOFF_IDT_READY                    恒为 0, 声明未建立
 R7_HANDOFF_REGS_STATE_MASK              声明哪些寄存器有效
-R8_FAIL_REPORT_*                        仅失败时有效
 R9_A20_STATE_VALUE                      检测结果, 非假设
 
 
-五、错误码规则
+五、失败报告规则
 ----------------------------------------------------------------
-格式: 0xRRFFTT
-  RR = 职责 ID (R1=0x01 ... R9=0x09)
-  FF = 职责内字段 ID (从 0x00 起)
-  TT = 错误类型
+不再分配 0xRRFFTT 数字错误码。
 
-错误类型:
-  0x01 = 字段缺失
-  0x02 = 字段冲突(第二个写者出现)
-  0x03 = 值有效性依赖未满足
-  0x04 = 外部操作失败(BIOS/硬件/跨模块依赖)
+boot 失败:
+  BIOS teletype 打印一行可见消息, 然后 cli; hlt.
+stage2 失败:
+  VGA 打印 "[ERR] <字段消息>", 然后 cli; hlt.
 
-定位方式:
-  读 R8_FAIL_REPORT_ERROR_CODE
-  -> 拆出 RR, 查职责表得职责
-  -> 拆出 FF, 查字段表得字段
-  -> 拆出 TT, 得违约类型
+定位信息 = 失败阶段 + 消息文本; 不写内存错误块, 不需要解码表.
+R2-R7、R9 目前只写成功字段, 不伪造失败消息; 需要时再补真实检测.
 
 
-六、错误码表
+六、失败消息表
 ----------------------------------------------------------------
-常量名                                    码值      含义
-ERR_R1_STAGE2_SECTORS_READ_EXT_FAIL       0x010004  R1 读盘外部失败
-ERR_R1_STAGE2_SECTORS_READ_DEP_UNMET      0x010003  R1 实读<声明
-ERR_R2_GDT_PHYS_DEP_UNMET                 0x020003  R2 GDT 被破坏
-ERR_R3_PM_ENABLED_EXT_FAIL                0x030004  R3 保护模式失败
-ERR_R4_PD_PHYS_CONFLICT                   0x040002  R4 页目录被占
-ERR_R5_PAGING_ENABLED_EXT_FAIL            0x050004  R5 开分页失败
-ERR_R6_STACK_LIMIT_DEP_UNMET              0x060003  R6 栈上限未成立
-ERR_R7_STAGE2_ENTRY_DEP_UNMET             0x070003  R7 入口未就位
-ERR_R9_A20_STATE_MISSING                  0x090001  R9 A20 无写者
+阶段   消息                              触发
+R1     AEVUM boot: disk read failed       int 0x13 进位
+R1     AEVUM boot: stage2 short read      实读扇区数 < 声明
+R10    stage2 entry mismatch              R7 入口不是 0x1000
+R10    mapped bytes mismatch              R4 映射字节不是 0x400000
+R11    vga init failed                    VGA 回写测试失败
+R15    serial init failed                 串口回环测试失败
 
 
 七、交接约定
@@ -152,7 +127,7 @@ P2  栈上限: 0x7000, stage2 应尽快切换自己的栈.
 九、扩展规则
 ----------------------------------------------------------------
 1. 加字段:  先在职责表里确认唯一写者, 再在字段表加一行,
-            再在错误码表加对应码, 最后改 boot info 布局.
+            再在失败消息表加对应消息, 最后改 boot info 布局.
 2. 升版本:  boot info 头部加 magic + version,
             内核先验 magic/version 再决定兼容策略.
 3. 加职责:  先确认是否与现有职责重复, 重复则并入,
@@ -162,26 +137,21 @@ P2  栈上限: 0x7000, stage2 应尽快切换自己的栈.
 
 十、C 语言补充规则
 ----------------------------------------------------------------
-10.1 错误返回约定
-  函数返回 uint32_t, 值即 0xRRFFTT.
-  0x00000000 表示成功.
-  RR 段填本函数自身职责号, 不填调用方, 也不填上游.
+10.1 失败返回约定
+  函数返回 const char *:
+    0 表示成功.
+    非 0 是失败字段名字面量, 例如 "entry" / "stack" / "slot" / "state".
+  owner 由失败点的上层填写; field 直接使用返回值.
+  失败点必须填 type/detail/at; 禁止再把数字码当唯一身份.
   跨模块调用失败时:
-    返回值 = (本职责 << 16) | (本字段 << 8) | 0x04
-    同时写入依赖明细:
-      dep_rr   = 上游职责号
-      dep_code = 上游原始 0xRRFFTT (最内层, 不重包)
-  依赖明细与返回值分离, 不占用 0xRRFFTT 的位.
-  包装只包一层: 本函数写自己的 RR 和 0x04,
-  明细保留最内层上游码, 不层层套娃.
-  依赖明细的实现方式由各模块决定 (模块错误槽或出参),
-  但必须满足: 调用方失败后能读回 dep_rr 和 dep_code.
-  TT=0x04 用于: 硬件/驱动/BIOS 失败, 以及跨模块依赖调用失败.
+    下层返回失败字段, 上层保留该字段并补 at,
+    不重新打包, 不层层套娃.
+  type 字符串固定为:
+    "missing" / "conflict" / "dependency" / "external" / "state"
 
 10.2 头文件契约规则
   契约头 (可被跨模块 include) 只放:
     - 类型定义 (含不透明句柄 struct xxx;)
-    - 错误码常量 (0xRRFFTT)
     - 函数声明
   契约头禁止放:
     - 结构体字段布局 (boot info 除外, 跨阶段共享数据)
@@ -210,77 +180,28 @@ P2  栈上限: 0x7000, stage2 应尽快切换自己的栈.
     R9 a20_state = NOT_TESTED
     -> jump stage2
 
-11.2 失败块 (统一四行 + 可选明细)
-  [aevum][ERR] 0xRRFFTT
-    owner   : R? / 职责名
-    field   : 字段名
-    type    : 0xTT 类型说明
-    detail  : 具体原因 (外部码 / 期望值 / 实际值)
+11.2 失败块 (统一五行)
+  [aevum][ERR]
+    owner   : 模块名
+    field   : 失败字段名
+    type    : missing / conflict / dependency / external / state
+    detail  : 具体原因 (期望值 / 实际值)
     at      : 源码位置
 
-11.3 单层依赖失败 (RR 填本函数, 明细带上游)
-  [aevum][ERR] 0x070004
-    owner   : R7 / HANDOFF
-    field   : STAGE2_ENTRY
-    type    : 0x04 外部依赖失败
-    detail  : dep=R2, dep_code=0x020003
-              dep_owner : R2 / BUILD_GDT
-              dep_field : GDT_PHYS
-              dep_type  : 0x03 依赖未满足
-              reason    : gdt phys region overwritten
-    at      : boot.asm R7_handoff
+11.3 失败示例
+  [aevum][ERR]
+    owner   : arm_app
+    field   : task_create(control)
+    type    : dependency
+    detail  : arm app task assembly failed
+    at      : kernel_main -> arm_app_init
 
-11.4 多层依赖链 (只包一层, 明细带 root_dep)
-  [aevum][ERR] 0x410004
-    owner   : K / kernel_init
-    field   : BOOT_HANDOFF
-    type    : 0x04 外部依赖失败
-    detail  : dep=R7, dep_code=0x070004
-              dep_owner : R7 / HANDOFF
-              dep_field : STAGE2_ENTRY
-              dep_type  : 0x04 外部依赖失败
-              root_dep  : dep=R2, dep_code=0x020003
-                          R2 / BUILD_GDT / GDT_PHYS / 0x03 依赖未满足
-    at      : kernel/init.c:127
-
-11.5 字段冲突 (TT=0x02)
-  [aevum][ERR] 0x040002
-    owner   : R4 / BUILD_PAGETABLE
-    field   : PD_PHYS
-    type    : 0x02 字段冲突
-    detail  : expected_writer=R4
-              actual_writer=R7
-              addr=0x10000
-    at      : registry/claim.c:44
-
-11.6 字段缺失 (TT=0x01)
-  [aevum][ERR] 0x090001
-    owner   : R9 / A20_STATE
-    field   : A20_STATE_VALUE
-    type    : 0x01 字段缺失
-    detail  : mandatory field has no writer
-              policy  : kernel must detect or retry
-    at      : boot.asm R9
-
-11.7 日志必含四要素 (按顺序)
-  1. 归属码 0xRRFFTT
-  2. owner (职责名) + field (字段名)
-  3. type (TT 说明)
-  4. detail + at (定位信息)
-
-11.8 禁止的日志形式
+11.4 禁止的日志形式
   - 只打一句自然语言 ("R7 failed while calling external dependency")
-  - 只打 RR 不打 FF/TT
-  - 丢失 dep_code 只留 "dependency failed"
-  - 层层套娃把原始码包丢
-
-11.9 R8 双入口日志等价性
-  R8_rm 与 R8_pm 写入的字段完全相同,
-  日志读取字段时不区分入口.
-  日志中 at 字段由汇编手工写入, 用于区分入口:
-    R8_rm 失败 -> at = "boot.asm R8_rm"
-    R8_pm 失败 -> at = "boot.asm R8_pm"
-  除 at 外, 两种入口的日志块结构完全一致.
+  - 只打数字码不打字段
+  - 同一个 field 覆盖多个不同失败点
+  - 丢 at, 无法定位到调用点
+  - 层层套娃把最内层失败字段包丢
 
 
 ================================================================
@@ -302,6 +223,14 @@ v3 修订:
   第十一节: 11.5 field 由 PML4_PHYS 改为 PD_PHYS;
             新增 11.9 R8 双入口日志等价性.
   其余节内容未改动.
+v4 修订:
+  第二节: 删除 R8 失败汇聚职责, 失败改为各阶段就地打印.
+  第四节: 删除 R1_READ_DISK_ERROR_CODE, 只保留实读扇区数字段.
+  第五节: 取消 0xRRFFTT, 改为 BIOS/VGA 可见失败消息.
+  第六节: 错误码表改为失败消息表.
+  第十节: C 函数返回 const char * 失败字段, 删除 dep_code/dep_rr.
+  第十一节: 删除数字码与 R8 双入口日志, 失败块只保留
+            owner/field/type/detail/at.
 ================================================================
 文档结束
 ================================================================

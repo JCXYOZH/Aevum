@@ -149,9 +149,9 @@ http://127.0.0.1:8766/interface/web/world.html
 
 | 项 | 当前值 |
 | --- | --- |
-| `kernel.bin` | 42,920 字节，小于 96 扇区上限 49,152 字节 |
+| `kernel.bin` | 42,792 字节，小于 96 扇区上限 49,152 字节 |
 | 加载基址 | `0x80000`；boot 读取窗口 `0x80000..0x8C000` |
-| BSS | `0x8A7C0..0x8C1E0`，由 loader 清零 |
+| BSS | `0x8A740..0x8C140`，由 loader 清零 |
 | 常驻任务 | `control` / `render` / `idle` |
 | 用户任务 | `userA` / `userB` / `userC` / `userD` / `userF`，D 两轮 fork 的子进程都复用 PID 9；PD/PT 从 `0x100000` 起按池分配 |
 | 用户虚拟地址 | code `0x400000`、data `0x401000`、guard `0x402000`、stack `0x403000`（栈顶 `0x404000`）、control `0x404000`、heap `0x405000..0x410000` |
@@ -162,7 +162,7 @@ http://127.0.0.1:8766/interface/web/world.html
 | 进程闭环 | 第一轮 D `fork 9`，子 `exit(7)`，父 `wait 9` 得到 status 7；第二轮 `fork2 9`，子 `#DE`，父 `wait9` 得到 `80000008`；两次 SIGCHLD 都被 wait 消费，`pend 00000000` |
 | 物理池 | `PHYS PAGES 20/255`；停止/重启两轮后保持一致，ASID 从 8 起、PID 仍 4-9，无 ZOMBIE/PID/页泄漏 |
 | 内核态故障样例 | `#PF task 2 render cs 00000008 cpl 0 eip 000837C1 cr2 00400000 err 00000002 cr3 00010000` |
-| 内核态故障结果 | `P=0 W/R=1 U/S=0 RSVD=0 I/D=0`；页面进入 `RING0 FAULT - CONTROLLED PROBE`，按 `R` 后 fault 执行成功并返回主画面；kernel image 范围 `0x80000..0x8C300`；独立 K 探针 `fault count 1` |
+| 内核态故障结果 | `P=0 W/R=1 U/S=0 RSVD=0 I/D=0`；页面进入 `RING0 FAULT - CONTROLLED PROBE`，按 `R` 后 fault 执行成功并返回主画面；kernel image 范围 `0x80000..0x8C140`；独立 K 探针 `fault count 1` |
 
 `userC` 在数据页写入 `mode=1`，数到 5000 后故意写内核显存 `0xB8000`；`userF` 在 `mode=3` 直接写 guard `0x402000`。CPU 触发 `#PF`，内核读取 `CR2/ERR/EIP`，以 `process_terminate_current(SIGSEGV)` 终止并回收当前用户任务，A/B 继续运行。D 第一轮 fork 的子页首次写入走 COW `#PF` 路径，`address_space` 识别 PTE 的 COW 位后复制私有页并返回原帧重试；第二轮子进程先写 COW 数据页，再执行 `1/0` 触发 `#DE`，`exception.c` 按 `SIGFPE` 终止它，父进程 `wait` 得到 `0x80000008`。机械臂主画面和 V 页的 q 值保持正常，说明 COW、#PF 和 #DE 路径都没有破坏调度器与 FPU 状态。
 

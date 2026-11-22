@@ -15,7 +15,7 @@ struct fpu_lane {
     u32 seq;
 };
 
-u32 fpu_demo_start(void);
+const char *fpu_demo_start(void);
 void fpu_demo_stop(void);
 int fpu_demo_live(void);
 int fpu_demo_read(int lane, struct fpu_lane *out);

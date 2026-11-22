@@ -26,7 +26,7 @@ engine/                   渲染引擎（Render Engine）：数学、PMX/VMD、V
 | 呈现层 | `interface/web/index.html` | 否 | 根路径 `/` 返回展示页；`desktop.html` 是 3D 桌面 |
 | 控制平面 | `control/supervisor.py` | 否 | 只启动、停止、轮询，不导入核心实现 |
 | 中继 | `control/relay` | 否 | 会话与分片只在内存，重启即清空 |
-| 内核 | `src/kernel/fortuna` + `src/kernel/host` | 取决于构建产物 | 只输出状态、错误码与单元格 |
+| 内核 | `src/kernel/fortuna` + `src/kernel/host` | 取决于构建产物 | 只输出状态、结构化错误与单元格 |
 | AI 运行时 | `src/architecture/libertas` + `memoria` | 取决于运行数据 | 身份、工具、训练、生成 |
 | 渲染引擎 | `engine/` | 否 | 纯渲染与数学，不承载业务 |
 

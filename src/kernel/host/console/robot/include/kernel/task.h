@@ -31,21 +31,24 @@ struct task_info {
     u32 cpu_ticks;
 };
 
-/* 任务模块是 task_struct 字段的唯一写者；调用方只拿不透明句柄。 */
+/* 任务模块是 task_struct 字段的唯一写者；调用方只拿不透明句柄。
+ * 创建成功返回 0，失败返回失败字段名（例如 "out"/"entry"/"stack"/"slot"）。 */
 void task_boot(void);
-u32 task_create(int priority, const char *name,
-                void (*entry)(void), u32 stack_top, struct task_struct **out);
+const char *task_create(int priority, const char *name,
+                        void (*entry)(void), u32 stack_top,
+                        struct task_struct **out);
 
 /* 用户任务：进程表先保留 PID，任务模块只负责把该 PID 变成可调度的 ring3 任务。 */
-u32 task_create_user_with_pid(int priority, const char *name, u32 user_eip,
-                              u32 kernel_stack_top, struct address_space *space,
-                              u32 user_stack_top, struct process *proc, int pid,
-                              struct task_struct **out);
+const char *task_create_user_with_pid(int priority, const char *name, u32 user_eip,
+                                      u32 kernel_stack_top,
+                                      struct address_space *space,
+                                      u32 user_stack_top, struct process *proc,
+                                      int pid, struct task_struct **out);
 
 /* fork：复制父进程当前 ring3 中断帧、用户栈和 FPU 状态；子任务 eax=0。 */
-u32 task_fork_user(int pid, const char *name, struct irq_frame *frame,
-                   u32 kernel_stack_top, struct address_space *space,
-                   struct process *proc, struct task_struct **out);
+const char *task_fork_user(int pid, const char *name, struct irq_frame *frame,
+                           u32 kernel_stack_top, struct address_space *space,
+                           struct process *proc, struct task_struct **out);
 
 /* PID 由进程/任务共用；进程表保留 PID 后，任务创建不再二次分配。 */
 int task_pid_reserve(void);
@@ -70,19 +73,20 @@ const char *task_state_name(int state);
 /* 从启动线程切入第一个任务；成功后不返回。 */
 void task_start(struct task_struct *first) __attribute__((noreturn));
 
-/* 主动让出：进入 int 0x40，与 PIT IRQ0 共用 task.c 的同一个调度入口。 */
-u32 task_yield(void);
+/* 主动让出：进入 int 0x40，与 PIT IRQ0 共用 task.c 的同一个调度入口。
+ * 成功返回 0，失败返回失败字段名。 */
+const char *task_yield(void);
 
 /* 阻塞/唤醒：阻塞时切走；另一个任务 task_wake(pid) 置 READY 后，本调用才返回。 */
-u32 task_block(void);
-u32 task_wake(int pid);
+const char *task_block(void);
+const char *task_wake(int pid);
 
 /*
  * 统一的当前任务状态入口：
  * TASK_RUNNING 无副作用；TASK_READY 等价 yield；TASK_BLOCKED 等价 block；
- * TASK_ZOMBIE 不返回。非 RUNNING 的当前任务或其他状态返回 ERR_TASK_BAD_STATE。
+ * TASK_ZOMBIE 不返回。非 RUNNING 的当前任务或其他状态返回 "state"。
  */
-u32 task_set_current_state(int state);
+const char *task_set_current_state(int state);
 
 /* 监视器接口：按槽位读任务快照；返回 0 表示该槽未使用。 */
 int task_snapshot(int slot, struct task_info *out);

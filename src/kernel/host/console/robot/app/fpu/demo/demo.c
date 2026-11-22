@@ -48,9 +48,9 @@ static void fpu_lane_task(int lane)
 static void fpu_lane_a(void) { fpu_lane_task(0); }
 static void fpu_lane_b(void) { fpu_lane_task(1); }
 
-u32 fpu_demo_start(void)
+const char *fpu_demo_start(void)
 {
-    u32 rc;
+    const char *rc;
 
     if (fpu_demo_live()) return 0;
 

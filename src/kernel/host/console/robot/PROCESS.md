@@ -37,7 +37,7 @@ P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/re
 
 ## 二、P3.1 验收记录
 
-QEMU 实测（本构建 `kernel.bin` 42,920 字节，BSS 结束 `0x8C1E0`，96 扇区 / 49,152 字节窗口）：
+QEMU 实测（本构建 `kernel.bin` 42,792 字节，BSS 结束 `0x8C140`，96 扇区 / 49,152 字节窗口）：
 
 - `V` 页 PCB 表：`userA` PID 4 / AS 1 / READY；`userB` PID 5 / AS 2 / READY；`userC` PID 6 / `FAULT` / `SIG11`；`userD` PID 7 / AS 4 / READY；`userF` PID 8 / `GUARD` / `SIG11`；`userE` PID 9 / PPID 7 / `SIG` / `SIG8`。
 - VMA 摘要：A/B 的 code RX `0x400000`、data RW `0x401000`、guard `0x402000`、stack RW `0x403000`、control R `0x404000`、heap RW `0x405000`，`brk 0x406000`。

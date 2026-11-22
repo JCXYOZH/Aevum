@@ -9,7 +9,7 @@ static volatile int stop;
 static volatile int done_parent;
 static volatile int done_a;
 static volatile int done_b;
-static volatile u32 tree_err;
+static const char *volatile tree_err;
 static struct task_struct *p_parent;
 
 static void tree_child_exit(int lane)
@@ -47,7 +47,7 @@ static void proc_tree_parent(void)
 {
     struct task_struct *child;
     u32 start;
-    u32 rc;
+    const char *rc;
 
     rc = task_create(1, "famA", proc_tree_a, AEVUM_STACK_DUEL_A, &child);
     if (rc) {
@@ -78,9 +78,9 @@ static void proc_tree_parent(void)
     task_exit();
 }
 
-u32 tree_demo_start(void)
+const char *tree_demo_start(void)
 {
-    u32 rc;
+    const char *rc;
 
     if (active) return 0;
 
@@ -113,7 +113,7 @@ int tree_demo_alive(void)
     return active;
 }
 
-u32 tree_demo_error(void)
+const char *tree_demo_error(void)
 {
     return tree_err;
 }

@@ -5,7 +5,6 @@
 #include "arch/x86/page_fault.h"
 #include "arch/x86/exception.h"
 #include "config/memory.h"
-#include "kernel/error.h"
 
 extern u8 user_program_start[];
 extern u8 user_program_end[];
@@ -13,7 +12,7 @@ extern u8 user_program_end[];
 static struct process *procs[USER_DEMO_LANES];
 static struct address_space *spaces[USER_DEMO_LANES];
 static int pids[USER_DEMO_LANES];
-static volatile u32 demo_error;
+static const char *volatile demo_error;
 
 static const char *const lane_names[USER_DEMO_LANES] = {
     "userA", "userB", "userC", "userD", "userF"
@@ -30,7 +29,7 @@ static int lane_alive(int lane)
            address_space_user_active(spaces[lane]);
 }
 
-u32 user_demo_start(void)
+const char *user_demo_start(void)
 {
     u32 code_size;
     int i;
@@ -50,7 +49,7 @@ u32 user_demo_start(void)
                                        code_size, lane_stacks[i],
                                        AEVUM_USER_STACK_TOP);
         if (!procs[i]) {
-            demo_error = ERR_MM_NO_SPACE;
+            demo_error = "process_create_user";
             user_demo_stop();
             return demo_error;
         }
@@ -78,7 +77,7 @@ int user_demo_alive(void)
     return 0;
 }
 
-u32 user_demo_error(void)
+const char *user_demo_error(void)
 {
     return demo_error;
 }
