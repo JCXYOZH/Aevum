@@ -15,7 +15,8 @@ struct address_space;
  * userA/userB 正常计数并做 brk/heap peek/poke；userC 计数后探测内核页，
  * 验证 #PF 故障隔离；userD 先 fork 出 userE 验证正常 exit(7)+COW，
  * 再 fork 第二个 E 触发 #DE，验证 wait 的 SIGFPE 状态；最后 fork 第三个 E
- * 执行 exec(1)，验证 PID 不变、镜像切换和 wait(10)；userF 写 guard 页。
+ * 执行 exec(1)，验证 PID 不变、镜像切换和 wait(10)；再建 pipe 并 fork 第四个 E
+ * 执行 exec(2)，验证 pipe 写端跨 exec 后父进程读回；userF 写 guard 页。
  */
 const char *user_demo_start(void);
 void user_demo_stop(void);
@@ -47,6 +48,15 @@ u32 user_demo_exec_child(int lane);
 u32 user_demo_exec_status(int lane);
 u32 user_demo_exec_ret(int lane);
 u32 user_demo_exec_ok(int lane);
+
+/* P4.3：父建 pipe，子进程 exec(2) 后写 PIPE，父读回并在关闭后写 PIPE。 */
+u32 user_demo_pipe_child(int lane);
+u32 user_demo_pipe_status(int lane);
+u32 user_demo_pipe_wait_ret(int lane);
+u32 user_demo_pipe_read_fd(int lane);
+u32 user_demo_pipe_write_fd(int lane);
+u32 user_demo_pipe_read_ret(int lane);
+u32 user_demo_pipe_ok(int lane);
 
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);

@@ -6,6 +6,7 @@
 struct address_space;
 struct task_struct;
 struct irq_frame;
+struct proc_fd_table;
 
 #define PROC_MAX 8
 #define PROC_NAME_MAX 15
@@ -85,6 +86,7 @@ struct process *process_fork(struct irq_frame *frame);
  * argv/envp 是旧 AS 中的用户指针；内核在释放旧 AS 前解析并复制字符串，
  * 按 argc/argv[]/NULL/envp[]/NULL/字符串区 写入新用户栈。
  * 成功返回 0，失败保留原 AS 并返回 -1；成功后调用方直接归还改写后的 irq_frame。
+ * P4.3：exec 不触碰当前进程的 fd 表，pipe 端点随进程保留。
  */
 int process_exec_current(struct irq_frame *frame, int image_id, u32 argv, u32 envp);
 
@@ -138,10 +140,16 @@ int process_snapshot(int slot, struct process_info *out);
 int process_count(void);
 int process_pid_of(struct process *proc);
 struct address_space *process_space(struct process *proc);
+/* 每进程 fd 表归 kernel/proc/fd；exec 不重建它，fork 复制引用。 */
+struct proc_fd_table *process_fds(struct process *proc);
 u32 process_read32(int pid, u32 va);
-/* exec 后镜像编号；0 表示初始 ring3 镜像，1 表示 P4.2 exec 镜像。 */
+/* exec 后镜像编号；0 表示初始 ring3 镜像，1 表示 P4.2 exec 镜像，2 表示 P4.3 pipe 镜像。 */
 int process_image_id(int pid);
 /* exec 后参数计数；同 PID 有多个墓碑时取最大镜像代次，失败返回 -1。 */
 int process_exec_counts(int pid, u32 *argc, u32 *envc);
+
+/* 最近两次 wait 回收子进程的 exec 快照，用于 PID 复用后的 V 页证据。 */
+int process_reaped_exec(int parent_pid, int slot, int *pid,
+                        u32 *image_id, u32 *argc, u32 *envc);
 
 #endif

@@ -2,6 +2,7 @@
 #include "arch/x86/interrupt.h"
 #include "kernel/task.h"
 #include "kernel/proc.h"
+#include "kernel/proc/fd.h"
 #include "kernel/mm/address_space.h"
 
 extern void int80_stub(void);
@@ -13,6 +14,12 @@ static struct address_space *current_space(void)
 {
     struct process *proc = task_process_current();
     return proc ? process_space(proc) : 0;
+}
+
+static struct proc_fd_table *current_fds(void)
+{
+    struct process *proc = task_process_current();
+    return proc ? process_fds(proc) : 0;
 }
 
 void syscall_init(void)
@@ -89,6 +96,25 @@ u32 syscall_dispatch(struct irq_frame *frame)
         case 13:
             frame->eax = (process_exec_current(frame, (int)frame->ebx,
                                                frame->ecx, frame->edx) == 0)
+                             ? 0u
+                             : (u32)-1;
+            break;
+        case 14:
+            frame->eax = (proc_fd_pipe(current_fds(), current_space(),
+                                       frame->ebx) == 0)
+                             ? 0u
+                             : (u32)-1;
+            break;
+        case 15:
+            frame->eax = (u32)proc_fd_read(current_fds(), current_space(),
+                                           frame->ebx, frame->ecx, frame->edx);
+            break;
+        case 16:
+            frame->eax = (u32)proc_fd_write(current_fds(), current_space(),
+                                            frame->ebx, frame->ecx, frame->edx);
+            break;
+        case 17:
+            frame->eax = (proc_fd_close(current_fds(), frame->ebx) == 0)
                              ? 0u
                              : (u32)-1;
             break;

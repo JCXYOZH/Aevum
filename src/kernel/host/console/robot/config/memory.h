@@ -2,11 +2,11 @@
 #define AEVUM_CONFIG_MEMORY_H
 
 /*
- * 物理内存布局。boot.asm 建立 0~4MB 恒等映射；内核静态区在 0x80000..0x8E200，
+ * 物理内存布局。boot.asm 建立 0~4MB 恒等映射；内核静态区在 0x80000..0x8F400，
  * 页表、任务栈和用户页都在 4MB 以内。地址是跨模块共享常量，只允许本文件定义。
  */
 #define AEVUM_KERNEL_BASE       0x00080000u
-#define AEVUM_KERNEL_END        0x0008E200u
+#define AEVUM_KERNEL_END        0x0008F400u
 #define AEVUM_STACK_P1          0x00200000u
 #define AEVUM_STACK_P2          0x0000A000u
 #define AEVUM_STACK_IDLE        0x0000B000u

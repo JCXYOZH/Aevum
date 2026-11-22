@@ -14,7 +14,7 @@
 > ```
 >
 > `interface/desktop/main.js` 优先启动本目录的 `disk.img`；`kernel.bin` 上限
-> 49,152 字节（boot.asm 一次 LBA 读 96 个扇区到 0x80000）。串口快照放在 `0x30000`，
+> 53,248 字节（boot.asm 一次 LBA 读 104 个扇区到 0x80000）。串口快照放在 `0x30000`，
 > 不占内核镜像窗口。模块归属、结构化错误和验收流程见 `CONSTRUCTION.md`，进程上下文完整化路线见 `PROCESS.md`。
 
 一个用 NASM + C 写的 32 位裸机内核：从软盘镜像启动，进入保护模式、建立自己的 GDT 和分页，
@@ -24,7 +24,7 @@
 
 ## 一、功能简介
 
-- **启动流程**：BIOS 把引导扇区加载到 `0x7C00` → `boot.asm` 用 `INT 13h` 的 LBA 扩展读一次把 96 个扇区读到 `0x80000`
+- **启动流程**：BIOS 把引导扇区加载到 `0x7C00` → `boot.asm` 用 `INT 13h` 的 LBA 扩展读一次把 104 个扇区读到 `0x80000`
   → 装载 GDT 进入保护模式 → 建立 0~4MB 恒等分页 → 跳到 `0x80000`。
 - **内核入口**：`loader.asm` 加载内核自己的 6 项 GDT、清 BSS、把主栈设为 `0xC000`（启动镜像里不再需要尾部搬运），再调用 C 的 `kernel_main`；`tss_init()` 写 TSS 描述符并 `ltr 0x28`。
 - **多进程**：`kernel_main` 通过 `task_create` 为 `control` / `render` / `idle` 构造独立内核栈；PID 由 `task.c` 的位图自动分配，应用不再硬编码，再用 `task_start` 切入第一个任务。
@@ -35,9 +35,10 @@
 - **FPU 上下文实验**：按 `F`（扫描码 `0x21`）创建 `fpuA` / `fpuB` 两个 CPU 密集型任务；两个任务都没有 `task_yield()`，各自在 `XMM0` 里保存不同标签和计数。全屏显示两条 lane 的 PID、TAG、COUNT、`CTX OK/LOST` 和进度条；如果 `fxsave/fxrstor` 漏掉，标签会串到另一条 lane，屏幕直接判 `CTX LOST`。再按 `F` 停止并回到机械臂。
 - **进程家族树**：按 `G`（扫描码 `0x22`）进入全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 创建 `famA` / `famB` 后主动退出，两个直接子进程由 `family.c` 重挂到 `idle`。树形页显示真实的 `ppid` 关系、每任务 CPU、reaper 和最近一次 `parent -> reaper` 重挂事件；再按 `G` 停止并回到机械臂。
 - **用户同步异常与信号**：`#DE/#BP/#UD/#GP` 由 `arch/x86/cpu/exception/exception.c` 唯一分发；CPL3 命中后记录 `pid/eip/err/cr2`，按 `#DE -> SIGFPE`、`#BP -> SIGTRAP`、`#UD -> SIGILL`、`#GP -> SIGSEGV` 先查每进程 `sigactions[]`。没有 handler 时走 P3.1 默认终止：`process_terminate_current(sig)` 把进程置 ZOMBIE，wait status 为 `0x80000000 | sig`，所以默认 `#DE` 返回 `0x80000008`。有用户 handler 时在用户栈构造 signal frame，`iret` 进 handler；handler `ret` 到 trampoline，`eax=12 sigreturn` 恢复原 GPR/EIP/CS/EFLAGS/ESP/SS。`#DE` 的保存 EIP 指向 faulting `div/idiv`，内核做最小 `F6/F7` 解码后前移到下一条指令。`sigaction` 是 `eax=11`，mask 只随 frame 保存/恢复，不做阻塞；`fork` 继承 handler 表与 mask，不继承 pending。V 页显示 `EXIT=SIG11/SIG8`、`#DE pid/eip/sig`、`hdl` 和 `SIGCHLD n pend`。
-- **用户 exec**：`eax=13 exec(image_id, argv, envp)` 保留当前进程的 PID、PPID 和任务槽，只替换用户地址空间和用户镜像。`process_exec_current()` 先在旧 AS 仍有效时解析 `argv/envp`（最多 4 项、每串最多 31 字符、必须有 NULL 结尾），再建新 AS，把字符串复制到新用户栈并按 `argc, argv[], NULL, envp[], NULL, 字符串区` 布局；2 项参数/2 项环境时 `esp=0x403FC8`。随后 `cli` 下切 CR3、更新 `task_struct` 持有的 AS 指针，重置 `sigactions`、mask、pending，把 iret 帧改成入口 `0x400000`，最后释放旧 AS；解析、AS 分配或栈构造失败时返回 -1，旧 AS/frame 不动。`user/exec/exec.asm` 是第二个固定链接在 `0x400000` 的 flat 镜像，从新栈逐字节校验 `alpha/beta/MODE=p42/LEVEL=2`，成功后写 `ARGV/ENVP` 并 `exit(10)`；失败码 20..25 分别对应 argc/argv0/argv1/envc/env0/env1。
-- **进程地址空间 / COW fork / VMA / 物理页池**：按 `V`（扫描码 `0x2F`）启动五个用户进程：`userA` / `userB` 做独立地址空间计数、`brk` 扩堆与 heap `peek/poke`，`userC` 做用户态 `#PF` 样本，`userD` 做三轮 fork/wait，`userF` 直接写 guard。每个进程有自己的页目录和 CR3，PD/PT/code/data/stack/control 全部从 `0x100000..0x1FEFFF` 的 255 页位图池分配，每页带引用计数；用户 VA 固定为 code `0x400000`、data `0x401000`、guard `0x402000`（VMA 存在但无 PTE）、stack `0x403000`、control `0x404000`、heap `0x405000..0x410000`。全屏页显示 `PID PPID ST EXIT CR3 AS PGS/C BRK COMM`、6 个 VMA 的地址/权限、`brk/peek/poke/guard` 结果、COW 统计和 `PHYS PAGES used/total`，另有 `int 0x80`、fork/wait、#PF、#DE 与 SIGCHLD 面板。D 的三次 fork 都返回 8；第一轮子进程写 `CHLD` 后 `exit(7)`，父 wait 得到 status 7 并显示 `WAIT OK 7 / COW OK`；第二轮子进程先 `sigaction(SIGFPE, handler, 0)`，再 `1/0` 触发 `#DE`，signal frame 进入 handler、`sigreturn` 返回除零后的指令，写 `HAND` 后 `exit(9)`，父 wait 得到 status 9 并显示 `HAND OK`；第三轮子进程 `exec(1, argv, envp)`，参数为 `alpha/beta/NULL` 与 `MODE=p42/LEVEL=2/NULL`；新镜像从新栈校验四串后写 `ARGV/ENVP` 并 `exit(10)`，父 wait 得到 10 并显示 `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`。
-- **COW fork**：`address_space_clone()` 只分配新 PD/PT，把 data/stack/heap 以及内核可写的 control 页清 `RW`、置 PTE bit 9 后父子共享，代码页只读共享；物理页引用计数加一。已经是 COW 的页第二次 fork 时必须保留 COW 位，否则会把可写页退化成只读页；`address_space_clone()` 现在保留 `PAGE_COW`，D 第二轮 fork 的栈页因此仍可写。首次写触发 `#PF` 时，`address_space_handle_user_fault()` 识别 COW 位，分配新页、复制内容、恢复 VMA 权限并返回原帧重试；`copyout` 命中 COW 页也先拆分再写。V 页实测 `forks 3 shared 12 live 2 breaks 6 last AS4 old 0011B000 -> 0011C000`，其中 signal frame 写入用户栈也触发了一次 COW 拆分。
+- **用户 exec**：`eax=13 exec(image_id, argv, envp)` 保留当前进程的 PID、PPID 和任务槽，只替换用户地址空间和用户镜像。`process_exec_current()` 先在旧 AS 仍有效时解析 `argv/envp`（最多 4 项、每串最多 31 字符、必须有 NULL 结尾），再建新 AS，把字符串复制到新用户栈并按 `argc, argv[], NULL, envp[], NULL, 字符串区` 布局；2 项参数/2 项环境时 `esp=0x403FC8`。随后 `cli` 下切 CR3、更新 `task_struct` 持有的 AS 指针，重置 `sigactions`、mask、pending，把 iret 帧改成入口 `0x400000`，最后释放旧 AS；解析、AS 分配或栈构造失败时返回 -1，旧 AS/frame 不动。`exec` 完全不触碰 fd 表。`user/exec/exec.asm` 是第二个固定链接在 `0x400000` 的 flat 镜像，从新栈逐字节校验 `alpha/beta/MODE=p42/LEVEL=2`，成功后写 `ARGV/ENVP` 并 `exit(10)`；失败码 20..25 分别对应 argc/argv0/argv1/envc/env0/env1。
+- **每进程 fd 表与匿名 pipe**：`kernel/proc/fd/fd.c` 是 8 槽 fd 表的唯一 owner，fd 0/1 预留给后续 console，pipe 从 fd 2 起分配。`fork` 复制整张表并逐端点 `pipe_acquire()`；`exec` 保留 fd 表；`exit`、信号终止和 `reap` 都 `proc_fd_table_close_all()`。`kernel/ipc/pipe/pipe.c` 固定 4 个 pipe 对象、每对象 64 字节非阻塞环形缓冲，维护 `refs/readers/writers`：空读且仍有写端返回 `-1`，写端全关返回 `0`，满写返回 `-1`，最后一个引用释放后对象立即回池。系统调用 `eax=14 pipe(ebx=user u32[2])`、`15 read(fd,buf,count)`、`16 write(fd,buf,count)`、`17 close(fd)`；用户指针校验和 copyin/copyout 都在 fd 模块内完成。`user/exec-pipe/exec_pipe.asm` 是 image 2：从 `argv={"pipe","writer","FD=3"}` 取 fd，写 4 字节 `PIPE` 后 `exit(12)`；失败码 26..31。
+- **进程地址空间 / COW fork / VMA / 物理页池**：按 `V`（扫描码 `0x2F`）启动五个用户进程：`userA` / `userB` 做独立地址空间计数、`brk` 扩堆与 heap `peek/poke`，`userC` 做用户态 `#PF` 样本，`userD` 做四轮 fork/wait，`userF` 直接写 guard。每个进程有自己的页目录和 CR3，PD/PT/code/data/stack/control 全部从 `0x100000..0x1FEFFF` 的 255 页位图池分配，每页带引用计数；用户 VA 固定为 code `0x400000`、data `0x401000`、guard `0x402000`（VMA 存在但无 PTE）、stack `0x403000`、control `0x404000`、heap `0x405000..0x410000`。全屏页显示 `PID PPID ST EXIT CR3 AS PGS/C BRK COMM`、6 个 VMA 的地址/权限、`brk/peek/poke/guard` 结果、COW 统计、`PHYS PAGES used/total`、`pipe obj`，另有 `int 0x80`、fork/wait、#PF、#DE 与 SIGCHLD 面板。D 的四次 fork 都返回 8；第一轮子进程写 `CHLD` 后 `exit(7)`，父 wait 得到 status 7 并显示 `WAIT OK 7 / COW OK`；第二轮子进程先 `sigaction(SIGFPE, handler, 0)`，再 `1/0` 触发 `#DE`，signal frame 进入 handler、`sigreturn` 返回除零后的指令，写 `HAND` 后 `exit(9)`，父 wait 得到 status 9 并显示 `HAND OK`；第三轮子进程 `exec(1, argv, envp)`，参数为 `alpha/beta/NULL` 与 `MODE=p42/LEVEL=2/NULL`；新镜像从新栈校验四串后写 `ARGV/ENVP` 并 `exit(10)`，父 wait 得到 10 并显示 `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`。第四轮父 `pipe()` 得到 fd 2 读 / fd 3 写，fork 后父关写端、子关读端并 `exec(2)`；镜像在 exec 后仍通过 fd 3 写 `PIPE` 并 `exit(12)`，父 wait 得到 12 后从 fd 2 读回 4 字节，校验 `0x45505049`，关闭读端，显示 `P4.3 pipe 8 wait 8 st 0000000C fd 2>3 r4 PIPE OK`。
+- **COW fork**：`address_space_clone()` 只分配新 PD/PT，把 data/stack/heap 以及内核可写的 control 页清 `RW`、置 PTE bit 9 后父子共享，代码页只读共享；物理页引用计数加一。已经是 COW 的页第二次 fork 时必须保留 COW 位，否则会把可写页退化成只读页；`address_space_clone()` 现在保留 `PAGE_COW`，D 第二轮 fork 的栈页因此仍可写。首次写触发 `#PF` 时，`address_space_handle_user_fault()` 识别 COW 位，分配新页、复制内容、恢复 VMA 权限并返回原帧重试；`copyout` 命中 COW 页也先拆分再写。V 页实测 `forks 4 shared 16 live 2 breaks 7 last AS4 old 0011C000 -> 0011B000`，其中 signal frame 写入用户栈也触发了一次 COW 拆分。
 - **VMA 与 copyin/copyout**：`eax=8 brk(ebx)` 只允许 `[0x405000,0x410000]`，增长时零填新页并把 heap VMA 的 end 推到新 brk；`eax=9 peek(ebx)`、`eax=10 poke(ebx,ecx)` 逐字节翻译用户 VA，按 VMA 权限 + PTE present/user/RW/COW 校验，不再让内核直接解引用用户指针。V 页实测 A/B：`brk 0x406000`、heap `0x405800` 写入 `HELP` 后 `peek=0x48454C50`、越界 `brk(0x500000)` 返回 `0xFFFFFFFF`、`poke(guard 0x402000)` 返回 0。
 - **`#PF` 故障隔离**：`userC` 在私有数据页置 `mode=1`，数到 5000 后故意写内核显存 `0xB8000`；`userF` 在 `mode=3` 直接写 guard `0x402000`。CPU 触发 `#PF` 后，heap VMA 内的缺页由 `address_space_handle_user_fault()` 零填并 `iret` 重试，COW 写页由同一条路径拆成私有页；guard/RO/非法地址以 `process_terminate_current(SIGSEGV)` 终止当前进程，`userA/userB` 的 CR3 与计数器继续推进。全屏页显示 `P/W/U`、`count` 和 fault 的 `pid/eip/cr2/err`，C/F 行分别显示 `FAULT` / `GUARD` 与 `SIG11`。
 - **物理页池**：`address_space.c` 用 255 位位图 + 每页引用计数统一分配/释放 PD、PT 和用户页；`address_space_release()` 遍历 PT 逐页减引用，`fork` 不再复制用户页，只在首次写时按 COW 拆分。V 页 `PHYS PAGES 20/255` 在停止/重启两轮后保持一致，证明页、AS 槽、PID 和内核栈都没有泄漏。
@@ -64,7 +65,7 @@
 | 机械臂主画面 | `C` | `0x2E` | 进入/退出全屏 `AEVUM / CPU TIME ACCOUNTING` | 只在主画面启动；在统计页再按 `C` 返回 |
 | 机械臂主画面 | `F` | `0x21` | 进入/退出全屏 `AEVUM / FPU CONTEXT LAB` | 只在主画面启动；在实验页再按 `F` 返回 |
 | 机械臂主画面 | `G` | `0x22` | 进入/退出全屏 `AEVUM / PROCESS FAMILY TREE` | 只在主画面启动；在树页再按 `G`，等 `famP` / `famA` / `famB` 都结束后回主画面 |
-| 机械臂主画面 | `V` | `0x2F` | 进入/退出全屏 `AEVUM / COW FORK + SIGNALS + PHYS`，启动 A/B/C/D/F 五个用户进程，D 做三轮 fork/wait（第三轮 exec） | 只在主画面启动；在页内再按 `V`，等 A/B/D 结束后回主画面 |
+| 机械臂主画面 | `V` | `0x2F` | 进入/退出全屏 `AEVUM / COW FORK + SIGNALS + PHYS`，启动 A/B/C/D/F 五个用户进程，D 做四轮 fork/wait（第三轮 exec、第四轮 pipe） | 只在主画面启动；在页内再按 `V`，等 A/B/D 结束后回主画面 |
 | 机械臂主画面 | `K` | `0x25` | 触发内核态 `#PF`，进入全屏 `AEVUM / KERNEL PAGE FAULT` | 受控探针；页内按 `R` 恢复并重新武装，按 `H` 停机；不参与其他演示 |
 | `KERNEL PAGE FAULT` | `R` | `0x13` | 临时映射 4 MB 诊断页，执行完出错写指令并 `iret` 返回主画面 | 只对 `K` 探针可用；返回后撤销 PDE 1，下一次 `K` 会重新触发 |
 | `KERNEL PAGE FAULT` | `H` | `0x23` | 立即停机 | 保留现场，不返回；非探针内核 fault 没有这个选择 |
@@ -171,7 +172,7 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 | 文件 | 作用 |
 | --- | --- |
-| `boot.asm` | 唯一引导扇区（512 字节）。用 `INT 13h` 的 LBA 扩展一次读 96 个扇区到 `0x80000`；读盘失败打印可见消息；调用 `boot_common.inc` 的 `BOOT_ENTER_PM` / `BOOT_BUILD_PAGETABLE` 完成 GDT、保护模式和 0~4MB 恒等分页；开启分页后跳到 `0x80000`。 |
+| `boot.asm` | 唯一引导扇区（512 字节）。用 `INT 13h` 的 LBA 扩展一次读 104 个扇区到 `0x80000`；读盘失败打印可见消息；调用 `boot_common.inc` 的 `BOOT_ENTER_PM` / `BOOT_BUILD_PAGETABLE` 完成 GDT、保护模式和 0~4MB 恒等分页；开启分页后跳到 `0x80000`。 |
 | `boot_common.inc` | `boot.asm` 的公共引导实现：临时 GDT、16→32 位保护模式切换、`0x10000/0x11000` 页表与 4MB 恒等映射、BIOS 打印例程。 |
 | `loader.asm` | 保护模式入口 `start`。打开 CR4.OSFXSR/OSXMMEXCPT、清 CR0.EM/TS；加载 6 项内核 GDT（ring0/ring3 代码、数据、TSS 槽），清 BSS，主栈设 `0xC000`，调用 `kernel_main`；提供 IRQ0、`int 0x40`、`int 0x80`、`#PF` 和 `#DE/#BP/#UD/#GP` 异常 stub，返回后死循环。 |
 | `kernel/main/main.c` | 组合根：初始化 VGA、串口、任务、机械臂应用、IDT/PIC/PIT，最后切入第一个任务。 |
@@ -190,8 +191,8 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `app/arm/kinematics/`、`control/`、`render/`、`app/` | 机械臂纯运动学、控制状态、渲染、任务装配。 |
 | `app/fpu/demo/`、`app/fpu/render/` | FPU/SSE 实验的任务状态与全屏页面。 |
 | `app/tree/demo/`、`app/tree/render/` | 家族树演示任务与树形页；演示任务由 `famP` 创建两个子进程后退出。 |
-| `app/user/demo/`、`app/user/render/` | 五个 ring3 lane、三轮 fork/wait 信号与 exec 样本、VMA/brk/heap/guard 数据页证据，以及 PCB + COW 统计 + VMA + 物理池 + 信号 + P4 exec（含 `arg/env`）全屏页。 |
-| `kernel.ld` | 链接脚本。加载基址 `0x80000`；BSS 当前到 `0x8E0E0`，由 loader 清零；`render` 栈从 `0x9000` 起，远低于内核段。 |
+| `app/user/demo/`、`app/user/render/` | 五个 ring3 lane、四轮 fork/wait 信号、exec 与 pipe 样本、VMA/brk/heap/guard 数据页证据，以及 PCB + COW 统计 + VMA + 物理池 + 信号 + P4 exec + P4.3 pipe 全屏页。 |
+| `kernel.ld` | 链接脚本。加载基址 `0x80000`；BSS 当前到 `0x8F2E0`，由 loader 清零；`render` 栈从 `0x9000` 起，远低于内核段。 |
 | `Makefile` | 构建脚本：汇编、编译、链接、打包镜像，以及运行 / 调试 / 清理。 |
 
 ### 生成的文件（`make clean` 会全部删除）
@@ -210,8 +211,8 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 | 物理地址 | 用途 |
 | --- | --- |
-| `0x00080000` – `0x0008C000` | boot 一次 LBA 读取的 96 扇区（48KB）窗口；当前 `kernel.bin` 47,304 字节 |
-| `0x0008B8E0` – `0x0008E0E0` | `.bss`：loader 载入后由 `rep stosb` 清零；尾部 `0x8C000..0x8E0E0` 高于加载窗口 |
+| `0x00080000` – `0x0008D000` | boot 一次 LBA 读取的 96 扇区（48KB）窗口；当前 `kernel.bin` 50,760 字节 |
+| `0x0008C660` – `0x0008F2E0` | `.bss`：loader 载入后由 `rep stosb` 清零；尾部 `0x8D000..0x8F2E0` 高于加载窗口 |
 | `0x00009000` – `0x00009FFF` | `render` 任务栈（栈顶 `0xA000`，向下增长） |
 | `0x0000A000` – `0x0000AFFF` | `idle` 任务栈（栈顶 `0xB000`，向下增长） |
 | `0x0000B000` – `0x0000BFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -246,18 +247,18 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 
 ## 六、注意事项
 
-1. **内核镜像必须小于 48KB**：`boot.asm` 一次 LBA 读 96 个扇区（49,152 字节）到 `0x80000`。
-   当前 `kernel.bin` 为 47,304 字节，BSS 结束于 `0x8E0E0`；镜像数据本身不超过 49,152 字节，余量 1,848 字节。BSS 尾部 `0x8C000..0x8E0E0` 不在加载窗口内，由 loader 按链接符号清零。
+1. **内核镜像必须小于 52KB**：`boot.asm` 一次 LBA 读 104 个扇区（53,248 字节）到 `0x80000`。
+   当前 `kernel.bin` 为 50,760 字节，BSS 结束于 `0x8F2E0`；镜像数据本身不超过 53,248 字节，余量 2,488 字节。BSS 尾部 `0x8D000..0x8F2E0` 不在加载窗口内，由 loader 按链接符号清零。
    内核已完全避开 BIOS 低内存暂存区、VGA BIOS 影子 ROM 与 `0x7C00` boot 代码；若继续增长，必须同时增加扇区数并同步 `kernel.ld`/`config/memory.h`。
-2. 内核页目录 / 页表固定在 `0x10000` / `0x11000`，IDT 固定在 `0x12000..0x127FF`；内核 GDT 在 `.data` 的 `0x8A6C0..0x8A6EF`，TSS 在 BSS 的 `0x8BAE0..0x8BB47`；不要和内核段或任务栈重叠。
+2. 内核页目录 / 页表固定在 `0x10000` / `0x11000`，IDT 固定在 `0x12000..0x127FF`；内核 GDT 在 `.data` 的 `0x8C560..0x8C590`，TSS 在 BSS 的 `0x8EC00..0x8EC68`；不要和内核段或任务栈重叠。
 3. 按 `B`（扫描码 `0x30`）可把 `idle` 任务阻塞成 `3id B`，再按一次唤醒；这是 `BLOCKED` 状态的可控演示。
 4. 按 `T`（扫描码 `0x14`）进入/退出抢占决斗；决斗使用 `spinA` / `spinB` 两个 CPU 密集型任务，只有 PIT/IRQ0 抢占才能让两边同时前进。
 5. 按 `C`（扫描码 `0x2E`）在机械臂与全屏 CPU 统计页之间切换；统计页中的 CPU% 来自每个任务的 `cpu_ticks`，不是静态文本。
 6. 按 `F`（扫描码 `0x21`）进入/退出全屏 `AEVUM / FPU CONTEXT LAB`；两个任务在 `XMM0` 里各自保存不同标签，屏幕的 `CTX OK` 表示切换后读回的是自己的状态。
 7. 按 `G`（扫描码 `0x22`）进入/退出全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 退出后 `famA` / `famB` 会被重挂到 `idle`，右侧面板显示父 PID、子 PID 和新父亲。
-8. 按 `V`（扫描码 `0x2F`）进入/退出全屏 `AEVUM / COW FORK + SIGNALS + PHYS`；A/B/C/D/F 都从 CPL3 的 `0x400000` 执行，但 PD/PT 和用户页都来自 `0x100000..0x1FEFFF` 的 255 页池。D 三轮 fork 都返回 8；第一轮子进程写 `CHLD` 后 `exit(7)`，父读回 `PAPA` 并显示 `WAIT OK 7 / COW OK`；第二轮子进程安装 `SIGFPE` handler 后 `1/0` 触发 `#DE`，signal frame 进入 handler、`sigreturn` 返回 `0x4002A8`，写 `HAND` 后 `exit(9)`，父 wait 得到 `00000009` 并显示 `HAND OK`；第三轮子进程 `exec(1, argv, envp)`，参数为 `alpha/beta/NULL` 与 `MODE=p42/LEVEL=2/NULL`；新镜像从新栈校验四串后写 `ARGV/ENVP` 并 `exit(10)`，父 wait 得到 10 并显示 `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`。C 写 `0xB8000` 触发 `#PF`、F 写 guard `0x402000`，两者都显示 `SIG11`；A/B 继续运行。按 `V` 停止后所有用户进程被回收，没有 ZOMBIE/PID/页泄漏；当前信号面板为 `#DE 1 pid 8 eip 004002A6 sig 8 SIGFPE hdl 1 chld 3 pend 00000000`，`PHYS PAGES 20/255`，COW `forks 3 shared 12 live 2 breaks 6`。
+8. 按 `V`（扫描码 `0x2F`）进入/退出全屏 `AEVUM / COW FORK + SIGNALS + PHYS`；A/B/C/D/F 都从 CPL3 的 `0x400000` 执行，但 PD/PT 和用户页都来自 `0x100000..0x1FEFFF` 的 255 页池。D 四轮 fork 都返回 8；第一轮子进程写 `CHLD` 后 `exit(7)`，父读回 `PAPA` 并显示 `WAIT OK 7 / COW OK`；第二轮子进程安装 `SIGFPE` handler 后 `1/0` 触发 `#DE`，signal frame 进入 handler、`sigreturn` 返回 `0x4002A8`，写 `HAND` 后 `exit(9)`，父 wait 得到 `00000009` 并显示 `HAND OK`；第三轮子进程 `exec(1, argv, envp)`，参数为 `alpha/beta/NULL` 与 `MODE=p42/LEVEL=2/NULL`；新镜像从新栈校验四串后写 `ARGV/ENVP` 并 `exit(10)`，父 wait 得到 10 并显示 `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`；第四轮父 `pipe()` 得到 fd 2/3，fork 后父关写端、子关读端并 `exec(2, argv)`，新镜像仍持有 fd 3，写 `PIPE` 后 `exit(12)`，父 wait 得到 12 并从 fd 2 读回 4 字节，显示 `P4.3 pipe 8 wait 8 st 0000000C fd 2>3 r4 PIPE OK`。C 写 `0xB8000` 触发 `#PF`、F 写 guard `0x402000`，两者都显示 `SIG11`；A/B 继续运行。按 `V` 停止后所有用户进程被回收，没有 ZOMBIE/PID/页/fd/pipe 泄漏；`pipe obj 0`，`PHYS PAGES 20/255`。
 9. 任务栈顶由 `config/memory.h` 的 `AEVUM_STACK_P1=0x200000` / `AEVUM_STACK_P2=0xA000` / `AEVUM_STACK_IDLE=0xB000` / `AEVUM_STACK_MAIN=0xC000` / `AEVUM_STACK_PROBE=0xD000` / `AEVUM_STACK_DUEL_A=0xE000` / `AEVUM_STACK_DUEL_B=0xF000` / `AEVUM_STACK_USER_A=0x201000` / `AEVUM_STACK_USER_B=0x202000` / `AEVUM_STACK_USER_C=0x203000` / `AEVUM_STACK_USER_D=0x204000` / `AEVUM_STACK_USER_E=0x205000` / `AEVUM_STACK_USER_F=0x206000` 决定，修改时要保证互不重叠。每个任务栈底部 512 字节是 FXSAVE 区，实际可用栈为 3.5KB。
 10. 中断帧布局必须与 `loader.asm` 的 `SAVE_CTX/RESTORE_CTX` 逐槽一致；新增字段时先改汇编压栈顺序，再改 `struct irq_frame`，否则 `iret` 会恢复到错误地址。
-11. `control` 栈已移到 `0x1FF000..0x1FFFFF`；内核镜像整体在 `0x80000..0x8E200`，与 `render` 栈 `0x9000`、用户物理页池 `0x100000..0x1FEFFF` 不重叠；加载窗口 96 扇区到 `0x8C000`，BSS 尾部由 loader 清零。
+11. `control` 栈已移到 `0x1FF000..0x1FFFFF`；内核镜像整体在 `0x80000..0x8F400`，与 `render` 栈 `0x9000`、用户物理页池 `0x100000..0x1FEFFF` 不重叠；加载窗口 104 扇区到 `0x8D000`，BSS 尾部由 loader 清零。
 12. 全局 `CFLAGS` 用 `-Os -mno-sse`；只有 `app/fpu/demo` 追加 `-msse2`。非 FPU 模块若让编译器生成 SSE 暂存，会和 `fxsave` 捕获任务 `XMM` 状态的时序打架，表现为 `TAG 0 / CTX LOST`。
 13. `K` 的恢复只修共享内核 PD 的 PDE 1，不碰用户地址空间；恢复后 `page_fault_probe()` 撤销 PTE/PDE 并 `invlpg`。非探针内核 fault 没有 fixup，仍走 panic 停机。

@@ -193,6 +193,48 @@ u32 user_demo_exec_ok(int lane)
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x60u);
 }
 
+u32 user_demo_pipe_child(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x80u);
+}
+
+u32 user_demo_pipe_status(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x84u);
+}
+
+u32 user_demo_pipe_wait_ret(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x88u);
+}
+
+u32 user_demo_pipe_read_fd(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x6Cu);
+}
+
+u32 user_demo_pipe_write_fd(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x70u);
+}
+
+u32 user_demo_pipe_read_ret(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x98u);
+}
+
+u32 user_demo_pipe_ok(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x7Cu);
+}
+
 u32 user_demo_brk(int lane)
 {
     if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;

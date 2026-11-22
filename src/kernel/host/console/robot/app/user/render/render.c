@@ -3,6 +3,7 @@
 #include "kernel/task.h"
 #include "kernel/proc.h"
 #include "kernel/mm/address_space.h"
+#include "kernel/ipc/pipe.h"
 #include "drivers/video/vga.h"
 #include "lib/format.h"
 #include "arch/x86/syscall.h"
@@ -247,6 +248,8 @@ void user_render_frame(void)
     u32 sig_child, sig_status, sig_ret, sig_ok;
     u32 exec_child, exec_status, exec_ret, exec_ok, exec_img;
     u32 exec_argc = 0, exec_envc = 0;
+    u32 pipe_child, pipe_status, pipe_ret, pipe_read_fd, pipe_write_fd;
+    u32 pipe_read_ret, pipe_ok, pipe_obj;
 
     vga_clear(C_BG);
     vga_fill(0, 0, 79, 0, ' ', C_HDR);
@@ -290,8 +293,26 @@ void user_render_frame(void)
     exec_ret = user_demo_exec_ret(USER_DEMO_FORK_LANE);
     exec_ok = user_demo_exec_ok(USER_DEMO_FORK_LANE);
     exec_img = exec_child ? (u32)process_image_id((int)exec_child) : 0;
-    if (exec_child)
+    if (exec_child) {
+        int hpid;
+        u32 himg, hargc, henvc;
         process_exec_counts((int)exec_child, &exec_argc, &exec_envc);
+        if (process_reaped_exec(user_demo_pid(USER_DEMO_FORK_LANE), 0,
+                                &hpid, &himg, &hargc, &henvc) == 0 &&
+            (u32)hpid == exec_child) {
+            exec_img = himg;
+            exec_argc = hargc;
+            exec_envc = henvc;
+        }
+    }
+    pipe_child = user_demo_pipe_child(USER_DEMO_FORK_LANE);
+    pipe_status = user_demo_pipe_status(USER_DEMO_FORK_LANE);
+    pipe_ret = user_demo_pipe_wait_ret(USER_DEMO_FORK_LANE);
+    pipe_read_fd = user_demo_pipe_read_fd(USER_DEMO_FORK_LANE);
+    pipe_write_fd = user_demo_pipe_write_fd(USER_DEMO_FORK_LANE);
+    pipe_read_ret = user_demo_pipe_read_ret(USER_DEMO_FORK_LANE);
+    pipe_ok = user_demo_pipe_ok(USER_DEMO_FORK_LANE);
+    pipe_obj = pipe_live_count();
 
     vga_text(2, 14, "userD fork", C_GRAY);
     put_dec(12, 14, child, C_WHITE);
@@ -329,6 +350,8 @@ void user_render_frame(void)
     put_dec(18, 21, syscall_count_total(), C_WHITE);
     vga_text(33, 21, "last CS", C_GRAY);
     put_hex(41, 21, syscall_last_cs(), C_CYAN);
+    vga_text(51, 21, "pipe obj", C_GRAY);
+    put_dec(60, 21, pipe_obj, pipe_obj ? C_YELLOW : C_GREEN);
 
     vga_text(2, 22, "D fork2", C_GRAY);
     put_dec(9, 22, sig_child, C_WHITE);
@@ -359,5 +382,21 @@ void user_render_frame(void)
     vga_text(60, 23, "env", C_GRAY);
     put_dec(64, 23, exec_envc, exec_envc ? C_CYAN : C_YELLOW);
 
-    vga_text(2, 24, "V: stop all user processes; second V starts a fresh AS/PID round.", C_YELLOW);
+    vga_text(2, 24, "P4.3 pipe", C_GRAY);
+    put_dec(12, 24, pipe_child, C_WHITE);
+    vga_text(16, 24, "wait", C_GRAY);
+    put_dec(21, 24, pipe_ret, C_WHITE);
+    vga_text(24, 24, "st", C_GRAY);
+    put_hex(27, 24, pipe_status, C_WHITE);
+    vga_text(38, 24, "fd", C_GRAY);
+    put_dec(41, 24, pipe_read_fd, C_WHITE);
+    vga_text(42, 24, ">", C_GRAY);
+    put_dec(43, 24, pipe_write_fd, C_WHITE);
+    vga_text(44, 24, "r", C_GRAY);
+    put_dec(45, 24, pipe_read_ret, C_WHITE);
+    if (pipe_ok == 0x45505049u)
+        vga_text(48, 24, "PIPE OK", C_GREEN);
+    else
+        vga_text(48, 24, "PIPE ..", C_YELLOW);
+    vga_text(58, 24, "V:restart", C_YELLOW);
 }

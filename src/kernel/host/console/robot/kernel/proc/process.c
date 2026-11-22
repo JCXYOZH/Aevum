@@ -1,4 +1,5 @@
 #include "kernel/proc.h"
+#include "kernel/proc/fd.h"
 #include "kernel/task.h"
 #include "kernel/mm/address_space.h"
 #include "arch/x86/exception.h"
@@ -9,6 +10,7 @@
 #define PROC_SIGFRAME_MAGIC 0x53494746u  /* "SIGF" */
 #define PROC_EXEC_MAX_VEC 4
 #define PROC_EXEC_STRING_MAX 32
+#define PROC_REAP_HISTORY 2
 
 struct proc_exec_args {
     u32 argc;
@@ -21,6 +23,8 @@ extern u8 user_program_start[];
 extern u8 user_sigreturn_trampoline[];
 extern u8 user_exec_start[];
 extern u8 user_exec_end[];
+extern u8 user_pipe_exec_start[];
+extern u8 user_pipe_exec_end[];
 
 struct proc_sigaction {
     u32 handler;
@@ -37,6 +41,13 @@ struct proc_signal_frame {
     u32 eax, ebx, ecx, edx, esi, edi, ebp;
     u32 eip, cs, eflags, user_esp, ss;
     u32 sig, old_mask, magic;
+};
+
+struct proc_reap_exec {
+    int pid;
+    u32 image_id;
+    u32 argc;
+    u32 envc;
 };
 
 struct process {
@@ -59,6 +70,8 @@ struct process {
     u32 image_id;
     u32 exec_argc;
     u32 exec_envc;
+    struct proc_fd_table fds;
+    struct proc_reap_exec reaped[PROC_REAP_HISTORY];
 };
 
 static struct process procs[PROC_MAX];
@@ -89,6 +102,7 @@ static void proc_reset_signals(struct process *p)
 static void proc_zero(struct process *p)
 {
     int i;
+    proc_fd_table_close_all(&p->fds);
     p->pid = 0;
     p->ppid = 0;
     p->state = PROC_FREE;
@@ -100,6 +114,13 @@ static void proc_zero(struct process *p)
     p->image_id = 0;
     p->exec_argc = 0;
     p->exec_envc = 0;
+    for (i = 0; i < PROC_REAP_HISTORY; i++) {
+        p->reaped[i].pid = 0;
+        p->reaped[i].image_id = 0;
+        p->reaped[i].argc = 0;
+        p->reaped[i].envc = 0;
+    }
+    proc_fd_table_init(&p->fds);
     proc_reset_signals(p);
 }
 
@@ -425,6 +446,7 @@ static void process_reap(struct process *p)
 {
     if (!p || (p->state != PROC_ZOMBIE && p->state != PROC_LIVE)) return;
     if (p->task == task_current()) return;
+    proc_fd_table_close_all(&p->fds);
     task_release_slot(p->pid);
     if (p->space) address_space_release(p->space);
     task_pid_release(p->pid);
@@ -556,6 +578,13 @@ struct process *process_fork(struct irq_frame *frame)
     p->image_id = parent->image_id;
     p->exec_argc = parent->exec_argc;
     p->exec_envc = parent->exec_envc;
+    if (proc_fd_table_copy(&p->fds, &parent->fds) != 0) {
+        address_space_release(space);
+        stack_free(stack_top);
+        proc_zero(p);
+        task_pid_release(pid);
+        return 0;
+    }
 
     rc = task_fork_user(pid, "userE", frame, stack_top, space, p, &task);
     if (rc) {
@@ -575,6 +604,10 @@ static const u8 *proc_exec_image(int image_id, u32 *size)
     if (image_id == 1) {
         *size = (u32)((u32)user_exec_end - (u32)user_exec_start);
         return user_exec_start;
+    }
+    if (image_id == 2) {
+        *size = (u32)((u32)user_pipe_exec_end - (u32)user_pipe_exec_start);
+        return user_pipe_exec_start;
     }
     return 0;
 }
@@ -763,6 +796,7 @@ int process_exit_current(u32 code)
     if (!task_current() || !task_process_current()) return -1;
     self = task_process_current();
     if (self->state != PROC_LIVE) return -1;
+    proc_fd_table_close_all(&self->fds);
     self->state = PROC_ZOMBIE;
     self->term_sig = 0;
     self->exit_code = code & 0xFFu;
@@ -782,6 +816,7 @@ int process_terminate_current(int sig)
     self = task_process_current();
     if (self->state != PROC_LIVE) return -1;
 
+    proc_fd_table_close_all(&self->fds);
     proc_signal_pending(self, sig);
     self->state = PROC_ZOMBIE;
     self->term_sig = (u32)sig;
@@ -823,6 +858,15 @@ int process_wait(int pid, u32 user_status)
                 return -1;
             {
                 int child_pid = child->pid;
+                /*
+                 * PID 会被后续 fork 复用；先把本次 wait 的子进程 exec 代次
+                 * 存入父进程最近两次历史，V 页不依赖已清空的子墓碑。
+                 */
+                self->reaped[0] = self->reaped[1];
+                self->reaped[1].pid = child->pid;
+                self->reaped[1].image_id = child->image_id;
+                self->reaped[1].argc = child->exec_argc;
+                self->reaped[1].envc = child->exec_envc;
                 /*
                  * 回收必须在切走子任务之后；此时 current 是父进程，
                  * process_reap() 会清掉子进程的调度槽。
@@ -981,6 +1025,25 @@ int process_pid_of(struct process *proc)
 struct address_space *process_space(struct process *proc)
 {
     return proc ? proc->space : 0;
+}
+
+struct proc_fd_table *process_fds(struct process *proc)
+{
+    return proc ? &proc->fds : 0;
+}
+
+int process_reaped_exec(int parent_pid, int slot, int *pid,
+                        u32 *image_id, u32 *argc, u32 *envc)
+{
+    struct process *p = proc_find_active(parent_pid);
+
+    if (!p || p->state != PROC_LIVE || slot < 0 || slot >= PROC_REAP_HISTORY)
+        return -1;
+    if (pid) *pid = p->reaped[slot].pid;
+    if (image_id) *image_id = p->reaped[slot].image_id;
+    if (argc) *argc = p->reaped[slot].argc;
+    if (envc) *envc = p->reaped[slot].envc;
+    return 0;
 }
 
 u32 process_read32(int pid, u32 va)

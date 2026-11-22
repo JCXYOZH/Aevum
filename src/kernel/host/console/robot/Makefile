@@ -23,6 +23,8 @@ SRCS = \
 	kernel/task/task.c \
 	kernel/task/family/family.c \
 	kernel/proc/process.c \
+	kernel/proc/fd/fd.c \
+	kernel/ipc/pipe/pipe.c \
 	kernel/mm/address_space/address_space.c \
 	arch/x86/cpu/interrupt/interrupt.c \
 	arch/x86/cpu/tss/tss.c \
@@ -46,7 +48,7 @@ SRCS = \
 	app/user/demo/demo.c \
 	app/user/render/render.c
 
-OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o)) build/user/ring3.o build/user/exec.o
+OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o)) build/user/ring3.o build/user/exec.o build/user/exec_pipe.o
 IMG     = os.img
 
 GENERATED = boot.bin $(IMG) disk.img kernel.bin kernel.elf $(BUILD)
@@ -74,14 +76,18 @@ $(BUILD)/user/exec.o: user/exec/exec.asm
 	@mkdir -p $(BUILD)/user
 	$(AS) $(ASFLAGS_ELF32) user/exec/exec.asm -o $@
 
+$(BUILD)/user/exec_pipe.o: user/exec-pipe/exec_pipe.asm
+	@mkdir -p $(BUILD)/user
+	$(AS) $(ASFLAGS_ELF32) user/exec-pipe/exec_pipe.asm -o $@
+
 kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 	$(LD) -m elf_i386 -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf
 
 # 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
 kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 49152 / 96 sectors)"; \
-	if [ $$size -gt 49152 ]; then echo "ERROR: kernel.bin $$size bytes > 49152"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 53248 / 104 sectors)"; \
+	if [ $$size -gt 53248 ]; then echo "ERROR: kernel.bin $$size bytes > 53248"; exit 1; fi
 
 boot.bin: boot.asm boot_common.inc
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin

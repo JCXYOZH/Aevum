@@ -9,6 +9,10 @@
 ; 0x40104C SIG 验收字，0x401050 信号 wait 返回值，0x401054 handler 调用计数；
 ; 0x401058 exec 子进程 pid，0x40105C exec wait status，0x401060 exec 验收字，
 ; 0x401064 exec wait 返回值，0x401068 exec 只执行一次标记；
+; 0x40106C pipe 读 fd，0x401070 pipe 写 fd，0x401074 pipe 返回值，
+; 0x401078 父读回 4 字节，0x40107C pipe 验收字，0x401080 pipe 子进程 pid，
+; 0x401084 pipe wait status，0x401088 pipe wait 返回值，0x40108C pipe 只执行一次标记，
+; 0x401090 父 close 写端返回值，0x401094 父 close 读端返回值，0x401098 父 read 返回值；
 ; 0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
 ; stack 0x403000，control 0x404000，heap 0x405000 起。
@@ -148,7 +152,7 @@ user_program_start:
     ; 第三轮：fork 子进程执行 exec(1)。新镜像写 EXEC 后 yield 若干次，
     ; 最后 exit(10)；父进程 wait 到 10 后写 EXEC 验收字。
     cmp dword [0x401068], 0
-    jne .yield
+    jne .pipe_round
     mov dword [0x401068], 1
     mov eax, 6              ; syscall: fork
     int 0x80
@@ -164,11 +168,84 @@ user_program_start:
     cmp dword [0x40105C], 10
     jne .exec_bad
     mov dword [0x401060], 0x45584543 ; "EXEC"
+
+    ; 第四轮：父建 pipe，fork 后父留读端、子留写端并 exec(2)。
+    ; 新镜像向写端写 PIPE 后 exit(12)，父 wait 后读回并关闭两端。
+.pipe_round:
+    cmp dword [0x40108C], 0
+    jne .yield
+    mov dword [0x40108C], 1
+    mov eax, 14             ; syscall: pipe(&read_fd)
+    mov ebx, 0x40106C
+    int 0x80
+    mov [0x401074], eax
+    test eax, eax
+    jnz .pipe_bad
+    cmp dword [0x40106C], 2
+    jne .pipe_bad
+    cmp dword [0x401070], 3
+    jne .pipe_bad
+
+    mov eax, 6              ; syscall: fork
+    int 0x80
+    test eax, eax
+    jz .child_pipe_exec
+
+    mov [0x401080], eax             ; pipe child pid
+    mov eax, 17             ; 父关闭写端 3
+    mov ebx, [0x401070]
+    int 0x80
+    mov [0x401090], eax
+
+    mov ebx, [0x401080]
+    mov ecx, 0x401084
+    mov eax, 4              ; syscall: wait
+    int 0x80
+    mov [0x401088], eax
+    cmp dword [0x401084], 12
+    jne .pipe_bad
+
+    mov eax, 15             ; syscall: read(read_fd, buf, 4)
+    mov ebx, [0x40106C]
+    mov ecx, 0x401078
+    mov edx, 4
+    int 0x80
+    mov [0x401098], eax
+    cmp eax, 4
+    jne .pipe_bad
+    cmp dword [0x401078], 0x45505049 ; "PIPE"
+    jne .pipe_bad
+
+    mov eax, 17             ; 父关闭读端
+    mov ebx, [0x40106C]
+    int 0x80
+    mov [0x401094], eax
+    test eax, eax
+    jnz .pipe_bad
+    mov dword [0x40107C], 0x45505049
+    jmp .yield
+
+.pipe_bad:
+    mov dword [0x40107C], 0x424144   ; "BAD"
     jmp .yield
 
 .exec_bad:
     mov dword [0x401060], 0x424144   ; "BAD"
     jmp .yield
+
+.child_pipe_exec:
+    mov eax, 17             ; 子关闭继承来的读端 2
+    mov ebx, [0x40106C]
+    int 0x80
+    mov eax, 13             ; syscall: exec(2, pipe_argv, NULL)
+    mov ebx, 2
+    mov ecx, pipe_exec_argv - user_program_start + 0x400000
+    xor edx, edx
+    int 0x80
+    mov eax, 3              ; exec 失败 exit(13)
+    mov ebx, 13
+    int 0x80
+    jmp $
 
 .child_exec:
     mov eax, 13             ; syscall: exec(1, argv, envp)
@@ -266,5 +343,18 @@ exec_env0:
     db "MODE=p42", 0
 exec_env1:
     db "LEVEL=2", 0
+
+; P4.3 pipe 写端样本；FD=3 对应 pipe() 的最低写端分配。
+pipe_exec_argv:
+    dd pipe_arg0 - user_program_start + 0x400000
+    dd pipe_arg1 - user_program_start + 0x400000
+    dd pipe_arg2 - user_program_start + 0x400000
+    dd 0
+pipe_arg0:
+    db "pipe", 0
+pipe_arg1:
+    db "writer", 0
+pipe_arg2:
+    db "FD=3", 0
 
 user_program_end:
