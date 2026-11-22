@@ -19,13 +19,13 @@
 - **抢占决斗**：按 `T` 创建 `spinA` / `spinB` 两个 CPU 密集型任务，两个循环都不调用 `task_yield()`；全屏显示各自的实时 `STEP`、进度条、运行历史，以及 80 格 IRQ0 抢占磁带。只有 PIT 100Hz 真的打断 CPU，两条 lane 才会同时前进，磁带才会出现青/洋红交替条纹；再按 `T` 停止。
 - **FPU 上下文实验**：按 `F` 创建 `fpuA` / `fpuB` 两个 CPU 密集型任务，循环里不调用 `task_yield()`；两个任务在 `XMM0` 里各自保存标签和计数，全屏显示 `TAG`、`COUNT`、`CTX OK/LOST` 与进度条。只要 `fxsave/fxrstor` 漏掉一次，标签就会串到另一条 lane。
 - **进程家族树**：按 `G` 进入全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 创建 `famA` / `famB` 后退出，`family.c` 只把这两个直接子进程重挂到 `idle`，右侧面板显示父 PID、子 PID 和 `reaper`。树形页读的是真实 `ppid` 关系，不是画出来的假树。
-- **进程上下文 / COW fork / exec**：按 `V` 启动 A/B/C/D/F 五个用户进程，D 做三轮 fork/wait。每个进程有独立 PD/PT 和 CR3，PD/PT、代码、数据、栈、control 从 `0x100000..0x1FEFFF` 的 255 页位图池分配，每页有引用计数；6 个 VMA 为 code RX、data RW、guard 无权限、stack RW、control R、heap RW。全屏页显示 PCB 表 `PID PPID ST EXIT CR3 AS PGS/C BRK COMM`、VMA 摘要、heap/guard 结果、COW 统计、fork/wait、信号面板、`P4 exec` 与 `PHYS PAGES`。第一轮子进程写 `CHLD` 后 `exit(7)`，父显示 `WAIT OK 7 / COW OK`；第二轮子进程安装 `SIGFPE` handler 后 `1/0`，signal frame 进入 handler、`sigreturn` 返回除零后的指令，写 `HAND` 后 `exit(9)`，父 wait 得到 status 9 并显示 `HAND OK`；第三轮子进程 `exec(1)`，PID 不变、换新 AS 和 exec 镜像，写 `EXEC` 后 `exit(10)`，父 wait 得到 10 并显示 `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK`。地址空间由 `kernel/mm/address_space` 唯一维护，PID/父子/退出码/信号/回收由 `kernel/proc/process.c` 唯一维护，调度与 FPU 仍归 `task.c`。
+- **进程上下文 / COW fork / exec**：按 `V` 启动 A/B/C/D/F 五个用户进程，D 做三轮 fork/wait。每个进程有独立 PD/PT 和 CR3，PD/PT、代码、数据、栈、control 从 `0x100000..0x1FEFFF` 的 255 页位图池分配，每页有引用计数；6 个 VMA 为 code RX、data RW、guard 无权限、stack RW、control R、heap RW。全屏页显示 PCB 表 `PID PPID ST EXIT CR3 AS PGS/C BRK COMM`、VMA 摘要、heap/guard 结果、COW 统计、fork/wait、信号面板、`P4 exec` 与 `PHYS PAGES`。第一轮子进程写 `CHLD` 后 `exit(7)`，父显示 `WAIT OK 7 / COW OK`；第二轮子进程安装 `SIGFPE` handler 后 `1/0`，signal frame 进入 handler、`sigreturn` 返回除零后的指令，写 `HAND` 后 `exit(9)`，父 wait 得到 status 9 并显示 `HAND OK`；第三轮子进程 `exec(1, argv, envp)`，参数为 `alpha/beta/NULL` 与 `MODE=p42/LEVEL=2/NULL`；PID 不变、换新 AS 和 exec 镜像，内核把字符串复制到新栈（`esp=0x403FC8`），新镜像逐字节校验四串后写 `ARGV/ENVP` 并 `exit(10)`，父 wait 得到 10 并显示 `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`。地址空间由 `kernel/mm/address_space` 唯一维护，PID/父子/退出码/信号/回收由 `kernel/proc/process.c` 唯一维护，调度与 FPU 仍归 `task.c`。
 - **同步异常与用户信号**：`#DE/#BP/#UD/#GP` 由 `exception.c` 唯一分发；CPL3 时记录 `pid/eip/err/cr2` 后 `#DE -> SIGFPE`、`#BP -> SIGTRAP`、`#UD -> SIGILL`、`#GP -> SIGSEGV`。没有 handler 时调用 `process_terminate_current()` 后 `task_exit()`；有 handler 时在用户栈构造 64 字节 signal frame，`iret` 进 handler，`eax=12 sigreturn` 恢复原 GPR/EIP/CS/EFLAGS/ESP/SS。`#DE` 的保存 EIP 指向 faulting `div/idiv`，内核按 `F6/F7` 最小解码后前移。`eax=11 sigaction(sig,handler,mask)` 建表；`fork` 继承 handler 表与 mask，不继承 pending。正常 `exit(7)` 的 wait status 是 `7`，默认信号终止是 `0x80000000 | sig`；子进程退出给父进程置 SIGCHLD pending，父 wait 消费后清零。CPL0 的非 #PF 同步异常没有 fixup，进入诊断停机。
-- **用户 exec**：`eax=13 exec(image_id)` 只替换当前进程的用户地址空间和镜像，保留 PID/PPID/任务槽。`process_exec_current()` 先建新 AS，`cli` 下切 CR3 并更新任务持有的 AS 指针，重置 `sigactions`/mask/pending，把 iret 帧改成入口 `0x400000`、用户栈 `0x404000`，再释放旧 AS；新 AS 分配失败时返回 -1，旧状态不动。P4.1 只接受内嵌镜像 1，`user/exec/exec.asm` 写 PID 与 `EXEC` 标记后 `exit(10)`。
+- **用户 exec**：`eax=13 exec(image_id, argv, envp)` 只替换当前进程的用户地址空间和镜像，保留 PID/PPID/任务槽。`process_exec_current()` 先在旧 AS 仍有效时解析并复制 `argv/envp`（最多 4 项、每串最多 31 字符、必须有 NULL 结尾），再建新 AS，按 `argc, argv[], NULL, envp[], NULL, 字符串区` 构造新用户栈；2 项参数/2 项环境时 `esp=0x403FC8`。随后 `cli` 下切 CR3、更新任务持有的 AS 指针，重置 `sigactions`/mask/pending，把 iret 帧改成入口 `0x400000`，再释放旧 AS；解析、AS 分配或栈构造失败时返回 -1，旧 AS/frame 不动。P4.2 只接受内嵌镜像 1，`user/exec/exec.asm` 校验四个字符串后写 `ARGV/ENVP` 并 `exit(10)`。
 - **COW 写时复制**：`address_space_clone()` 只分配新 PD/PT，把 data/stack/heap 和内核可写的 control 页清 `RW`、置 PTE bit 9 后共享，代码页只读共享；已经是 COW 的页第二次 fork 时保留 COW 位，避免退化成只读页。首次写触发 `#PF` 时分配新页、复制内容并恢复 VMA 权限，旧页引用计数减一。V 页实测 `forks 3 shared 12 live 2 breaks 6 last AS4 old 0011B000 -> 0011C000`，其中 signal frame 写入用户栈也触发了一次 COW 拆分。
 - **brk / guard / copyin-copyout**：`eax=8 brk` 增长 heap 并零填新页、缩回释放、越界拒绝；`eax=9 peek` / `eax=10 poke` 逐字节按 VMA+PTE 翻译用户指针，写 COW 页先拆分。A/B 的 `brk(0x406000)`、`poke(0x405800,"HELP")`、`peek=0x48454C50` 成立；`brk(0x500000)` 返回 `0xFFFFFFFF`；写 guard `0x402000` 返回 0。
 - **`#PF` 故障隔离**：`userC` 在私有数据页置 `mode=1`，数到 5000 后故意写内核显存 `0xB8000`；`userF` 在 `mode=3` 直接写 guard `0x402000`。内核只修 heap 内、brk 以下的缺页和 COW 写页；guard/RO/非法地址走 `process_terminate_current(SIGSEGV)`，C/F 的 `EXIT` 显示 `SIG11`。全屏页显示 `#PF count 3`、`cr2 000B8000`、`P/W/U`，A/B 的 CR3 与计数器继续推进。
-- **内核态 #PF 诊断页**：按 `K` 从 render 的 kernel task 写 `0x00400000`，越过 0–4 MB 恒等映射，CPL0 触发 `#PF`。panic 页先 `cli`，再显示 PID/comm、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count、recoveries 和 kernel image 范围 `0x80000..0x8DC00`；按 `R` 临时映射诊断页、执行完出错写并 `iret` 返回，按 `H` 停机。
+- **内核态 #PF 诊断页**：按 `K` 从 render 的 kernel task 写 `0x00400000`，越过 0–4 MB 恒等映射，CPL0 触发 `#PF`。panic 页先 `cli`，再显示 PID/comm、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count、recoveries 和 kernel image 范围 `0x80000..0x8E200`；按 `R` 临时映射诊断页、执行完出错写并 `iret` 返回，按 `H` 停机。
 - **CPU 统计**：按 `C` 打开全屏 `AEVUM / CPU TIME ACCOUNTING`，三行任务显示 PID、TASK、PRI、WT、STATE、CPU%、TICKS、SHARE，底部是 PIT TICKS、SWITCHES、PREEMPTIONS。百分比来自每个任务的 `cpu_ticks`，并随 PIT 持续变化。
 - **机械臂**：三自由度平面臂，Q16.16 定点运算；阻尼最小范数控制、零空间投影、2×2 雅可比奇异值面板。
 - **显示**：80×25 VGA 文本，影子显存在 `0x20000`，整块刷新到 `0xB8000`；右侧 `TASK SCHED` 第二行显示每任务 CPU 百分比，第三行保留栈水位条，底部是滚动调度时间轴。
@@ -65,7 +65,7 @@ arch/x86/cpu/tss/tss.c           TSS 与 esp0
 arch/x86/cpu/syscall/syscall.c   int 0x80 分发
 arch/x86/cpu/fault/page_fault.c  IDT 14 门、CR2/ERR/EIP、用户故障 kill、内核态 panic 页与受控探针
 user/ring3/ring3.asm             被复制的 ring3 用户代码
-user/exec/exec.asm               P4.1 内嵌 exec flat 镜像
+user/exec/exec.asm               P4.2 内嵌 exec flat 镜像（argv/env）
 drivers/video/vga/text/vga.c    VGA 唯一写者
 drivers/serial/uart/uart.c      COM1 与帧快照唯一写者
 drivers/input/keyboard/keyboard.c 扫描码读取
@@ -88,7 +88,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 49,152 字节（`boot.asm` 一次 LBA 读 96 个扇区到 `0x80000`）；当前构建 45,544 字节，BSS 结束于 `0x8D9C0`，镜像余量 3,608 字节；BSS 尾部 `0x8C000..0x8D9C0` 由 loader 清零。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 49,152 字节（`boot.asm` 一次 LBA 读 96 个扇区到 `0x80000`）；当前构建 47,304 字节，BSS 结束于 `0x8E0E0`，镜像余量 1,848 字节；BSS 尾部 `0x8C000..0x8E0E0` 由 loader 清零。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 
@@ -121,7 +121,7 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - `control` 优先级 3、权重 4，`render` 优先级 2、权重 3，`idle` 优先级 0、权重 1，实测份额约为 `50% / 38% / 12%`；
 - 底部 `PIT TICKS` 是三个任务 tick 之和，`SWITCHES` 和 `PREEMPTIONS` 持续增长；再按 `C` 回到机械臂，帧号继续前进。
 
-按 `V` 后，全屏变成 `AEVUM / COW FORK + SIGNALS + PHYS`：PCB 表列出 A/B/C/D/F/E 的 `PID` / `PPID` / `ST` / `EXIT` / `CR3` / `AS` / `PGS/C` / `BRK` / `COMM`；VMA 摘要给出 code RX、data RW、guard、stack RW、control R、heap RW。A/B 的 `brk(0x406000)`、heap `0x405800` poke/peek `0x48454C50`、越界 `brk(0x500000)` 返回 `0xFFFFFFFF`、guard poke 返回 0。C 写 `0xB8000`、F 写 guard 后分别 `ST=FAULT / SIG11`、`ST=GUARD / SIG11`；D 第一轮子进程写 `CHLD` 后 `exit(7)`，父进程显示 `WAIT OK 7 / COW OK` 和 COW 行 `forks 3 shared 12 live 2 breaks 6`；第二轮子进程安装 `SIGFPE` handler 后 `1/0` 触发 `#DE`，父进程 `wait 8` 得到 `st 00000009`，页面显示 `HAND OK`，信号面板为 `#DE 1 pid 8 eip 0040026A sig 8 SIGFPE hdl 1 chld 3 pend 00000000`；第三轮子进程 `exec(1)`，父进程 `wait 8` 得到 `st 0000000A`，页面显示 `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK`。底部 `PHYS PAGES 20/255` 和 `int 0x80 traps` 同时可见。再按 `V`，所有用户进程被回收，画面回到机械臂，没有 ZOMBIE/PID/页泄漏。
+按 `V` 后，全屏变成 `AEVUM / COW FORK + SIGNALS + PHYS`：PCB 表列出 A/B/C/D/F/E 的 `PID` / `PPID` / `ST` / `EXIT` / `CR3` / `AS` / `PGS/C` / `BRK` / `COMM`；VMA 摘要给出 code RX、data RW、guard、stack RW、control R、heap RW。A/B 的 `brk(0x406000)`、heap `0x405800` poke/peek `0x48454C50`、越界 `brk(0x500000)` 返回 `0xFFFFFFFF`、guard poke 返回 0。C 写 `0xB8000`、F 写 guard 后分别 `ST=FAULT / SIG11`、`ST=GUARD / SIG11`；D 第一轮子进程写 `CHLD` 后 `exit(7)`，父进程显示 `WAIT OK 7 / COW OK` 和 COW 行 `forks 3 shared 12 live 2 breaks 6`；第二轮子进程安装 `SIGFPE` handler 后 `1/0` 触发 `#DE`，父进程 `wait 8` 得到 `st 00000009`，页面显示 `HAND OK`，信号面板为 `#DE 1 pid 8 eip 004002A6 sig 8 SIGFPE hdl 1 chld 3 pend 00000000`；第三轮子进程 `exec(1, argv, envp)`，参数为 `alpha/beta/MODE=p42/LEVEL=2`；父进程 `wait 8` 得到 `st 0000000A`，页面显示 `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`。底部 `PHYS PAGES 20/255` 和 `int 0x80 traps` 同时可见。再按 `V`，所有用户进程被回收，画面回到机械臂，没有 ZOMBIE/PID/页泄漏。
 
 按 `K` 后，画面变成 `AEVUM / KERNEL PAGE FAULT`：`task 2 render` 写 `0x00400000`，`CS=0x0008`、`CPL 0`，`CR2=0x00400000`、`ERR=0x00000002`、`CR3=0x00010000`，`P=0 W/R=1 U/S=0`。页面标题是 `RING0 FAULT - CONTROLLED PROBE`，并提供 `R = recover + re-arm` / `H = halt`；按 `R` 后回到机械臂。独立启动后直接按 `K` 是 `fault count 1`；先跑完整 V 再按 `K` 是累计 `fault count 6`（V 页 3 次、V 停止路径额外 2 次、K 探针 1 次），这个 count 不是单次 probe 次数。
 

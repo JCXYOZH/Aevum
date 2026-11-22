@@ -7,6 +7,15 @@
 
 #define PROC_STACK_COUNT 6
 #define PROC_SIGFRAME_MAGIC 0x53494746u  /* "SIGF" */
+#define PROC_EXEC_MAX_VEC 4
+#define PROC_EXEC_STRING_MAX 32
+
+struct proc_exec_args {
+    u32 argc;
+    u32 envc;
+    char argv[PROC_EXEC_MAX_VEC][PROC_EXEC_STRING_MAX];
+    char envp[PROC_EXEC_MAX_VEC][PROC_EXEC_STRING_MAX];
+};
 
 extern u8 user_program_start[];
 extern u8 user_sigreturn_trampoline[];
@@ -48,6 +57,8 @@ struct process {
     u32 sig_mask;
     u32 sig_handled;
     u32 image_id;
+    u32 exec_argc;
+    u32 exec_envc;
 };
 
 static struct process procs[PROC_MAX];
@@ -87,6 +98,8 @@ static void proc_zero(struct process *p)
     p->space = 0;
     p->task = 0;
     p->image_id = 0;
+    p->exec_argc = 0;
+    p->exec_envc = 0;
     proc_reset_signals(p);
 }
 
@@ -541,6 +554,8 @@ struct process *process_fork(struct irq_frame *frame)
     for (i = 0; i < PROC_NSIG; i++) p->sigactions[i] = parent->sigactions[i];
     p->sig_mask = parent->sig_mask;
     p->image_id = parent->image_id;
+    p->exec_argc = parent->exec_argc;
+    p->exec_envc = parent->exec_envc;
 
     rc = task_fork_user(pid, "userE", frame, stack_top, space, p, &task);
     if (rc) {
@@ -564,18 +579,136 @@ static const u8 *proc_exec_image(int image_id, u32 *size)
     return 0;
 }
 
+/* 从旧 AS 读一个 NUL 结尾的短字符串；超过 31 字节或跨非法 VMA 都失败。 */
+static int proc_exec_read_string(const struct address_space *space, u32 va,
+                                 char *out)
+{
+    u32 i;
+
+    if (!va || va > 0xFFFFFFE0u) return -1;
+    for (i = 0; i < PROC_EXEC_STRING_MAX; i++) {
+        if (address_space_copyin(space, &out[i], va + i, 1) != 0)
+            return -1;
+        if (!out[i]) return 0;
+    }
+    return -1;
+}
+
+/* 读 argv/envp 数组；返回条目数，数组必须有 NULL 结尾且不超过 4 项。 */
+static int proc_exec_read_vec(const struct address_space *space, u32 vec,
+                              char *out)
+{
+    u32 i;
+    u32 p;
+
+    if (!vec) return 0;
+    if (vec > 0xFFFFFFE0u) return -1;
+    for (i = 0; i <= PROC_EXEC_MAX_VEC; i++) {
+        if (address_space_copyin(space, &p, vec + i * 4u, 4) != 0)
+            return -1;
+        if (!p) return (int)i;
+        if (i == PROC_EXEC_MAX_VEC) return -1;
+        if (proc_exec_read_string(space, p, out + i * PROC_EXEC_STRING_MAX) != 0)
+            return -1;
+    }
+    return -1;
+}
+
+static int proc_exec_parse(const struct address_space *space, u32 argv, u32 envp,
+                           struct proc_exec_args *args)
+{
+    int n;
+
+    args->argc = 0;
+    args->envc = 0;
+    n = proc_exec_read_vec(space, argv, (char *)args->argv);
+    if (n < 0) return -1;
+    args->argc = (u32)n;
+    n = proc_exec_read_vec(space, envp, (char *)args->envp);
+    if (n < 0) return -1;
+    args->envc = (u32)n;
+    return 0;
+}
+
+static u32 proc_exec_strlen(const char *s)
+{
+    u32 n = 0;
+    while (s[n]) n++;
+    return n;
+}
+
 /*
- * P4.1 exec：PID/PPID/任务槽保持不变，用户地址空间整体换新。
- * 新 AS 先分配成功再切 CR3，旧 AS 在任务空间指针更新后才释放；
- * 分配失败时旧 AS、旧镜像和 frame 都不动，系统调用返回 -1。
+ * 把参数复制到新 AS 的栈页，布局从低到高：
+ * argc, argv[0..argc-1], NULL, envp[0..envc-1], NULL, 字符串区。
+ * 返回新的用户 esp；栈页容不下时失败，调用方负责释放新 AS。
  */
-int process_exec_current(struct irq_frame *frame, int image_id)
+static int proc_exec_build_stack(struct address_space *space,
+                                 const struct proc_exec_args *args,
+                                 u32 *esp_out)
+{
+    u32 argv_words = (args->argc + 1u) * 4u;
+    u32 envp_words = (args->envc + 1u) * 4u;
+    u32 string_bytes = 0;
+    u32 strings_base, argv_addr, envp_addr, esp, str_va;
+    u32 i, len;
+    u32 zero = 0;
+
+    for (i = 0; i < args->argc; i++)
+        string_bytes += proc_exec_strlen(args->argv[i]) + 1u;
+    for (i = 0; i < args->envc; i++)
+        string_bytes += proc_exec_strlen(args->envp[i]) + 1u;
+    if (4u + argv_words + envp_words + string_bytes > AEVUM_PAGE_SIZE)
+        return -1;
+
+    strings_base = (AEVUM_USER_STACK_TOP - string_bytes) & ~3u;
+    envp_addr = strings_base - envp_words;
+    argv_addr = envp_addr - argv_words;
+    esp = argv_addr - 4u;
+    if (esp < AEVUM_USER_STACK_VA) return -1;
+
+    if (address_space_copyout(space, esp, &args->argc, 4) != 0)
+        return -1;
+
+    str_va = strings_base;
+    for (i = 0; i < args->argc; i++) {
+        len = proc_exec_strlen(args->argv[i]) + 1u;
+        if (address_space_copyout(space, str_va, args->argv[i], len) != 0)
+            return -1;
+        if (address_space_copyout(space, argv_addr + i * 4u, &str_va, 4) != 0)
+            return -1;
+        str_va += len;
+    }
+    if (address_space_copyout(space, argv_addr + args->argc * 4u, &zero, 4) != 0)
+        return -1;
+
+    for (i = 0; i < args->envc; i++) {
+        len = proc_exec_strlen(args->envp[i]) + 1u;
+        if (address_space_copyout(space, str_va, args->envp[i], len) != 0)
+            return -1;
+        if (address_space_copyout(space, envp_addr + i * 4u, &str_va, 4) != 0)
+            return -1;
+        str_va += len;
+    }
+    if (address_space_copyout(space, envp_addr + args->envc * 4u, &zero, 4) != 0)
+        return -1;
+
+    *esp_out = esp;
+    return 0;
+}
+
+/*
+ * P4.2 exec：PID/PPID/任务槽保持不变，旧 AS 中的 argv/envp 先复制到新栈，
+ * 再切 CR3、释放旧 AS。解析、AS 分配或栈构造失败时旧 AS/frame 都不动。
+ */
+int process_exec_current(struct irq_frame *frame, int image_id, u32 argv, u32 envp)
 {
     struct process *self;
     struct address_space *old_space;
     struct address_space *new_space;
+    struct proc_exec_args args;
     const u8 *code;
     u32 code_size;
+    u32 new_esp;
     u32 flags;
 
     if (!frame || (frame->cs & 3u) != 3u) return -1;
@@ -585,9 +718,14 @@ int process_exec_current(struct irq_frame *frame, int image_id)
 
     code = proc_exec_image(image_id, &code_size);
     if (!code || !code_size) return -1;
+    if (proc_exec_parse(self->space, argv, envp, &args) != 0) return -1;
 
     new_space = address_space_create_user(code, code_size);
     if (!new_space) return -1;
+    if (proc_exec_build_stack(new_space, &args, &new_esp) != 0) {
+        address_space_release(new_space);
+        return -1;
+    }
 
     old_space = self->space;
     __asm__ __volatile__("pushf; pop %0; cli" : "=r"(flags) : : "memory");
@@ -595,6 +733,8 @@ int process_exec_current(struct irq_frame *frame, int image_id)
     task_set_space(task_current(), new_space);
     self->space = new_space;
     self->image_id = image_id;
+    self->exec_argc = args.argc;
+    self->exec_envc = args.envc;
     proc_reset_signals(self);
     self->exit_code = 0;
 
@@ -608,7 +748,7 @@ int process_exec_current(struct irq_frame *frame, int image_id)
     frame->eip = AEVUM_USER_CODE_VA;
     frame->cs = 0x1B;
     frame->eflags = 0x202;
-    frame->user_esp = AEVUM_USER_STACK_TOP;
+    frame->user_esp = new_esp;
     frame->ss = 0x23;
 
     address_space_release(old_space);
@@ -806,6 +946,8 @@ int process_snapshot(int slot, struct process_info *out)
     out->sig_handled = p->sig_handled;
     out->sig_mask = p->sig_mask;
     out->image_id = p->image_id;
+    out->exec_argc = p->exec_argc;
+    out->exec_envc = p->exec_envc;
 
     has_task = task_snapshot_pid(p->pid, &info);
     if (has_task) {
@@ -860,4 +1002,26 @@ int process_image_id(int pid)
             image = (int)procs[i].image_id;
     }
     return image;
+}
+
+int process_exec_counts(int pid, u32 *argc, u32 *envc)
+{
+    int i;
+    int best = -1;
+    u32 best_image = 0;
+
+    if (!argc || !envc || pid <= 0) return -1;
+    *argc = 0;
+    *envc = 0;
+    for (i = 0; i < PROC_MAX; i++) {
+        if (procs[i].state == PROC_FREE || procs[i].pid != pid) continue;
+        if (best < 0 || procs[i].image_id > best_image) {
+            best = i;
+            best_image = procs[i].image_id;
+        }
+    }
+    if (best < 0) return -1;
+    *argc = procs[best].exec_argc;
+    *envc = procs[best].exec_envc;
+    return 0;
 }

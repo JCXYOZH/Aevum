@@ -246,6 +246,7 @@ void user_render_frame(void)
     u32 readback, cow_ok;
     u32 sig_child, sig_status, sig_ret, sig_ok;
     u32 exec_child, exec_status, exec_ret, exec_ok, exec_img;
+    u32 exec_argc = 0, exec_envc = 0;
 
     vga_clear(C_BG);
     vga_fill(0, 0, 79, 0, ' ', C_HDR);
@@ -289,6 +290,8 @@ void user_render_frame(void)
     exec_ret = user_demo_exec_ret(USER_DEMO_FORK_LANE);
     exec_ok = user_demo_exec_ok(USER_DEMO_FORK_LANE);
     exec_img = exec_child ? (u32)process_image_id((int)exec_child) : 0;
+    if (exec_child)
+        process_exec_counts((int)exec_child, &exec_argc, &exec_envc);
 
     vga_text(2, 14, "userD fork", C_GRAY);
     put_dec(12, 14, child, C_WHITE);
@@ -351,6 +354,10 @@ void user_render_frame(void)
         vga_text(45, 23, "EXEC OK", C_GREEN);
     else
         vga_text(45, 23, "EXEC ..", C_YELLOW);
+    vga_text(53, 23, "arg", C_GRAY);
+    put_dec(57, 23, exec_argc, exec_argc ? C_CYAN : C_YELLOW);
+    vga_text(60, 23, "env", C_GRAY);
+    put_dec(64, 23, exec_envc, exec_envc ? C_CYAN : C_YELLOW);
 
     vga_text(2, 24, "V: stop all user processes; second V starts a fresh AS/PID round.", C_YELLOW);
 }

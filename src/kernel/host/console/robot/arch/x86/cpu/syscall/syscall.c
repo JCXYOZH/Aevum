@@ -87,7 +87,8 @@ u32 syscall_dispatch(struct irq_frame *frame)
                 frame->eax = (u32)-1;
             break;
         case 13:
-            frame->eax = (process_exec_current(frame, (int)frame->ebx) == 0)
+            frame->eax = (process_exec_current(frame, (int)frame->ebx,
+                                               frame->ecx, frame->edx) == 0)
                              ? 0u
                              : (u32)-1;
             break;

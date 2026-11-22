@@ -66,6 +66,8 @@ struct process_info {
     u32 sig_handled;
     u32 sig_mask;
     u32 image_id;
+    u32 exec_argc;
+    u32 exec_envc;
 };
 
 void process_boot(void);
@@ -79,11 +81,12 @@ struct process *process_create_user(int priority, const char *name,
 struct process *process_fork(struct irq_frame *frame);
 
 /*
- * P4.1 exec：保留当前 PID/PPID/任务槽，新建 AS 并切换到内嵌用户镜像，
- * 重置用户栈、入口和同步信号状态；成功返回 0，失败保留原 AS 并返回 -1。
- * 成功后调用方直接归还改写的 irq_frame，新镜像从 0x400000 开始执行。
+ * P4.2 exec：保留当前 PID/PPID/任务槽，新建 AS 并切换到内嵌用户镜像。
+ * argv/envp 是旧 AS 中的用户指针；内核在释放旧 AS 前解析并复制字符串，
+ * 按 argc/argv[]/NULL/envp[]/NULL/字符串区 写入新用户栈。
+ * 成功返回 0，失败保留原 AS 并返回 -1；成功后调用方直接归还改写后的 irq_frame。
  */
-int process_exec_current(struct irq_frame *frame, int image_id);
+int process_exec_current(struct irq_frame *frame, int image_id, u32 argv, u32 envp);
 
 /* 标记当前进程 ZOMBIE 并记录退出码；调用方随后 task_exit()。 */
 int process_exit_current(u32 code);
@@ -136,7 +139,9 @@ int process_count(void);
 int process_pid_of(struct process *proc);
 struct address_space *process_space(struct process *proc);
 u32 process_read32(int pid, u32 va);
-/* exec 后镜像编号；0 表示初始 ring3 镜像，1 表示 P4.1 exec 镜像。 */
+/* exec 后镜像编号；0 表示初始 ring3 镜像，1 表示 P4.2 exec 镜像。 */
 int process_image_id(int pid);
+/* exec 后参数计数；同 PID 有多个墓碑时取最大镜像代次，失败返回 -1。 */
+int process_exec_counts(int pid, u32 *argc, u32 *envc);
 
 #endif

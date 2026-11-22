@@ -171,8 +171,10 @@ user_program_start:
     jmp .yield
 
 .child_exec:
-    mov eax, 13             ; syscall: exec(image 1)
+    mov eax, 13             ; syscall: exec(1, argv, envp)
     mov ebx, 1
+    mov ecx, exec_argv - user_program_start + 0x400000
+    mov edx, exec_envp - user_program_start + 0x400000
     int 0x80
     test eax, eax
     jnz .child_exec_bad
@@ -246,5 +248,23 @@ user_sigreturn_trampoline:
     int 0x80
 .hang_sigreturn:
     jmp .hang_sigreturn
+
+; P4.2 参数样本；数组与字符串都在只读 code 页，指针按镜像基址 0x400000 重定位。
+exec_argv:
+    dd exec_arg0 - user_program_start + 0x400000
+    dd exec_arg1 - user_program_start + 0x400000
+    dd 0
+exec_envp:
+    dd exec_env0 - user_program_start + 0x400000
+    dd exec_env1 - user_program_start + 0x400000
+    dd 0
+exec_arg0:
+    db "alpha", 0
+exec_arg1:
+    db "beta", 0
+exec_env0:
+    db "MODE=p42", 0
+exec_env1:
+    db "LEVEL=2", 0
 
 user_program_end:
