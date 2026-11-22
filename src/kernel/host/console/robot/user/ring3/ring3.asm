@@ -6,18 +6,21 @@
 ; 0x401030 heap_once，0x401034 越界 brk 返回值，
 ; 0x401038 COW 魔数（父写 PAPA，子写 CHLD），0x40103C 父读回值，
 ; 0x401040 COW 验收字，0x401044 信号子进程 pid，0x401048 信号 wait status，
-; 0x40104C SIG 验收字，0x401050 信号 wait 返回值；0x404000 停止字。
+; 0x40104C SIG 验收字，0x401050 信号 wait 返回值，0x401054 handler 调用计数；
+; 0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
 ; stack 0x403000，control 0x404000，heap 0x405000 起。
 ; 模式 0：正常计数、brk 扩堆、用 peek/poke 读写 heap，再 poke guard 失败。
 ; 模式 1：计数到 5000 后写内核显存 0xB8000，由 #PF 只杀死这个进程。
 ; 模式 2：fork 子进程1 写 CHLD 后 exit(7)，父 wait 并读回 PAPA；
-;         再 fork 子进程2 触发 #DE，父 wait 得到 0x80000008 SIGFPE。
+;         再 fork 子进程2 安装 SIGFPE handler，div 0 后由 sigreturn 返回
+;         除零后的指令，写 HAND 并 exit(9)。
 ; 模式 3：直接写 guard 0x402000，由 #PF 只杀死这个进程。
 [bits 32]
 section .text
 global user_program_start
 global user_program_end
+global user_sigreturn_trampoline
 
 user_program_start:
     mov eax, [0x401000]
@@ -118,7 +121,7 @@ user_program_start:
     mov dword [0x40101C], 0x4B4F     ; "OK"
 .no_wait_magic:
 
-    ; 第二轮：fork 第二个子进程，让它在写 COW 页后执行 1/0。
+    ; 第二轮：fork 第二个子进程，让它安装 SIGFPE handler 后执行 1/0。
     mov dword [0x401008], 2
     mov eax, 6              ; syscall: fork
     int 0x80
@@ -133,9 +136,9 @@ user_program_start:
     mov [0x401050], eax
 
     mov eax, [0x401048]
-    cmp eax, 0x80000008             ; high bit = signal, 8 = SIGFPE
+    cmp eax, 9              ; handler 捕获 #DE 后子进程正常 exit(9)
     jne .sig_bad
-    mov dword [0x40104C], 0x53494721 ; "SIG!"
+    mov dword [0x40104C], 0x48414E44 ; "HAND"
     mov eax, [0x401038]
     cmp eax, 0x50415041
     jne .cow_bad
@@ -159,12 +162,31 @@ user_program_start:
 
 .child_de:
     mov dword [0x401038], 0x53494746   ; "SIGF"，写父页后触发 COW
+    mov eax, 11             ; syscall: sigaction(SIGFPE, handler, 0)
+    mov ebx, 8
+    mov ecx, user_fpe_handler - user_program_start + 0x400000
+    xor edx, edx
+    int 0x80
+    test eax, eax
+    jnz .sig_install_bad
+
     xor edx, edx
     mov eax, 1
     xor ecx, ecx
-    div ecx                 ; #DE -> SIGFPE
-.hang_de:
-    jmp .hang_de
+    div ecx                 ; #DE -> 内核投递 signal frame
+    cmp dword [0x401054], 1 ; handler 已执行一次
+    jne .sig_handler_bad
+    mov eax, 3              ; syscall: exit(9)
+    mov ebx, 9
+    int 0x80
+.sig_install_bad:
+    mov eax, 3
+    mov ebx, 10
+    int 0x80
+.sig_handler_bad:
+    mov eax, 3
+    mov ebx, 11
+    int 0x80
 
 .done:
     mov eax, 3              ; syscall: exit
@@ -172,5 +194,18 @@ user_program_start:
     int 0x80
 .hang:
     jmp .hang
+
+; signal frame 第一个槽是 trampoline 返回地址；handler 用 ret 进入这里。
+; 此时用户 ESP 指向 frame 的保存 GPR 区，sigreturn 从这里恢复原 iret 帧。
+; 放在所有 user_program_start 本地标签之后，避免改变 .done/.hang 的标签作用域。
+user_fpe_handler:
+    inc dword [0x401054]
+    ret
+
+user_sigreturn_trampoline:
+    mov eax, 12             ; syscall: sigreturn
+    int 0x80
+.hang_sigreturn:
+    jmp .hang_sigreturn
 
 user_program_end:

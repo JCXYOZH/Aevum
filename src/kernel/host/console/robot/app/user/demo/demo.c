@@ -60,6 +60,12 @@ const char *user_demo_start(void)
                                i == USER_DEMO_FAULT_LANE ? 1u :
                                (i == USER_DEMO_FORK_LANE ? 2u :
                                 (i == USER_DEMO_GUARD_LANE ? 3u : 0u)));
+        /* 新 lane 已 READY：让出一次，避免连续建 5 条 lane 把 render 长时间挡在创建路径。 */
+        if (task_yield()) {
+            demo_error = "task_yield";
+            user_demo_stop();
+            return demo_error;
+        }
     }
     return 0;
 }

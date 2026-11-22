@@ -35,7 +35,7 @@ u32 user_demo_wait_magic(int lane);
 u32 user_demo_cow_readback(int lane);
 u32 user_demo_cow_ok(int lane);
 
-/* P3.1：D 的第二个子进程触发 #DE，父 wait 得到 0x80000008 = SIGFPE。 */
+/* P3.2：D 的第二个子进程安装 SIGFPE handler，sigreturn 后写 HAND 并 exit(9)。 */
 u32 user_demo_sig_child(int lane);
 u32 user_demo_sig_status(int lane);
 u32 user_demo_sig_ret(int lane);

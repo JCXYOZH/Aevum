@@ -415,10 +415,11 @@ struct address_space *address_space_clone(const struct address_space *src)
         vma = vma_find(parent, va);
         if (vma) vma_kind = vma->kind;
         /* control 对用户只读，但内核会写停止字，也必须走 COW。 */
-        share_writable = (pte & PAGE_RW) != 0 ||
+        /* 已经是 COW 的页第二次 fork 时必须保留 COW 位，不能退化成只读页。 */
+        share_writable = (pte & (PAGE_RW | PAGE_COW)) != 0 ||
                          vma_kind == ADDRESS_SPACE_VMA_CONTROL;
 
-        flags = pte & (PAGE_PRESENT | PAGE_USER);
+        flags = pte & (PAGE_PRESENT | PAGE_USER | PAGE_COW);
         if (share_writable) flags |= PAGE_COW;
 
         phys_share_page(phys);

@@ -119,7 +119,8 @@ void exception_clear(void)
 
 /*
  * 用户态异常帧与 #PF 同构：eax..ebp, vector, err, eip, cs, eflags, [esp, ss]。
- * 默认动作只有一种：把当前进程按信号终止，绝不继续执行出错指令。
+ * P3.2 先查每进程 handler：有 handler 就在用户栈构造 signal frame 并改写
+ * iret 目标；没有 handler 才走 P3.1 的默认信号终止。
  */
 u32 exception_dispatch(struct irq_frame *frame)
 {
@@ -155,6 +156,9 @@ u32 exception_dispatch(struct irq_frame *frame)
 
     if ((frame->cs & 3u) != 3u)
         kernel_trap_panic(frame);
+
+    if (process_signal_deliver(frame, (int)sig, vector))
+        return (u32)frame;
 
     if (process_terminate_current((int)sig) == 0) {
         task_exit();

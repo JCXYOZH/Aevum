@@ -178,22 +178,31 @@ static void draw_fault(int row)
 static void draw_signal(int row)
 {
     struct exception_info x;
-    struct process_info p;
+    struct process_info p = {0};
+    struct process_info c = {0};
     int have = exception_last(&x);
     int i;
     int have_d = 0;
+    int have_c = 0;
+    u32 child;
 
     vga_text(2, row, "SIG", C_GRAY);
     if (!have) {
-        vga_text(6, row, "#DE pending: D second child writes COW page, then div 0", C_GRAY);
+        vga_text(6, row, "#DE: D child installs handler, div 0, sigreturn", C_GRAY);
         return;
     }
 
+    child = user_demo_sig_child(USER_DEMO_FORK_LANE);
     for (i = 0; i < process_count(); i++) {
-        if (process_snapshot(i, &p) &&
-            p.pid == user_demo_pid(USER_DEMO_FORK_LANE)) {
+        struct process_info cur;
+        if (!process_snapshot(i, &cur)) continue;
+        if (cur.pid == user_demo_pid(USER_DEMO_FORK_LANE)) {
+            p = cur;
             have_d = 1;
-            break;
+        }
+        if (child && cur.pid == (int)child) {
+            c = cur;
+            have_c = 1;
         }
     }
 
@@ -206,11 +215,14 @@ static void draw_signal(int row)
     vga_text(33, row, "sig", C_GRAY);
     put_dec(37, row, x.sig, C_MAG);
     vga_text(41, row, exception_signal_name(x.sig), C_MAG);
-    vga_text(50, row, "|SIGCHLD", C_GRAY);
+    vga_text(50, row, "hdl", C_GRAY);
+    if (have_c)
+        put_dec(54, row, c.sig_handled, C_GREEN);
+    vga_text(57, row, "chld", C_GRAY);
     if (have_d) {
-        put_dec(59, row, p.sigchld_count, C_CYAN);
-        vga_text(62, row, "pend", C_GRAY);
-        put_hex(67, row, p.pending, C_MAG);
+        put_dec(62, row, p.sigchld_count, C_CYAN);
+        vga_text(66, row, "pend", C_GRAY);
+        put_hex(71, row, p.pending, C_MAG);
     }
 }
 
@@ -246,7 +258,7 @@ void user_render_frame(void)
     vga_clear(C_BG);
     vga_fill(0, 0, 79, 0, ' ', C_HDR);
     vga_text(4, 0, "AEVUM / COW FORK + SIGNALS + PHYS", C_HDR);
-    vga_text(2, 2, "A/B HEAP | C #PF | D COW+SIG | F GUARD | PGS/COW/SIG", C_CYAN);
+    vga_text(2, 2, "A/B HEAP | C #PF | D COW+SIGFRAME | F GUARD | PGS/COW/SIG", C_CYAN);
 
     vga_text(2, 3, "PID", C_GRAY);
     vga_text(9, 3, "PP", C_GRAY);
@@ -324,12 +336,12 @@ void user_render_frame(void)
     put_dec(17, 22, sig_ret, C_WHITE);
     vga_text(20, 22, "st", C_GRAY);
     put_hex(23, 22, sig_status, C_WHITE);
-    if (sig_ok == 0x53494721)
-        vga_text(32, 22, "SIG OK", C_GREEN);
+    if (sig_ok == 0x48414E44)
+        vga_text(32, 22, "HAND OK", C_GREEN);
     else
-        vga_text(32, 22, "SIG ..", C_YELLOW);
-    vga_text(39, 22, "second child: write + div0", C_GRAY);
+        vga_text(32, 22, "HAND ..", C_YELLOW);
+    vga_text(40, 22, "handler + sigreturn, child exit 9", C_GRAY);
 
-    vga_text(2, 23, "C #PF and F guard -> SIGSEGV; D second child -> #DE SIGFPE.", C_GRAY);
+    vga_text(2, 23, "C #PF/F guard -> SIGSEGV; D #DE -> handler -> sigreturn.", C_GRAY);
     vga_text(2, 24, "V: stop all user processes; second V starts a fresh AS/PID round.", C_YELLOW);
 }

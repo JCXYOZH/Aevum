@@ -2,17 +2,22 @@
 
 本文只讨论 ring3 用户进程，不把 `control/render/idle` 这三个内核任务当成完整进程。
 
-P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；用户态 handler、signal frame、`sigreturn` 仍不在本阶段。
+P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题。
 
-## 一、P3.1 现在的实现
+## 一、P3.1/P3.2 现在的实现
 
 | 能力 | 当前实现 | 位置 |
 | --- | --- | --- |
 | 用户同步异常 | `#DE/#BP/#UD/#GP` 由 `exception.c` 唯一分发；`#PF` 仍由 `page_fault.c` 独占 | `arch/x86/cpu/exception/exception.c` |
 | 异常入口 | `exception_de/bp/ud/gp_stub` 统一压出与 `struct irq_frame` 对齐的帧；`#DE/#BP/#UD` 补 `err=0`，`#GP` 使用 CPU 压入的 error code | `loader.asm` |
 | 异常映射 | `#DE -> SIGFPE(8)`、`#BP -> SIGTRAP(5)`、`#UD -> SIGILL(4)`、`#GP -> SIGSEGV(11)` | `exception.c` |
-| 默认动作 | CPL3 异常记录现场后 `process_terminate_current(sig)`，再 `task_exit()`；CPL0 非 #PF 异常进入诊断停机 | `exception_dispatch()` |
+| 默认动作 | 没有 handler 时，CPL3 异常记录现场后 `process_terminate_current(sig)`，再 `task_exit()`；CPL0 非 #PF 异常进入诊断停机 | `exception_dispatch()` |
+| 用户 handler | P3.2 每进程 `sigactions[32]`：handler、mask、flags；`0` 默认终止、`1` 忽略、其他值是用户 VA | `include/kernel/proc.h`、`process.c` |
+| signal frame | P3.2 在用户栈低地址放 trampoline 返回地址，随后保存原 GPR 与 `eip/cs/eflags/esp/ss`、`sig/old_mask/magic` | `process_signal_deliver()` |
+| sigreturn | P3.2 `eax=12` 从用户栈读回 frame，恢复 GPR/iret 帧和旧 mask；handler 用 `ret` 进入 trampoline | `process_sigreturn_current()` |
+| handler 继承 | `fork` 复制父进程 `sigactions` 与 `sig_mask`，不复制 pending；`sig_handled` 从 0 开始 | `process_fork()` |
 | 信号常量 | `SIGILL 4 / SIGTRAP 5 / SIGFPE 8 / SIGSEGV 11 / SIGCHLD 17` | `include/kernel/proc.h` |
+| P3.2 系统调用 | `eax=11 sigaction(sig,handler,mask)`、`eax=12 sigreturn()`；复用 `int80_stub` 返回同一 `irq_frame` 的路径 | `arch/x86/cpu/syscall/syscall.c` |
 | wait status | 正常退出保留原退出码（`exit(7) -> 7`）；信号终止为 `0x80000000` 按位或 `sig`（`#DE -> 0x80000008`） | `PROC_WAIT_STATUS()` |
 | PCB 信号字段 | `pending/last_sig/term_sig/sig_count/sigchld_count`；`process_info` 同步暴露 | `kernel/proc/process.c` |
 | pending 位图 | `pending |= 1u << (sig - 1)`；只记录 1..31 号信号，不在这里改进程状态 | `proc_signal_pending()` |
@@ -30,10 +35,11 @@ P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/re
 ### 异常与信号的状态机
 
 1. 用户指令触发 `#DE/#BP/#UD/#GP`：CPU 压 error code（`#DE/#BP/#UD` 没有，由 stub 补 0），`exception_dispatch()` 记录 `vector/eip/err/cr2/comm`。
-2. 默认动作：`process_terminate_current(sig)` 把当前进程置 ZOMBIE，`exit_code = PROC_WAIT_STATUS(sig)`，`term_sig = sig`，自身 pending 置位，父进程置 SIGCHLD；随后 `task_exit()`。
-3. 父进程 `wait`：找到 ZOMBIE 后把 `exit_code` copyout 到用户 status，回收任务/AS/PID/栈，清父进程 SIGCHLD pending。
-4. 墓碑：`process_reap()` 不把 `pid/comm/term_sig/exit_code/pending` 等显示字段清零，V 页因此能继续显示已回收进程的信号死因。
-5. 不执行用户 handler：P3.1 只有默认终止，不构造 signal frame，也不实现 `sigreturn`。
+2. 查 handler：`process_signal_deliver()` 读当前进程 `sigactions[sig]`。没有 handler 走第 3 步默认终止；有用户 handler 时在用户栈写 signal frame，把 `irq_frame` 改成 `eip=handler`、`user_esp=frame_addr`，`exception_common` 直接 `iret` 进 handler。
+3. 默认动作：`process_terminate_current(sig)` 把当前进程置 ZOMBIE，`exit_code = PROC_WAIT_STATUS(sig)`，`term_sig = sig`，自身 pending 置位，父进程置 SIGCHLD；随后 `task_exit()`。
+4. `sigreturn`：handler 执行 `ret` 弹出 frame 第一个槽的 trampoline 地址，trampoline 执行 `eax=12 int 0x80`；`process_sigreturn_current()` 从 `frame->user_esp` 读回保存的 GPR/iret 帧，回到除零后的指令。
+5. 父进程 `wait`：找到 ZOMBIE 后把 `exit_code` copyout 到用户 status，回收任务/AS/PID/栈，清父进程 SIGCHLD pending。
+6. 墓碑：`process_reap()` 不把 `pid/comm/term_sig/exit_code/pending/sig_handled` 等显示字段清零，V 页因此能继续显示已回收进程的信号死因和 handler 次数。
 
 ## 二、P3.1 验收记录
 
@@ -52,14 +58,68 @@ QEMU 实测（本构建 `kernel.bin` 42,792 字节，BSS 结束 `0x8C140`，96 �
 - `K` 页：独立启动后直接按 `K`，显示 `fault count 1`、`EIP 000837C1`、`CR2 00400000`、`ERR 00000002`、`CR3 00010000`、`kernel image 0x00080000..0x0008C300`；按 `R` 回主画面，机械臂继续更新。
 - 若先跑完整 V 再按 `K`，K 页显示 `fault count 6`：V 页自身记录 3 次，V 停止路径额外产生 2 次用户 `#PF`（尚未逐条归因），再加 K 探针 1 次。K 页的 count 是累计值，不是单次 probe 次数。
 
-## 三、后续阶段
+## 三、P3.2 用户 handler 与 signal frame
 
-### P3.2：用户 handler 与 signal frame
+### 3.1 最小动作表
 
-- `sigaction` 最小表：每进程每信号一个 handler 地址、mask、默认动作。
-- 在用户栈上构造 signal frame，保存原 `eip/cs/eflags/esp/ss` 和通用寄存器，`iret` 进 handler。
-- `sigreturn` 恢复原帧；handler 返回后继续原指令。
-- 验收：`#DE` 被用户 handler 捕获后进程存活，`sigreturn` 回到除零后的下一条指令。
+- `struct process` 增加 `sigactions[PROC_NSIG]`，每项保存 `handler/mask/flags`；`handler=0` 是默认终止，`handler=1` 是忽略，其他值必须是当前地址空间内可读的用户 VA。
+- `sigaction(sig,handler,mask)` 只接受 `1..31`；mask 存低 31 位，当前只随 frame 保存/恢复，不做阻塞。
+- `fork` 复制父进程的 `sigactions` 与 `sig_mask`，不复制 pending；子进程 `sig_handled` 从 0 开始。
+- 同步异常分发先查 handler；没有 handler、handler 非法、frame 写入失败时才退回 P3.1 的默认终止。
+
+### 3.2 signal frame 布局
+
+`frame_addr = (frame->user_esp - 64) & ~3`，必须落在 stack VMA `0x403000..0x404000` 且可写。低地址到高地址：
+
+| 偏移 | 内容 |
+| --- | --- |
+| `+0` | `sigreturn_trampoline` 的用户 VA（handler 的 `ret` 目标） |
+| `+4` | `eax,ebx,ecx,edx,esi,edi,ebp` |
+| `+32` | `eip,cs,eflags,user_esp,ss` |
+| `+52` | `sig,old_mask,magic(0x53494746)` |
+
+投递时 `frame->eax=sig`、`frame->ebx=frame_addr+4`、`frame->eip=handler`、`frame->user_esp=frame_addr`；`exception_common` 的 `RESTORE_CTX` 弹出 GPR 后 `iret` 进 handler。
+
+### 3.3 `#DE` 返回点与 `sigreturn`
+
+- CPU 对 divide error 保存的 EIP 指向 faulting `div/idiv` 本身。`process_signal_deliver()` 对 `#DE` 做最小 `F6/F7` 解码（opcode + ModRM + SIB/位移），把保存的 `eip` 前移到下一条指令；解码失败则退回默认终止。
+- `sigreturn` 的入口是 frame 第一个槽：handler 用 `ret` 进入 `user_sigreturn_trampoline`，执行 `eax=12 int 0x80`。此时 `irq_frame.user_esp` 指向保存的 GPR 区，`process_sigreturn_current()` 读回 60 字节 frame，校验 magic、CS/SS RPL3、恢复 EIP 与栈范围，再写回 GPR/iret 字段。
+- `sigreturn` 恢复 `old_mask`；handler 可以通过 `ebx` 指向的 frame 修改保存的 EIP（`sigreturn` 以 frame 内容为准）。
+
+### 3.4 系统调用与构建
+
+- `eax=11`：`sigaction(sig,handler,mask)`，参数 `ebx/ecx/edx`；成功返回 0，失败 `0xFFFFFFFF`。
+- `eax=12`：`sigreturn()`；成功用恢复后的 frame 返回，失败 `0xFFFFFFFF`。
+- `loader.asm` 不需要新增 stub：`exception_common` 与 `int80_stub` 都已把 C 返回的 `struct irq_frame *` 写回 `esp`，`RESTORE_CTX` 直接消费改写后的帧。
+
+### 3.5 第二次 fork 的 COW 继承修复
+
+`address_space_clone()` 原来只保留 `PAGE_PRESENT|PAGE_USER`，对“已经是 COW”的页第二次 fork 会丢掉 `PAGE_COW`，把可写页退化成只读页。P3.2 改为：
+
+- `share_writable = (pte & (PAGE_RW|PAGE_COW)) != 0 || control`；
+- `flags = pte & (PAGE_PRESENT|PAGE_USER|PAGE_COW)`，共享时再补 `PAGE_COW`。
+
+这样 D 第一轮 fork 后仍处 COW 的栈页，在第二轮 fork 后仍是 COW；内核写 signal frame 时能正常拆页，handler 也能使用该栈。
+
+### 3.6 fork 子任务起跑与 lane 创建让出
+
+第二次 fork 暴露出一个调度平局：子任务 `task_create_common()` 继承父任务的 `vruntime`，父进程进入 `wait` 轮询后，调度器会一再选回父任务，子任务永远轮不到，D lane 停在 `fork2` 之后。修复是在 `task_fork_user()` 里把新子任务的 `vruntime` 置 0，保证它至少先跑一次、完成自己的退出路径。
+
+`user_demo_start()` 连续创建 5 条 lane 时也会长时间占住 render 任务。每建完一条 lane 调一次 `task_yield()`，让新 READY 的用户任务先获得一次调度机会，再继续创建下一条；失败按 `task_yield` 错误走统一失败屏。
+
+## 四、P3.2 验收记录
+
+QEMU 实测（本构建 `kernel.bin` 44,392 字节，BSS 结束 `0x8D3C0`，96 扇区 / 49,152 字节窗口）：
+
+- `V` 页 PCB：`userD` PID 7 / AS 4 / READY；`userE` PID 8 / PPID 7 / EXIT 9 / `userE`；handler 子进程没有再变成 `SIG8` 墓碑。
+- `D fork2 8 wait 8 st 00000009 HAND OK`；`sig_ok` 是 `"HAND"`，不是 P3.1 的 `"SIG!"`。
+- 信号面板：`#DE 1 pid 8 eip 0040021B sig 8 SIGFPE hdl 1 chld 2 pend 00000000`；`hdl 1` 证明 `SIGFPE` handler 被调用一次。
+- `eip 0040021B` 是 faulting `div ecx` 的地址；返回后子进程执行 `0x40021D` 的 `cmp [0x401054],1`，确认 handler 计数为 1，再 `exit(9)`。
+- COW 行 `forks 2 shared 8 live 2 breaks 5 last 4 old 00118000 -> 0011B000`；多出的 `breaks` 包含 signal frame 写入用户栈时的 COW 拆分。
+- `PHYS PAGES used/total` 为 `26/255`，没有因为 signal frame 或 handler 泄漏页；`int 0x80 traps` 和 `last CS 0000001B` 正常。
+- 再按 `V` 停止后回机械臂；没有 ZOMBIE/PID/页泄漏。
+
+## 五、后续阶段
 
 ### P4：exec 与每进程资源
 
@@ -74,13 +134,16 @@ QEMU 实测（本构建 `kernel.bin` 42,792 字节，BSS 结束 `0x8C140`，96 �
 - `V` 页分页/滚动，进程树、ZOMBIE、waiters、VMA、信号、fd 全部可观察。
 - 压测：反复 fork/wait 100 轮，无 PID/页/栈泄漏。
 
-## 四、P3.1 边界与已知取舍
+## 六、P3.1/P3.2 边界与已知取舍
 
-- `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；本轮给 yield 补了 vruntime 记账，避免父进程轮询时把其他 lane 饿死。
-- 同步异常只做默认终止；没有用户 handler、没有 signal frame、没有 `sigreturn`，也没有 `kill()` 系统调用。
-- `pending` 目前是“记录 + wait 消费 SIGCHLD”的位图，不是完整的信号排队/屏蔽/合并模型。
+- `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；本轮给 yield 补了 vruntime 记账，并给 fork 子任务 `vruntime=0` 的起跑保证，避免父进程轮询时把子任务或其他 lane 饿死。
+- P3.2 已有用户 handler、signal frame 和 `sigreturn`；仍没有 `kill()`、信号排队、真正阻塞的 mask、`SA_SIGINFO`/`SA_RESTART` 等 POSIX 语义。
+- `sig_mask` 只随 frame 保存/恢复，不阻止信号投递；handler 执行期间同一信号仍可能再次进入。
+- `#DE` 解码只覆盖 `F6/F7` 的 `div/idiv` group，且只处理可读的用户代码字节；其他同步异常把原 EIP 存入 frame，handler 若直接 `ret` 会回到 faulting 指令，需要自行修改 frame 的 `eip`。
+- `SIG_IGN` 只对可安全前移的 `#DE` 和保存 EIP 已指向下一条的 `#BP` 生效；`#UD/#GP` 的忽略会退回默认终止，避免死循环。
 - `#PF` 仍由 `page_fault.c` 独占，`exception.c` 不安装 14 号门；两者只在“用户不可恢复故障最终按 SIGSEGV 终止”这一语义上对齐。
 - COW 拆分后如果旧页引用已降到 1，当前实现仍会复制一次；这是为了保持“拆分函数只做复制”的最小语义，后续可按引用计数改成原地恢复 RW。
+- 第二次 fork 的 COW 继承修复只保证已有 COW 页不退化；没有改变 code 页只读共享、data/stack/heap/control 走 COW 的边界。
 - `fork` 的 code 页只读共享，不参与 COW；data/stack/heap 和 control 走 COW。
 - A/B/C/D/F 由 render 内核任务通过 `process_create_user()` 创建；E1/E2 是用户父进程 `fork` 创建的进程。
 - `family.c` 只维护内核任务树，用户进程树由 `process.c` 维护；`G` 页和 `V` 页是两套树。
@@ -88,4 +151,4 @@ QEMU 实测（本构建 `kernel.bin` 42,792 字节，BSS 结束 `0x8C140`，96 �
 - 非探针内核 trap 仍是终止性诊断；用户态 `#PF` 与 `#DE/#UD/#GP` 已分发，但 CPL0 的 `#DE/#UD/#GP` 没有 fixup，直接停机。
 - VGA BIOS 影子 ROM 位于 `0xC0000..0xFFFFF`，物理池必须避开；当前池选在 `0x100000..0x1FEFFF`，不与内核、VGA、任务栈重叠。
 
-P3.1 的目标不是“完整 POSIX 信号”，而是让“同步异常 -> 致命信号 -> ZOMBIE 墓碑 -> 父进程 wait status + SIGCHLD”这条默认动作链路先成立；当前链路已成立并有 QEMU 证据。
+P3.1 的目标是让“同步异常 -> 致命信号 -> ZOMBIE 墓碑 -> 父进程 wait status + SIGCHLD”这条默认动作链路先成立；P3.2 的目标是让用户 handler 接管同步异常并在 `sigreturn` 后继续原指令。两条链路当前都已成立并有 QEMU 证据。

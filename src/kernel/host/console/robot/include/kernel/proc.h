@@ -10,7 +10,10 @@ struct irq_frame;
 #define PROC_MAX 8
 #define PROC_NAME_MAX 15
 
-/* P3.1 只实现默认动作：同步异常投递致命信号，子进程退出给父进程 SIGCHLD。 */
+/* P3.2：同步异常先查每进程 handler；无 handler 才走 P3.1 的默认终止。 */
+#define PROC_NSIG    32
+#define PROC_SIG_DFL 0u
+#define PROC_SIG_IGN 1u
 #define PROC_SIGILL  4
 #define PROC_SIGTRAP 5
 #define PROC_SIGFPE  8
@@ -60,6 +63,8 @@ struct process_info {
     u32 term_sig;
     u32 sig_count;
     u32 sigchld_count;
+    u32 sig_handled;
+    u32 sig_mask;
 };
 
 void process_boot(void);
@@ -80,6 +85,23 @@ int process_exit_current(u32 code);
  * PROC_WAIT_STATUS(sig)，并给父进程置 SIGCHLD pending；调用方随后 task_exit()。
  */
 int process_terminate_current(int sig);
+
+/*
+ * P3.2 每进程同步信号动作：handler=0 默认终止，1 忽略，其他值为用户 VA。
+ * mask 只随 signal frame 保存/恢复，当前不做阻塞。
+ */
+int process_sigaction_current(int sig, u32 handler, u32 mask);
+
+/*
+ * 用户态同步异常投递：有用户 handler 时在用户栈构造 signal frame，
+ * 改写 iret 目标；返回 1 表示 frame 已改成 handler 入口。
+ * 无 handler、忽略但无法安全前移、或 frame 构造失败时返回 0，由调用方默认终止。
+ * #DE 的保存 EIP 指向 faulting div/idiv，本函数会按最小指令长度前移。
+ */
+int process_signal_deliver(struct irq_frame *frame, int sig, u32 vector);
+
+/* sigreturn：从用户栈 signal frame 恢复原 GPR/EIP/CS/EFLAGS/ESP/SS。 */
+int process_sigreturn_current(struct irq_frame *frame);
 
 /* wait 子进程：P1 用 task_yield() 轮询，找到 ZOMBIE 后写 user status 并回收。 */
 int process_wait(int pid, u32 user_status);

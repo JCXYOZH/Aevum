@@ -20,7 +20,7 @@ Aevum 是一个开源 3D 角色与世界运行时。当前仓库的重点是两�
 | 部分 | 路径 | 当前状态 |
 | --- | --- | --- |
 | 渲染引擎 | `engine/` | 可运行；`validate.html` 是主要验证入口 |
-| 32 位裸机内核 | `src/kernel/host/console/robot/` | 可在 QEMU 运行；已完成 ring3、独立 CR3、`int 0x80`、VMA/brk/guard/copyin-copyout、COW fork、同步异常默认信号、SIGCHLD/wait status、用户态与内核态 `#PF` 故障边界 |
+| 32 位裸机内核 | `src/kernel/host/console/robot/` | 可在 QEMU 运行；已完成 ring3、独立 CR3、`int 0x80`、VMA/brk/guard/copyin-copyout、COW fork、同步异常默认信号、用户 handler/signal frame/`sigreturn`、SIGCHLD/wait status、用户态与内核态 `#PF` 故障边界 |
 | Fortuna 内核骨架 | `src/kernel/fortuna/` | 有 boot/mm/sched/fs/net/sandbox 等模块；设计验证阶段，没有稳定 CLI |
 | 串口桥 | `src/kernel/host/bridge/` | 把内核 COM1 差量帧转为 WebSocket |
 | Web / 桌面呈现层 | `interface/` | world、desktop、console；不属于引擎核心 |
@@ -135,13 +135,14 @@ http://127.0.0.1:8766/interface/web/world.html
 | 任务 | 10 个固定任务槽（3 内核 + 6 用户 + 1 余量）；独立内核栈；统一中断帧；`task_yield/block/wake/exit`；优先级加权 `vruntime` 调度 |
 | 上下文 | `fxsave/fxrstor` 保存 FPU/SSE；每个任务栈底预留 512 字节 FXSAVE 区 |
 | 内存 | 内核页目录/页表固定在 `0x10000/0x11000`；用户 PD/PT 与用户页从 `0x100000..0x1FEFFF` 的 255 页位图池分配；每页有引用计数 |
-| 进程模型 | `kernel/proc/process.c` 唯一维护 PCB、PID、父子关系、退出码、信号 pending/SIGCHLD、`wait/reap`；`task.c` 只管调度/内核栈/FPU，`address_space.c` 只管 PD/PT/VMA/物理池/brk/COW |
-| ring3 | 6 个用户地址空间槽；同一段用户代码映射到相同 VA `0x400000`；V 页跑 A/B/C/D/F，D 做两轮 fork/wait |
-| COW fork | 新 PD/PT，所有可写用户页（data/stack/heap，以及内核可写的 control 页）清 RW、置 PTE bit 9 共享；写 #PF 或 copyout 写时复制，引用计数归零才归还物理页 |
-| 系统调用 | `eax=2` yield、`3` exit(code)、`4` wait(pid,status)、`5` getpid、`6` fork、`7` getppid、`8` brk、`9` peek、`10` poke；内核记录调用次数和真实 `CS=0x1B` |
+| 进程模型 | `kernel/proc/process.c` 唯一维护 PCB、PID、父子关系、退出码、信号 pending/SIGCHLD、每进程 handler 表、`wait/reap`；`task.c` 只管调度/内核栈/FPU，`address_space.c` 只管 PD/PT/VMA/物理池/brk/COW |
+| ring3 | 6 个用户地址空间槽；同一段用户代码映射到相同 VA `0x400000`；V 页跑 A/B/C/D/F，D 做两轮 fork/wait，第二轮用 `SIGFPE` handler 捕获 `#DE` |
+| COW fork | 新 PD/PT，所有可写用户页（data/stack/heap，以及内核可写的 control 页）清 RW、置 PTE bit 9 共享；已是 COW 的页第二次 fork 时保留 COW 位；写 #PF 或 copyout 写时复制，引用计数归零才归还物理页 |
+| 系统调用 | `eax=2` yield、`3` exit(code)、`4` wait(pid,status)、`5` getpid、`6` fork、`7` getppid、`8` brk、`9` peek、`10` poke、`11` sigaction(sig,handler,mask)、`12` sigreturn；内核记录调用次数和真实 `CS=0x1B` |
 | 地址空间 | 6 个 VMA：code RX `0x400000`、data RW `0x401000`、guard 无权限 `0x402000`、stack RW `0x403000`、control R `0x404000`、heap RW `0x405000..0x410000`；guard 有 VMA 无 PTE |
-| 同步异常 | `exception.c` 独占 IDT 0/3/6/13；CPL3 时 `#DE -> SIGFPE(8)`、`#BP -> SIGTRAP(5)`、`#UD -> SIGILL(4)`、`#GP -> SIGSEGV(11)`，默认终止当前进程；CPL0 非 #PF 异常停机 |
-| 信号与 wait | `pending` 位图；子进程退出给父进程置 `SIGCHLD(17)`；正常 `exit(7)` status 为 `7`，信号终止为 `0x80000000` 按位或 `sig`，`#DE` 为 `0x80000008` |
+| 同步异常 | `exception.c` 独占 IDT 0/3/6/13；CPL3 时 `#DE -> SIGFPE(8)`、`#BP -> SIGTRAP(5)`、`#UD -> SIGILL(4)`、`#GP -> SIGSEGV(11)`；有 handler 时在用户栈构造 signal frame，无 handler 才默认终止当前进程；CPL0 非 #PF 异常停机 |
+| 信号与 wait | `pending` 位图；`sigactions[32]` 存 handler/mask/flags；`fork` 继承 handler 表与 mask；子进程退出给父进程置 `SIGCHLD(17)`；正常 `exit(7)` status 为 `7`，默认信号终止为 `0x80000000` 按位或 `sig`，`#DE` 为 `0x80000008` |
+| signal frame | 用户栈 64 字节：trampoline VA + 原 GPR + `eip/cs/eflags/esp/ss` + `sig/old_mask/magic`；`#DE` 保存 EIP 按 `F6/F7` 指令长度前移；`sigreturn` 读回并恢复原 iret 帧 |
 | 故障隔离 | IDT 第 14 项 `#PF`；记录 `CR2/ERR/EIP/CS/PID`；heap 缺页零填重试、COW 写页复制重试，guard/RO/非法地址以 `SIGSEGV` 终止当前进程 |
 | 内核态故障页 | `K` 键从 kernel task 写 `0x00400000`（PDE 1 未映射）触发 CPL0 `#PF`；页面显示 PID/任务名、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count、recoveries 与 kernel image 范围；`R` 临时建立 PDE 1、执行完出错写并 `iret` 返回，`H` 停机 |
 
@@ -149,24 +150,24 @@ http://127.0.0.1:8766/interface/web/world.html
 
 | 项 | 当前值 |
 | --- | --- |
-| `kernel.bin` | 42,792 字节，小于 96 扇区上限 49,152 字节 |
+| `kernel.bin` | 44,392 字节，小于 96 扇区上限 49,152 字节 |
 | 加载基址 | `0x80000`；boot 读取窗口 `0x80000..0x8C000` |
-| BSS | `0x8A740..0x8C140`，由 loader 清零 |
+| BSS | `0x8AD60..0x8D3C0`，由 loader 清零 |
 | 常驻任务 | `control` / `render` / `idle` |
-| 用户任务 | `userA` / `userB` / `userC` / `userD` / `userF`，D 两轮 fork 的子进程都复用 PID 9；PD/PT 从 `0x100000` 起按池分配 |
+| 用户任务 | `userA` / `userB` / `userC` / `userD` / `userF`，D 第二轮 fork 的子进程复用 PID 8；PD/PT 从 `0x100000` 起按池分配 |
 | 用户虚拟地址 | code `0x400000`、data `0x401000`、guard `0x402000`、stack `0x403000`（栈顶 `0x404000`）、control `0x404000`、heap `0x405000..0x410000` |
 | 地址空间证据 | A/B `brk 0x406000`；heap `0x405800` poke/peek `0x48454C50`；越界 `brk(0x500000)` 返回 `0xFFFFFFFF`；guard poke 返回 0 |
-| COW 证据 | D 第一轮 `forks 2 shared 8 live 2 breaks 4`，`last AS4 old 00115000 -> 00118000`；第二轮累计 `forks 4 shared 16 live 2 breaks 9`；子写 `CHLD`、父读回 `PAPA`，V 页显示 `COW OK` |
+| COW 证据 | D `forks 2 shared 8 live 2 breaks 5`，`last AS4 old 00118000 -> 0011B000`；子写 `CHLD`、父读回 `PAPA`，V 页显示 `COW OK`；第二次 fork 保留已有 COW 位，signal frame 写栈也触发一次拆分 |
 | 故障样例 | `#PF count 3`：C 写 `0xB8000`（`cr2 000B8000 err 00000007`）、F 写 guard `0x402000`，以及 COW 子页写路径；C `FAULT/SIG11`、F `GUARD/SIG11` |
-| 同步异常样例 | D 第二轮子进程 `1/0` 触发 `#DE`：`pid 9 eip 00400206 sig 8 SIGFPE`；父 `wait9` 得到 `80000008`，V 页显示 `SIG OK` |
-| 进程闭环 | 第一轮 D `fork 9`，子 `exit(7)`，父 `wait 9` 得到 status 7；第二轮 `fork2 9`，子 `#DE`，父 `wait9` 得到 `80000008`；两次 SIGCHLD 都被 wait 消费，`pend 00000000` |
-| 物理池 | `PHYS PAGES 20/255`；停止/重启两轮后保持一致，ASID 从 8 起、PID 仍 4-9，无 ZOMBIE/PID/页泄漏 |
+| 同步异常样例 | D 第二轮子进程 `1/0` 触发 `#DE`：`pid 8 eip 0040021B sig 8 SIGFPE hdl 1`；signal frame 进入 handler，`sigreturn` 返回 `0x40021D`，父 `wait 8` 得到 `00000009`，V 页显示 `HAND OK` |
+| 进程闭环 | 第一轮 D `fork 8`，子 `exit(7)`，父 `wait 8` 得到 status 7；第二轮 `fork2 8`，子 handler 捕获 `#DE` 后 `exit(9)`，父 `wait 8` 得到 `9`；两次 SIGCHLD 都被 wait 消费，`pend 00000000` |
+| 物理池 | `PHYS PAGES 26/255`；停止后无 ZOMBIE/PID/页泄漏；signal frame 与 handler 没有额外泄漏 |
 | 内核态故障样例 | `#PF task 2 render cs 00000008 cpl 0 eip 000837C1 cr2 00400000 err 00000002 cr3 00010000` |
-| 内核态故障结果 | `P=0 W/R=1 U/S=0 RSVD=0 I/D=0`；页面进入 `RING0 FAULT - CONTROLLED PROBE`，按 `R` 后 fault 执行成功并返回主画面；kernel image 范围 `0x80000..0x8C140`；独立 K 探针 `fault count 1` |
+| 内核态故障结果 | `P=0 W/R=1 U/S=0 RSVD=0 I/D=0`；页面进入 `RING0 FAULT - CONTROLLED PROBE`，按 `R` 后 fault 执行成功并返回主画面；kernel image 范围 `0x80000..0x8D400`；独立 K 探针 `fault count 1` |
 
-`userC` 在数据页写入 `mode=1`，数到 5000 后故意写内核显存 `0xB8000`；`userF` 在 `mode=3` 直接写 guard `0x402000`。CPU 触发 `#PF`，内核读取 `CR2/ERR/EIP`，以 `process_terminate_current(SIGSEGV)` 终止并回收当前用户任务，A/B 继续运行。D 第一轮 fork 的子页首次写入走 COW `#PF` 路径，`address_space` 识别 PTE 的 COW 位后复制私有页并返回原帧重试；第二轮子进程先写 COW 数据页，再执行 `1/0` 触发 `#DE`，`exception.c` 按 `SIGFPE` 终止它，父进程 `wait` 得到 `0x80000008`。机械臂主画面和 V 页的 q 值保持正常，说明 COW、#PF 和 #DE 路径都没有破坏调度器与 FPU 状态。
+`userC` 在数据页写入 `mode=1`，数到 5000 后故意写内核显存 `0xB8000`；`userF` 在 `mode=3` 直接写 guard `0x402000`。CPU 触发 `#PF`，内核读取 `CR2/ERR/EIP`，以 `process_terminate_current(SIGSEGV)` 终止并回收当前用户任务，A/B 继续运行。D 第一轮 fork 的子页首次写入走 COW `#PF` 路径，`address_space` 识别 PTE 的 COW 位后复制私有页并返回原帧重试；第二轮子进程先 `sigaction(SIGFPE, handler, 0)`，再执行 `1/0` 触发 `#DE`，`exception.c` 查 handler 后在用户栈构造 signal frame，handler 计数后 `sigreturn` 回到 `0x40021D`，子进程写 `HAND` 并 `exit(9)`，父进程 `wait` 得到 `9`。机械臂主画面和 V 页的 q 值保持正常，说明 COW、#PF、signal frame 和 `sigreturn` 路径都没有破坏调度器与 FPU 状态。
 
-> `userC` writes the kernel VGA buffer at `0xB8000` after 5,000 iterations; `userF` writes the unmapped guard page. The kernel records `CR2/ERR/EIP`, terminates only that process with `SIGSEGV`, and leaves `userA/userB` running. D's first COW child write takes the COW `#PF` path and gets a private page. Its second child writes the COW data page and then divides by zero; `exception.c` maps `#DE` to `SIGFPE`, and the parent's `wait` receives `0x80000008`. The arm page and joint values remain valid after both paths.
+> `userC` writes the kernel VGA buffer at `0xB8000` after 5,000 iterations; `userF` writes the unmapped guard page. The kernel records `CR2/ERR/EIP`, terminates only that process with `SIGSEGV`, and leaves `userA/userB` running. D's first COW child write takes the COW `#PF` path and gets a private page. Its second child installs a `SIGFPE` handler and then divides by zero; `exception.c` builds a user-stack signal frame, the handler runs, `sigreturn` resumes at `0x40021D`, and the child writes `HAND` and exits 9. The parent's `wait` receives 9. The arm page and joint values remain valid after both paths.
 
 内核态边界单独验证：在机械臂主画面按 `K`，kernel task 主动写 `0x00400000`。该地址正好越过 0–4 MB 恒等映射，PDE 1 不存在，CPL0 触发 `#PF`（`ERR=0x2`，P=0、W=1、U=0）。panic 页先 `cli` 阻止递归 fault，再打印现场；此时按 `R`，内核临时把 PDE 1 指向 `0x13000` 页表、PTE 0 指向 `0x14000` 诊断页，执行完出错写指令后通过原异常帧 `iret` 返回，再撤销映射并重新武装 `K`。按 `H` 或遇到非探针内核 fault 仍走停机路径。
 
@@ -174,9 +175,9 @@ http://127.0.0.1:8766/interface/web/world.html
 
 #### 截图
 
-| 机械臂主画面 | COW + SIGCHLD + SIGSEGV/SIGFPE + 物理池 |
+| 机械臂主画面 | COW + signal frame + handler + 物理池 |
 | --- | --- |
-| ![机械臂主画面](docs/assets/readme/kernel/kernel-main.png) | ![COW、信号与物理池](docs/assets/readme/kernel/kernel-ring3-pf.png) |
+| ![机械臂主画面](docs/assets/readme/kernel/kernel-main.png) | ![COW、signal frame 与物理池](docs/assets/readme/kernel/kernel-ring3-sigframe.png) |
 | 内核态 `#PF` 受控探针 | 按 `R` 恢复后的主画面 |
 | ![内核态 #PF 受控探针](docs/assets/readme/kernel/kernel-kernel-pf.png) | ![恢复后的主画面](docs/assets/readme/kernel/kernel-recover-main.png) |
 
@@ -215,14 +216,14 @@ make debug
 #### 当前边界
 
 - 单核、平坦段、固定 255 页物理池。
-- 没有 ELF 加载、`exec`、用户态 handler/signal frame/`sigreturn`；信号目前只有同步异常默认终止与 SIGCHLD pending。`wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠。
+- 没有 ELF 加载、`exec`、fd/pipe；已有用户态 handler/signal frame/`sigreturn`，但没有 `kill()`、信号排队或真正阻塞的 mask。`wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠。
 - `TASK_MAX=10`、`PROC_MAX=8`、`AEVUM_AS_MAX=6`；`V` 跑 A/B/C/D/F 五个用户任务，D 做两轮 fork/wait。
 - `fork` 已改为 COW：可写用户页共享、写时复制；control 页对用户只读，但内核写停止字前也会先拆分。
 - `family.c` 只维护内核任务树；用户进程父子关系由 `process.c` 维护，G 页与 V 页是两套树。
 - 内核态 `#PF` 已能捕获并显示现场；只有 `K` 的受控探针可按 `R` 临时修复 PDE 1、执行完出错指令并 `iret` 返回，然后撤销映射重新武装。非探针内核 fault 仍是终止性诊断；双重 fault、栈溢出仍未处理。
 - 这是教学与验证内核，不是生产内核。
 
-> Single-core, flat segments and a fixed 255-page physical pool. No ELF loading, `exec`, user handlers, signal frames or `sigreturn`; signals are limited to synchronous-exception default termination and SIGCHLD pending. `wait` polls with `task_yield()` instead of sleeping. `TASK_MAX=10`, `PROC_MAX=8` and six address-space slots are the hard limits. `fork` is copy-on-write: writable user pages are shared, and the faulting writer gets a private copy; the user-read-only control page is split before the kernel writes its stop word. `family.c` still owns only the kernel-task tree; the user-process tree lives in `process.c`. Kernel-mode page faults are captured and rendered with a full register dump. Only the controlled `K` probe can recover: `R` installs a temporary PDE 1, lets the faulting store complete, returns through `iret`, then unmaps. Unexpected kernel faults remain terminal; double faults and stack overflow still halt. This is a teaching and validation kernel, not a production kernel.
+> Single-core, flat segments and a fixed 255-page physical pool. No ELF loading, `exec`, fd/pipe or `kill()`; user handlers, signal frames and `sigreturn` exist, but signal queues and blocking masks do not. `wait` polls with `task_yield()` instead of sleeping. `TASK_MAX=10`, `PROC_MAX=8` and six address-space slots are the hard limits. `fork` is copy-on-write: writable user pages are shared, an already-COW page keeps its COW bit across a second fork, and the faulting writer gets a private copy; the user-read-only control page is split before the kernel writes its stop word. `family.c` still owns only the kernel-task tree; the user-process tree lives in `process.c`. Kernel-mode page faults are captured and rendered with a full register dump. Only the controlled `K` probe can recover: `R` installs a temporary PDE 1, lets the faulting store complete, returns through `iret`, then unmaps. Unexpected kernel faults remain terminal; double faults and stack overflow still halt. This is a teaching and validation kernel, not a production kernel.
 
 ### 2. Fortuna 内核骨架 / Fortuna kernel skeleton
 

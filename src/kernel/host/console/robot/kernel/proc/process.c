@@ -1,10 +1,32 @@
 #include "kernel/proc.h"
 #include "kernel/task.h"
 #include "kernel/mm/address_space.h"
+#include "arch/x86/exception.h"
 #include "arch/x86/frame.h"
 #include "config/memory.h"
 
 #define PROC_STACK_COUNT 6
+#define PROC_SIGFRAME_MAGIC 0x53494746u  /* "SIGF" */
+
+extern u8 user_program_start[];
+extern u8 user_sigreturn_trampoline[];
+
+struct proc_sigaction {
+    u32 handler;
+    u32 mask;
+    u32 flags;
+};
+
+/*
+ * signal frame 布局固定：低地址是 sigreturn trampoline 返回地址，随后是
+ * 内核保存的原 iret 帧和通用寄存器。顺序必须与 process_signal_deliver()
+ * 写入、process_sigreturn_current() 读回一致。
+ */
+struct proc_signal_frame {
+    u32 eax, ebx, ecx, edx, esi, edi, ebp;
+    u32 eip, cs, eflags, user_esp, ss;
+    u32 sig, old_mask, magic;
+};
 
 struct process {
     int pid;
@@ -20,6 +42,9 @@ struct process {
     u32 term_sig;
     u32 sig_count;
     u32 sigchld_count;
+    struct proc_sigaction sigactions[PROC_NSIG];
+    u32 sig_mask;
+    u32 sig_handled;
 };
 
 static struct process procs[PROC_MAX];
@@ -45,6 +70,13 @@ static void proc_zero(struct process *p)
     p->term_sig = 0;
     p->sig_count = 0;
     p->sigchld_count = 0;
+    p->sig_mask = 0;
+    p->sig_handled = 0;
+    for (i = 0; i < PROC_NSIG; i++) {
+        p->sigactions[i].handler = PROC_SIG_DFL;
+        p->sigactions[i].mask = 0;
+        p->sigactions[i].flags = 0;
+    }
 }
 
 void process_boot(void)
@@ -77,6 +109,186 @@ static void proc_signal_pending(struct process *p, int sig)
     p->last_sig = (u32)sig;
     p->sig_count++;
     if (sig == PROC_SIGCHLD) p->sigchld_count++;
+}
+
+/*
+ * #DE 保存的 EIP 指向 faulting div/idiv 本身。这里只解码 P3.2 用到的
+ * F6/F7 group：opcode + ModRM + 可选 SIB/位移，返回指令长度。
+ * 其他异常返回 0，由原来的默认终止路径处理。
+ */
+static u32 proc_fault_skip_len(struct process *p, u32 vector, u32 eip)
+{
+    u8 buf[8];
+    u32 i = 0;
+    u32 op;
+    u32 modrm;
+    u32 mod;
+    u32 rm;
+
+    if (!p || !p->space || vector != EXC_DE) return 0;
+    if (address_space_copyin(p->space, buf, eip, sizeof(buf)) != 0) return 0;
+
+    if (buf[0] == 0x66) i++;
+    if (i >= sizeof(buf)) return 0;
+    op = buf[i++];
+    if (op != 0xF6 && op != 0xF7) return 0;
+    if (i >= sizeof(buf)) return 0;
+
+    modrm = buf[i++];
+    mod = modrm >> 6;
+    rm = modrm & 7u;
+    if (mod != 3 && rm == 4) {
+        u32 sib;
+        if (i >= sizeof(buf)) return 0;
+        sib = buf[i++];
+        if (mod == 0 && (sib & 7u) == 5) i += 4;
+    }
+    if (mod == 0 && rm == 5) i += 4;
+    else if (mod == 1) i += 1;
+    else if (mod == 2) i += 4;
+
+    return i <= sizeof(buf) ? i : 0;
+}
+
+static u32 proc_sigreturn_trampoline_va(void)
+{
+    return AEVUM_USER_CODE_VA +
+           (u32)((u32)user_sigreturn_trampoline - (u32)user_program_start);
+}
+
+int process_sigaction_current(int sig, u32 handler, u32 mask)
+{
+    struct process *self;
+
+    if (sig <= 0 || sig >= PROC_NSIG) return -1;
+    if (!task_current() || !task_process_current()) return -1;
+    self = task_process_current();
+    if (self->state != PROC_LIVE || !self->space) return -1;
+    if (handler != PROC_SIG_DFL && handler != PROC_SIG_IGN &&
+        !address_space_user_range_ok(self->space, handler, 1, 0))
+        return -1;
+
+    self->sigactions[sig].handler = handler;
+    self->sigactions[sig].mask = mask & 0x7FFFFFFFu;
+    self->sigactions[sig].flags = 0;
+    return 0;
+}
+
+int process_signal_deliver(struct irq_frame *frame, int sig, u32 vector)
+{
+    struct process *self;
+    struct proc_sigaction *action;
+    struct proc_signal_frame sf;
+    u32 frame_addr;
+    u32 skip;
+    u32 tramp;
+    u32 frame_size;
+
+    if (!frame || sig <= 0 || sig >= PROC_NSIG) return 0;
+    if (!task_current() || !task_process_current()) return 0;
+    self = task_process_current();
+    if (self->state != PROC_LIVE || !self->space) return 0;
+    if ((frame->cs & 3u) != 3u) return 0;
+
+    action = &self->sigactions[sig];
+    if (action->handler == PROC_SIG_DFL) return 0;
+
+    skip = proc_fault_skip_len(self, vector, frame->eip);
+    if (vector == EXC_DE && skip == 0) return 0;
+
+    if (action->handler == PROC_SIG_IGN) {
+        /* #DE 可安全前移；#BP 的保存 EIP 已经指向下一条。其他同步异常重试会死循环。 */
+        if (skip == 0 && vector != EXC_BP) return 0;
+        frame->eip += skip;
+        self->sig_handled++;
+        return 1;
+    }
+
+    if (!address_space_user_range_ok(self->space, action->handler, 1, 0))
+        return 0;
+    if (frame->user_esp < sizeof(sf) + 4u) return 0;
+
+    frame_size = (u32)sizeof(sf) + 4u;
+    frame_addr = (frame->user_esp - frame_size) & ~3u;
+    if (frame_addr < AEVUM_USER_STACK_VA ||
+        frame_addr + frame_size > AEVUM_USER_STACK_TOP)
+        return 0;
+    if (!address_space_user_range_ok(self->space, frame_addr, frame_size, 1))
+        return 0;
+
+    tramp = proc_sigreturn_trampoline_va();
+    if (!address_space_user_range_ok(self->space, tramp, 1, 0)) return 0;
+
+    sf.eax = frame->eax;
+    sf.ebx = frame->ebx;
+    sf.ecx = frame->ecx;
+    sf.edx = frame->edx;
+    sf.esi = frame->esi;
+    sf.edi = frame->edi;
+    sf.ebp = frame->ebp;
+    sf.eip = frame->eip + skip;
+    sf.cs = frame->cs;
+    sf.eflags = frame->eflags;
+    sf.user_esp = frame->user_esp;
+    sf.ss = frame->ss;
+    sf.sig = (u32)sig;
+    sf.old_mask = self->sig_mask;
+    sf.magic = PROC_SIGFRAME_MAGIC;
+
+    if (address_space_copyout(self->space, frame_addr, &tramp, 4) != 0)
+        return 0;
+    if (address_space_copyout(self->space, frame_addr + 4, &sf,
+                              (u32)sizeof(sf)) != 0)
+        return 0;
+
+    self->sig_mask = action->mask;
+    self->sig_handled++;
+
+    frame->eax = (u32)sig;
+    frame->ebx = frame_addr + 4;
+    frame->eip = action->handler;
+    frame->user_esp = frame_addr;
+    return 1;
+}
+
+int process_sigreturn_current(struct irq_frame *frame)
+{
+    struct process *self;
+    struct proc_signal_frame sf;
+
+    if (!frame) return -1;
+    if (!task_current() || !task_process_current()) return -1;
+    self = task_process_current();
+    if (self->state != PROC_LIVE || !self->space) return -1;
+    if (!address_space_user_range_ok(self->space, frame->user_esp,
+                                     (u32)sizeof(sf), 0))
+        return -1;
+    if (address_space_copyin(self->space, &sf, frame->user_esp,
+                             (u32)sizeof(sf)) != 0)
+        return -1;
+    if (sf.magic != PROC_SIGFRAME_MAGIC) return -1;
+    if ((sf.cs & 3u) != 3u || (sf.ss & 3u) != 3u) return -1;
+    if (!address_space_user_range_ok(self->space, sf.eip, 1, 0)) return -1;
+    if (sf.user_esp < AEVUM_USER_STACK_VA ||
+        sf.user_esp > AEVUM_USER_STACK_TOP)
+        return -1;
+
+    frame->eax = sf.eax;
+    frame->ebx = sf.ebx;
+    frame->ecx = sf.ecx;
+    frame->edx = sf.edx;
+    frame->esi = sf.esi;
+    frame->edi = sf.edi;
+    frame->ebp = sf.ebp;
+    frame->eip = sf.eip;
+    frame->cs = sf.cs;
+    frame->eflags = sf.eflags;
+    frame->user_esp = sf.user_esp;
+    frame->ss = sf.ss;
+    frame->vector = 0;
+    frame->err = 0;
+    self->sig_mask = sf.old_mask;
+    return 0;
 }
 
 static void proc_notify_parent(struct process *self)
@@ -264,6 +476,7 @@ struct process *process_fork(struct irq_frame *frame)
     struct task_struct *task;
     struct address_space *space;
     int pid;
+    int i;
     u32 stack_top;
     const char *rc;
 
@@ -304,6 +517,9 @@ struct process *process_fork(struct irq_frame *frame)
     p->task = 0;
     p->exit_code = 0;
     proc_copy_name(p, "userE");
+    /* 信号动作与 mask 随 fork 继承；pending 不继承。 */
+    for (i = 0; i < PROC_NSIG; i++) p->sigactions[i] = parent->sigactions[i];
+    p->sig_mask = parent->sig_mask;
 
     rc = task_fork_user(pid, "userE", frame, stack_top, space, p, &task);
     if (rc) {
@@ -504,6 +720,8 @@ int process_snapshot(int slot, struct process_info *out)
     out->term_sig = p->term_sig;
     out->sig_count = p->sig_count;
     out->sigchld_count = p->sigchld_count;
+    out->sig_handled = p->sig_handled;
+    out->sig_mask = p->sig_mask;
 
     has_task = task_snapshot_pid(p->pid, &info);
     if (has_task) {

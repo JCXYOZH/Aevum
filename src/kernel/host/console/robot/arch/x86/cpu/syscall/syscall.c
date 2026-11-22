@@ -75,6 +75,17 @@ u32 syscall_dispatch(struct irq_frame *frame)
                                  : 0u;
             }
             break;
+        case 11:
+            frame->eax = (process_sigaction_current((int)frame->ebx,
+                                                    frame->ecx,
+                                                    frame->edx) == 0)
+                             ? 0u
+                             : (u32)-1;
+            break;
+        case 12:
+            if (process_sigreturn_current(frame) != 0)
+                frame->eax = (u32)-1;
+            break;
         default:
             frame->eax = (u32)-1;
             break;

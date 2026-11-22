@@ -303,6 +303,9 @@ const char *task_fork_user(int pid, const char *name, struct irq_frame *frame,
                             1, frame->user_esp, proc, pid, out);
     if (rc) return rc;
     task = *out;
+    /* fork 子任务必须有机会先跑一次：父进程随后进入 wait，
+     * 若子和父同 vruntime，调度器会一直选回父、饿死子。 */
+    task->vruntime = 0;
     sp = (u32 *)task->ctx.esp;
     sp[0] = 0;                 /* 子进程 fork 返回 0 */
     sp[1] = frame->ebx;
