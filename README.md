@@ -20,7 +20,7 @@ Aevum 是一个开源 3D 角色与世界运行时。当前仓库的重点是两�
 | 部分 | 路径 | 当前状态 |
 | --- | --- | --- |
 | 渲染引擎 | `engine/` | 可运行；`validate.html` 是主要验证入口 |
-| 32 位裸机内核 | `src/kernel/host/console/robot/` | 可在 QEMU 运行；已完成 ring3、独立 CR3、`int 0x80`、VMA/brk/guard/copyin-copyout、COW fork、同步异常默认信号、用户 handler/signal frame/`sigreturn`、SIGCHLD/wait status、exec/fd/pipe、12 槽内核栈池、用户态与内核态 `#PF` 故障边界，以及 `V` 页 4 页观测面（槽/树/地址/fd） |
+| 32 位裸机内核 | `src/kernel/host/console/robot/` | 可在 QEMU 运行；已完成 ring3、独立 CR3、`int 0x80`、VMA/brk/guard/copyin-copyout、COW fork、同步异常默认信号、用户 handler/signal frame/`sigreturn`、SIGCHLD/wait status、exec/fd/pipe、12 槽内核栈池、P5.3 的 100 轮 fork/wait 压测、用户态与内核态 `#PF` 故障边界，以及 `V` 页 4 页观测面（槽/树/地址/fd） |
 | Fortuna 内核骨架 | `src/kernel/fortuna/` | 有 boot/mm/sched/fs/net/sandbox 等模块；设计验证阶段，没有稳定 CLI |
 | 串口桥 | `src/kernel/host/bridge/` | 把内核 COM1 差量帧转为 WebSocket |
 | Web / 桌面呈现层 | `interface/` | world、desktop、console；不属于引擎核心 |
@@ -124,7 +124,11 @@ http://127.0.0.1:8766/interface/web/world.html
 
 这个内核不依赖 libc，也不跑在桌面操作系统里。BIOS 引导扇区把 128 个扇区读到 `0x80000`，进入保护模式、建立 GDT、IDT、TSS 和 0–4 MB 恒等分页，然后运行内核任务。
 
+当前进度：`P5.3` 已完成并在本地提交（`115a31f`）；最新 clean 构建 `kernel.bin=64,808B`，距 65,536B 上限余 728B。`S` 停止后再按 `Y` 的首次进入变慢，目前只作为观察项保留，暂不改代码。
+
 > This kernel does not use libc and does not run on top of a desktop OS. The BIOS boot sector loads 128 sectors to `0x80000`, enters protected mode, builds GDT/IDT/TSS and identity-maps 0–4 MB, then starts kernel tasks.
+
+> Current status: P5.3 is complete and committed locally (`115a31f`); the latest clean build is 64,808 bytes, 728 bytes below the 65,536-byte limit. Re-entering `Y` after stopping `S` is slower on first entry and is kept as an observation item only.
 
 #### 已实现
 
@@ -133,10 +137,10 @@ http://127.0.0.1:8766/interface/web/world.html
 | 启动 | `robot/boot.asm` 一次 LBA 读 128 个扇区到 `0x80000`；`loader.asm` 清 BSS、加载 6 项 GDT、启用 FPU/SSE |
 | 中断 | 256 项 IDT；PIT 100Hz IRQ0；8259A PIC 重映射；`int 0x40` 软件调度门；`int 0x80` DPL3 系统调用门；`#DE/#BP/#UD/#GP` 同步异常门 |
 | 任务 | 16 个固定任务槽（3 内核 + 最多 12 用户 + 1 余量）；12 个 4KB 用户内核栈槽由位图池动态分配/释放；统一中断帧；`task_yield/block/wake/exit`；优先级加权 `vruntime` 调度 |
-| 上下文 | `fxsave/fxrstor` 保存 FPU/SSE；每个任务栈底预留 512 字节 FXSAVE 区 |
+| 上下文 | 统一中断帧保存 GPR 与 `eip/cs/eflags/user_esp/ss`；`ctx.esp` 只保存帧指针；`fxsave/fxrstor` 保存 FPU/SSE，每个任务栈底预留 512 字节 FXSAVE 区；切换时更新 TSS `esp0` |
 | 内存 | 内核页目录/页表固定在 `0x10000/0x11000`；用户 PD/PT 与用户页从 `0x100000..0x1FEFFF` 的 255 页位图池分配；每页有引用计数 |
 | 进程模型 | `kernel/proc/process.c` 唯一维护 PCB、PID、父子关系、退出码、信号 pending/SIGCHLD、每进程 handler 表、`wait/reap`；`task.c` 只管调度/内核栈/FPU，`address_space.c` 只管 PD/PT/VMA/物理池/brk/COW |
-| ring3 | 12 个用户地址空间槽；两个固定链接镜像（初始 ring3 / exec）复用同一 VA `0x400000`；V 页跑 A/B/C/D/F，X 页跑 mode 4 console，Y 页跑 mode 5 池压力（root + 8 LIVE 子进程）；D 做四轮 fork/wait：第二轮用 `SIGFPE` handler 捕获 `#DE`，第三轮 fork 子进程 `exec(1, argv, envp)`，第四轮父建 pipe、fork、子 exec 后继续持有写端并写 `PIPE`，父读回并 `wait`；X 页父进程关闭自身 0/1 后，子进程用继承端点读 fd0、写 fd1 |
+| ring3 | 12 个用户地址空间槽；两个固定链接镜像（初始 ring3 / exec）复用同一 VA `0x400000`；V 页跑 A/B/C/D/F，X 页跑 mode 4 console，Y 页跑 mode 5 池压力（root + 8 LIVE 子进程），S 页复用同一池页外壳跑 mode 6 的 100 轮 fork/wait；D 做四轮 fork/wait：第二轮用 `SIGFPE` handler 捕获 `#DE`，第三轮 fork 子进程 `exec(1, argv, envp)`，第四轮父建 pipe、fork、子 exec 后继续持有写端并写 `PIPE`，父读回并 `wait`；X 页父进程关闭自身 0/1 后，子进程用继承端点读 fd0、写 fd1 |
 | 用户 exec | `eax=13 exec(image_id, argv, envp)`：保留 PID/PPID/任务槽，新建并切换 AS，释放旧 AS；`argv/envp` 在旧 AS 仍有效时解析，最多 4 项、每串最多 31 字符，复制到新用户栈并写成 `argc, argv[], NULL, envp[], NULL, 字符串区`；新栈 `esp` 从 `0x403FC8` 起，`sigactions`/pending 清零；内嵌镜像 1 校验参数后写 `ARGV/ENVP` 并 `exit(10)`，失败码 20..25 |
 | fd 与 pipe | 每进程 8 槽 fd 表：fd 0 为 console 读、fd 1 为 console 写，pipe 从 2 起；kind 区分 `CONSOLE_READ/WRITE` 与 `PIPE_READ/WRITE`，close/link 只对 pipe 端点做引用计数；fork 复制 fd 表并 acquire pipe 端点、console 端点直接继承，exec 保留 fd 表，exit、信号终止和 reap 关闭全部 fd；console 输入 16 字节 ASCII 环形队列，输出 8 行×64 字符并镜像 COM1；匿名 pipe 固定 4 个对象、每对象 64 字节非阻塞环形缓冲；`eax=14 pipe`、`15 read`、`16 write`、`17 close` |
 | COW fork | 新 PD/PT，所有可写用户页（data/stack/heap，以及内核可写的 control 页）清 RW、置 PTE bit 9 共享；已是 COW 的页第二次 fork 时保留 COW 位；写 #PF 或 copyout 写时复制，引用计数归零才归还物理页 |
@@ -166,6 +170,7 @@ http://127.0.0.1:8766/interface/web/world.html
 | exec 证据 | `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`；子进程 PID 8 不变、`image_id=1`；内核解析 `alpha/beta/MODE=p42/LEVEL=2`，新栈 `esp=0x403FC8`，镜像逐字节校验后写 `ARGV/ENVP` 并 `exit(10)`；旧 AS 已释放（wait 回收后 AS 0） |
 | pipe 证据 | `P4.3 pipe 8 wait 8 st 0000000C fd 2>3 r4 PIPE OK`；pipe 子在 exec 后仍持有继承的 fd 3 写端，写 `PIPE` 并 `exit(12)`；父从 fd 2 读回 4 字节并校验 `0x45505049`；读写端全关后 `pipe obj 0` |
 | console fd 证据 | X 页 `pid 4 child 5 out 14 child EXIT 14 CLOSE OK`；`scan 3 push 1 frames 2237`，`in 1 last a`，`out 14 uart 14`，输出行 `CON:a` / `FD01 OK`；父进程 `close0 0 close1 0 r0 -1 w1 -1`，子进程仍用继承的 fd 0/1；COM1 原始字节中同时出现 `CON:a\nFD01 OK\n` |
+| P5.3 压测证据 | 两轮独立 `S` 都是 `round 100/100 first 5 -> 5 live 1 state STRESS OK`；`PHYS 6/255`、`proc 1/12`、`AS 1/12`、`KSTK 1/12`；第一轮 ASID 1、第二轮 ASID 102，首末 PID 始终为 5 -> 5 |
 | 物理池 | `PHYS PAGES 20/255`；停止后无 ZOMBIE/PID/页/fd/pipe 泄漏；signal frame、handler、exec 与 pipe 没有额外泄漏 |
 | 槽池证据 | 第一轮 Y 页 `task 12/16 proc 9/12 AS 9/12 kstack 9/12 live 9 root 4 children 8/8 POOL OK frames 1826`；PID 4..12 全 LIVE，KSTACK TOP `0x201000..0x209000`；第二次进入时同批 PID/栈顶复用，ASID 10..18 只是地址空间代次，`AS 9/12` 未溢出 |
 | 内核态故障样例 | `#PF task 2 render cs 00000008 cpl 0 eip 000B4BB1 cr2 00400000 err 00000002 cr3 00010000` |
@@ -179,36 +184,55 @@ P4.4 把 fd 0/1 接到 console 字符设备：X 页进入后，键盘扫描码�
 
 > `userC` writes the kernel VGA buffer at `0xB8000` after 5,000 iterations; `userF` writes the unmapped guard page. The kernel records `CR2/ERR/EIP`, terminates only that process with `SIGSEGV`, and leaves `userA/userB` running. D's first COW child write takes the COW `#PF` path and gets a private page. Its second child installs a `SIGFPE` handler and then divides by zero; the faulting EIP is `0x4003CE`; `exception.c` builds a user-stack signal frame, the handler runs, `sigreturn` advances past the two-byte `div ecx` to `0x4003D0`, and the child writes `HAND` and exits 9. The parent's `wait` receives 9. Its third child calls `exec(1, argv, envp)` with `alpha/beta/MODE=p42/LEVEL=2`. The kernel parses the vectors while the old AS is still active, copies the strings into a new SysV-style stack (`argc, argv[], NULL, envp[], NULL, strings`), keeps PID 8 and the task slot, swaps in the embedded exec image and a new CR3, and releases the old address space; the new image re-reads every byte from the new stack, writes `ARGV/ENVP`, and exits 10. The parent's `wait` receives 10. Its fourth child starts with `pipe()` returning read fd 2 and write fd 3. `fork` copies the whole fd table and acquires both pipe endpoints. The parent closes the write end; the child closes the inherited read end and execs image 2 with `{"pipe","writer","FD=3"}`. `exec` swaps only the AS and image, never the fd table, so the new image still owns fd 3, parses argv, writes `PIPE`, and exits 12. The parent's `wait` receives 12, reads four bytes from fd 2, verifies `0x45505049`, closes the read end, and renders `PIPE OK`; once both ends are released the page shows `pipe obj 0`. The arm page and joint values remain valid after all four paths.
 
-P5.1 把任务/进程/地址空间槽扩到 16/12/12，并把原来 6 个固定用户内核栈改成 `0x200000..0x20BFFF` 的 12 槽 4KB 位图池：`kernel_stack_alloc()` 在创建/fork 时取槽，`kernel_stack_free()` 在失败路径和 reap 时归还，分配与释放都清零整槽。`Y` 页让父进程连续 fork 8 个子进程并全部保持 LIVE，页面同时显示 `task 12/16`、`proc 9/12`、`AS 9/12`、`kstack 9/12`、`live 9`、`root 4`、`children 8/8`、`POOL OK` 和 12 行槽表；PID 4..12 对应栈顶 `0x201000..0x209000`。按 `Y` 停止后父 `exit(16)`、子 `exit(17)`，procs 前 9 槽 PID 归零；再次按 `Y` 仍得到 9/12/12/12，并复用 PID 4..12 与同一批栈顶，证明槽位、地址空间和 4KB 栈都完成回收与复用。
+P5.1 把任务/进程/地址空间槽扩到 16/12/12，并把原来 6 个固定用户内核栈改成 `0x200000..0x20BFFF` 的 12 槽 4KB 位图池：`kernel_stack_alloc()` 在创建/fork 时取槽，`kernel_stack_free()` 在失败路径和 reap 时归还，分配与释放都清零整槽。
 
-> P5.1 raises the task/process/address-space limits to 16/12/12 and replaces the six fixed user kernel stacks with a 12-slot, 4 KB bitmap pool at `0x200000..0x20BFFF`. `kernel_stack_alloc()` runs on create/fork, `kernel_stack_free()` on failure and reap, and both wipe the whole slot. The `Y` page forks eight live children, so it shows `task 12/16`, `proc 9/12`, `AS 9/12`, `kstack 9/12`, `live 9`, `root 4`, `children 8/8`, `POOL OK`, and twelve slot rows; PID 4..12 map to stack tops `0x201000..0x209000`. After `Y` stops the run, the parent exits 16 and children exit 17, the first nine proc slots return to PID 0; a second `Y` still reports 9/12/12/12 and reuses PID 4..12 and the same stack tops, proving slot, AS and stack recycling.
+`Y` 页让父进程连续 fork 8 个子进程并全部保持 LIVE，页面同时显示 `task 12/16`、`proc 9/12`、`AS 9/12`、`kstack 9/12`、`live 9`、`root 4`、`children 8/8`、`POOL OK` 和 12 行槽表；PID 4..12 对应栈顶 `0x201000..0x209000`。按 `Y` 停止后父 `exit(16)`、子 `exit(17)`，procs 前 9 槽 PID 归零；再次按 `Y` 仍得到 9/12/12/12，并复用 PID 4..12 与同一批栈顶，证明槽位、地址空间和 4KB 栈都完成回收与复用。
 
-P5.2 把 `V` 页从单体渲染改成“UI 状态 + 页面绘制”分离：`include/app/user/page.h` 与 `app/user/page/page.c` 唯一持有页面模式、选中 PCB 槽和 10 行滑动窗口，`app/arm/app/app.c` 在 `user_live` 时把扫描码交给 `user_page_key()`。`Tab` 循环切页，数字 `1..4` 直达 `SLOTS/TREE/ADDRESS/FD+SIG`，`Up/Down` 移选中槽，`PgUp/PgDn` 整窗滚动，`Home/End` 跳首尾；`0xE0` 前缀由 page 模块吞掉。渲染拆成 `render.c`（公共标题/页签/状态/分派）、`draw.c`（统一十进制/十六进制与状态名颜色）、`slots.c`、`tree.c`、`address.c`、`fd.c`，每页只画自己的行布局。观测面新增 `proc_fd_snapshot()`（逐 fd 返回 `used/kind`，不暴露 pipe 指针）与 `process_slot_space()` / `process_slot_fd_info()`（按 PCB 槽取 AS/fd，DEAD/FREE 返回空）；`process_slot_used()` 仍只数 LIVE/ZOMBIE，`POOL proc` 显式统计 `live+zomb+dead`。`TREE` 按真实 PPID 递归并统计 `CH`/`W`；`ADDRESS` 列 6 条 VMA 与真实 PTE R/W 探针；`FD/SIG` 列 8 个 fd 槽、pipe 端点数、最近 `#DE`/`#PF`。为让 ZOMBIE 稳定可观察，D lane 在父 `wait` 前执行 262144 次 yield，实测 `SLOT 4 PID 8 PP 7 ST ZOMB EX 7`、`PID 7 CH 1 W 1`，滚动窗 `3-12/12`；wait 完成后 `TEST wait OK cow OK hand OK exec OK pipe OK`。P5.2 clean 构建 `kernel.bin=64,872`、`boot.bin=512`、`disk.img=1,474,560`；kernel `48B046EB73CB31C2378E1FBBC90C01C8812F8E62AF46883B4DABA427285664D8`，boot `D9A70CE2...`，disk `97379832...`；距 65,536 上限只剩 664 字节。
+> P5.1 raises the task/process/address-space limits to 16/12/12 and replaces the six fixed user kernel stacks with a 12-slot, 4 KB bitmap pool at `0x200000..0x20BFFF`. `kernel_stack_alloc()` runs on create/fork, `kernel_stack_free()` on failure and reap, and both wipe the whole slot. The `Y` page forks eight live children, so it shows `task 12/16`, `proc 9/12`, `AS 9/12`, `kstack 9/12`, `live 9`, `root 4`, `children 8/8`, `POOL OK`, and twelve slot rows; PID 4..12 map to stack tops `0x201000..0x209000`.
 
-> P5.2 separates V-page navigation from drawing. `app/user/page/page.c` owns the page mode, selected PCB slot and 10-row window; `app/arm/app/app.c` forwards scancodes only while `user_live`. `Tab` cycles pages, `1..4` jump to `SLOTS/TREE/ADDRESS/FD+SIG`, `Up/Down` move the selected slot, `PgUp/PgDn` scroll ten slots, `Home/End` jump to the ends; the page module swallows the `0xE0` prefix. Rendering is split into `render.c` (shared title/tabs/status/dispatch), `draw.c` (shared decimal/hex/state colors), `slots.c`, `tree.c`, `address.c`, and `fd.c`. `proc_fd_snapshot()` returns only `used/kind`, never a pipe pointer; `process_slot_space()` and `process_slot_fd_info()` read AS/fd by PCB slot and return empty for DEAD/FREE slots. `process_slot_used()` still counts only LIVE/ZOMBIE, while the `POOL proc` line explicitly counts `live+zomb+dead`. `TREE` recurses over real PPIDs and counts live/ZOMBIE children; `ADDRESS` lists six VMAs with live PTE R/W probes; `FD/SIG` lists eight fd slots, pipe endpoints, and the latest `#DE`/`#PF`. The D lane yields 262144 times before waiting, so the zombie stays visible: `SLOT 4 PID 8 PP 7 ST ZOMB EX 7`, `PID 7 CH 1 W 1`, window `3-12/12`; after wait, `TEST wait OK cow OK hand OK exec OK pipe OK`. The clean build is 64,872 bytes, 664 bytes below the 65,536 limit.
+> After `Y` stops the run, the parent exits 16 and children exit 17, the first nine proc slots return to PID 0; a second `Y` still reports 9/12/12/12 and reuses PID 4..12 and the same stack tops, proving slot, AS and stack recycling.
 
+P5.2 把 `V` 页从单体渲染改成“UI 状态 + 页面绘制”分离：`include/app/user/page.h` 与 `app/user/page/page.c` 唯一持有页面模式、选中 PCB 槽和 10 行滑动窗口，`app/arm/app/app.c` 在 `user_live` 时把扫描码交给 `user_page_key()`。`Tab` 循环切页，数字 `1..4` 直达 `SLOTS/TREE/ADDRESS/FD+SIG`，`Up/Down` 移选中槽，`PgUp/PgDn` 整窗滚动，`Home/End` 跳首尾；`0xE0` 前缀由 page 模块吞掉。渲染拆成 `render.c`（公共标题/页签/状态/分派）、`draw.c`（统一十进制/十六进制与状态名颜色）、`slots.c`、`tree.c`、`address.c`、`fd.c`，每页只画自己的行布局。
 
+观测面新增 `proc_fd_snapshot()`（逐 fd 返回 `used/kind`，不暴露 pipe 指针）与 `process_slot_space()` / `process_slot_fd_info()`（按 PCB 槽取 AS/fd，DEAD/FREE 返回空）；`process_slot_used()` 仍只数 LIVE/ZOMBIE，`POOL proc` 显式统计 `live+zomb+dead`。`TREE` 按真实 PPID 递归并统计 `CH`/`W`；`ADDRESS` 列 6 条 VMA 与真实 PTE R/W 探针；`FD/SIG` 列 8 个 fd 槽、pipe 端点数、最近 `#DE`/`#PF`。
 
-P5.3 把「反复 fork/wait 100 轮」压测落在 P5.1 的池页外壳上，不新增页面：按 `S`（扫描码 `0x1F`）进入 `AEVUM / P5.3 FORK/WAIT STRESS`，`pool_demo_start(int stress)` 仍是 `poolA/stressA` 创建、模式写入和首次 yield 的唯一入口，`stress ? 6u : 5u` 选择 ring3 mode 6 或 P5.1 mode 5。父进程 `stressA` 每轮 `fork`，子进程 `exit(7)`，父进程 `wait` 并校验返回 PID 等于本轮子 PID、status 等于 7；首轮子 PID 写 `0x401100`，后续 99 轮必须复用同一 PID，全部通过才写 `0x4010C4` 的 `POOL` 魔数并保持存活，按 `S` 停止时 `exit(18)`。页面复用 `0x4010C0` 轮次和 `0x401100/0x401104` 首末 PID，不新增结构体或独立统计：实测 `round 100/100 first 5 -> 5 live 1 state STRESS OK`、`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`。两轮独立 `S` 都得到首末 PID `5 -> 5`、`PHYS 6/255` 与 `proc/AS/KSTK 1/12`，ASID 从 1 变为 102 后继续复用，证明 100 次子进程回收后 PID、地址空间槽、内核栈槽和物理页都回到单父进程基线。为容纳新增代码，C 目标增加 `-ffunction-sections -fdata-sections`、链接增加 `--gc-sections`，回收约 1.3KB 不可达代码；P5.3 clean 构建 `kernel.bin=64,808`、`boot.bin=512`、`disk.img=1,474,560`，kernel `A39A6BD5301355662B49564E61C6CB58B7603D1F6C9966F66D18EEDBFA946656`，boot `D9A70CE2...`，disk `B1490110...`；`__bss_end=0x9395C`，上限余量 728 字节。
+为让 ZOMBIE 稳定可观察，D lane 在父 `wait` 前执行 262144 次 yield，实测 `SLOT 4 PID 8 PP 7 ST ZOMB EX 7`、`PID 7 CH 1 W 1`，滚动窗 `3-12/12`；wait 完成后 `TEST wait OK cow OK hand OK exec OK pipe OK`。P5.2 clean 构建 `kernel.bin=64,872`、`boot.bin=512`、`disk.img=1,474,560`；kernel `48B046EB73CB31C2378E1FBBC90C01C8812F8E62AF46883B4DABA427285664D8`，boot `D9A70CE2...`，disk `97379832...`；距 65,536 上限只剩 664 字节。
 
-> P5.3 puts the 100-round fork/wait stress behind `S` (`0x1F`) on the P5.1 pool-page shell instead of adding a page. `pool_demo_start(int stress)` remains the only owner of `poolA/stressA` creation, mode selection and the first yield; `stress ? 6u : 5u` selects ring3 mode 6 or P5.1 mode 5. The `stressA` parent forks once per round, the child exits 7, and the parent waits and checks that the returned PID equals the child PID and the status equals 7. The first child PID goes to `0x401100` and all 99 later rounds must reuse it; only then does the parent write the `POOL` magic at `0x4010C4` and stay alive for observation. Pressing `S` again exits the parent with 18. The page reuses the P5.1 user-data slots for the round and first/last PID, with no new struct or second counter: `round 100/100 first 5 -> 5 live 1 state STRESS OK`, `PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`. Two independent `S` runs both report first/last PID `5 -> 5`, `PHYS 6/255`, and `proc/AS/KSTK 1/12`; ASID moves from 1 to 102 and is then reused, proving PID, AS slot, kernel-stack slot and physical pages all return to the single-parent baseline after 100 reaps. C objects now use `-ffunction-sections -fdata-sections` and the link uses `--gc-sections`, reclaiming about 1.3 KB of unreachable code; the clean build is 64,808 bytes, 728 bytes below the limit, with `__bss_end=0x9395C`.
+> P5.2 separates V-page navigation from drawing. `app/user/page/page.c` owns the page mode, selected PCB slot and 10-row window; `app/arm/app/app.c` forwards scancodes only while `user_live`. `Tab` cycles pages, `1..4` jump to `SLOTS/TREE/ADDRESS/FD+SIG`, `Up/Down` move the selected slot, `PgUp/PgDn` scroll ten slots, `Home/End` jump to the ends; the page module swallows the `0xE0` prefix.
+
+> Rendering is split into `render.c` (shared title/tabs/status/dispatch), `draw.c` (shared decimal/hex/state colors), `slots.c`, `tree.c`, `address.c`, and `fd.c`. `proc_fd_snapshot()` returns only `used/kind`, never a pipe pointer; `process_slot_space()` and `process_slot_fd_info()` read AS/fd by PCB slot and return empty for DEAD/FREE slots. `process_slot_used()` still counts only LIVE/ZOMBIE, while the `POOL proc` line explicitly counts `live+zomb+dead`. `TREE` recurses over real PPIDs and counts live/ZOMBIE children; `ADDRESS` lists six VMAs with live PTE R/W probes; `FD/SIG` lists eight fd slots, pipe endpoints, and the latest `#DE`/`#PF`. The D lane yields 262144 times before waiting, so the zombie stays visible: `SLOT 4 PID 8 PP 7 ST ZOMB EX 7`, `PID 7 CH 1 W 1`, window `3-12/12`; after wait, `TEST wait OK cow OK hand OK exec OK pipe OK`. The clean build is 64,872 bytes, 664 bytes below the 65,536 limit.
+
+P5.3 已在本地提交为 `115a31f`。这一阶段把「反复 fork/wait 100 轮」压测落在 P5.1 的池页外壳上，不新增页面：按 `S`（扫描码 `0x1F`）进入 `AEVUM / P5.3 FORK/WAIT STRESS`，`pool_demo_start(int stress)` 仍是 `poolA/stressA` 创建、模式写入和首次 yield 的唯一入口，`stress ? 6u : 5u` 选择 ring3 mode 6 或 P5.1 mode 5。父进程 `stressA` 每轮 `fork`，子进程 `exit(7)`，父进程 `wait` 并校验返回 PID 等于本轮子 PID、status 等于 7；首轮子 PID 写 `0x401100`，后续 99 轮必须复用同一 PID，全部通过才写 `0x4010C4` 的 `POOL` 魔数并保持存活，按 `S` 停止时 `exit(18)`。页面复用 `0x4010C0` 轮次和 `0x401100/0x401104` 首末 PID，不新增结构体或独立统计：实测 `round 100/100 first 5 -> 5 live 1 state STRESS OK`、`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`。两轮独立 `S` 都得到首末 PID `5 -> 5`、`PHYS 6/255` 与 `proc/AS/KSTK 1/12`，ASID 从 1 变为 102 后继续复用，证明 100 次子进程回收后 PID、地址空间槽、内核栈槽和物理页都回到单父进程基线。
+
+为容纳新增代码，C 目标增加 `-ffunction-sections -fdata-sections`、链接增加 `--gc-sections`，回收约 1.3KB 不可达代码；P5.3 clean 构建 `kernel.bin=64,808`、`boot.bin=512`、`disk.img=1,474,560`，kernel `A39A6BD5301355662B49564E61C6CB58B7603D1F6C9966F66D18EEDBFA946656`，boot `D9A70CE2...`，disk `B1490110...`；`__bss_end=0x9395C`，上限余量 728 字节。
+
+> P5.3 puts the 100-round fork/wait stress behind `S` (`0x1F`) on the P5.1 pool-page shell instead of adding a page. `pool_demo_start(int stress)` remains the only owner of `poolA/stressA` creation, mode selection and the first yield; `stress ? 6u : 5u` selects ring3 mode 6 or P5.1 mode 5. The `stressA` parent forks once per round, the child exits 7, and the parent waits and checks that the returned PID equals the child PID and the status equals 7. The first child PID goes to `0x401100` and all 99 later rounds must reuse it; only then does the parent write the `POOL` magic at `0x4010C4` and stay alive for observation. Pressing `S` again exits the parent with 18. The page reuses the P5.1 user-data slots for the round and first/last PID, with no new struct or second counter: `round 100/100 first 5 -> 5 live 1 state STRESS OK`, `PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`. Two independent `S` runs both report first/last PID `5 -> 5`, `PHYS 6/255`, and `proc/AS/KSTK 1/12`; ASID moves from 1 to 102 and is then reused, proving PID, AS slot, kernel-stack slot and physical pages all return to the single-parent baseline after 100 reaps.
+
+> C objects now use `-ffunction-sections -fdata-sections` and the link uses `--gc-sections`, reclaiming about 1.3 KB of unreachable code; the clean build is 64,808 bytes, 728 bytes below the limit, with `__bss_end=0x9395C`.
+
 内核态边界单独验证：在机械臂主画面按 `K`，kernel task 主动写 `0x00400000`。该地址正好越过 0–4 MB 恒等映射，PDE 1 不存在，CPL0 触发 `#PF`（`ERR=0x2`，P=0、W=1、U=0）。panic 页先 `cli` 阻止递归 fault，再打印现场；此时按 `R`，内核临时把 PDE 1 指向 `0x13000` 页表、PTE 0 指向 `0x14000` 诊断页，执行完出错写指令后通过原异常帧 `iret` 返回，再撤销映射并重新武装 `K`。按 `H` 或遇到非探针内核 fault 仍走停机路径。
 
 > Kernel-mode boundary: pressing `K` makes the kernel task write `0x00400000`, just past the 0–4 MB identity map. With PDE 1 absent, CPL0 raises `#PF` (`ERR=0x2`, P=0, W=1, U=0). The panic page runs `cli` first and renders the saved frame. Pressing `R` installs a temporary PDE 1/PTE 0 mapping (`0x13000` page table, `0x14000` diagnostic page), lets the faulting store execute, returns through the original exception frame with `iret`, then unmaps the page and re-arms `K`. `H`, or any non-probe kernel fault, still halts.
 
 #### 截图
 
+启动、异常与恢复：
+
 | 机械臂主画面 | COW + signal frame + handler + 物理池 |
 | --- | --- |
 | ![机械臂主画面](docs/assets/readme/kernel/kernel-main.png) | ![COW、signal frame 与物理池](docs/assets/readme/kernel/kernel-ring3-sigframe.png) |
+| 内核态 `#PF` 受控探针 | 按 `R` 恢复后的主画面 |
+| ![内核态 #PF 受控探针](docs/assets/readme/kernel/kernel-kernel-pf.png) | ![恢复后的主画面](docs/assets/readme/kernel/kernel-recover-main.png) |
+
+P4 与 P5 观测页：
+
 | P4.2 exec argv/env 验收（PID 8 不变、arg 2/env 2） | P4.3 pipe / fd 继承验收（exec 后写端仍有效、`PIPE OK`） |
+| --- | --- |
 | ![P4.2 exec argv/env 验收](docs/assets/readme/kernel/kernel-p42-exec.png) | ![P4.3 pipe 验收](docs/assets/readme/kernel/kernel-p43-pipe.png) |
 | P4.4 console fd 0/1 验收（`CON:a` / `FD01 OK`） | 父关 0/1 后子进程继承端点，`CLOSE OK` |
 | ![P4.4 console 验收](docs/assets/readme/kernel/kernel-p44-console.png) | `pid 4 child 5 out 14 EXIT 14`；`close0 0 close1 0 r0 -1 w1 -1`；`out 14 uart 14` |
 | P5.1 槽池与动态内核栈（9 个 LIVE 用户进程） | 12 槽表与 `POOL OK` |
 | ![P5.1 槽池验收](docs/assets/readme/kernel/kernel-p51-pool.png) | `task 12/16 proc 9/12 AS 9/12 kstack 9/12`；PID 4..12；KSTACK TOP `0x201000..0x209000` |
-| 内核态 `#PF` 受控探针 | 按 `R` 恢复后的主画面 |
-| ![内核态 #PF 受控探针](docs/assets/readme/kernel/kernel-kernel-pf.png) | ![恢复后的主画面](docs/assets/readme/kernel/kernel-recover-main.png) |
 | P5.2 SLOTS 页（ZOMBIE PID 8，窗口 1-10/12） | P5.2 TREE 页（真实 PPID，`CH 1 W 1`） |
 | ![P5.2 SLOTS](docs/assets/readme/kernel/kernel-p52-slots.png) | ![P5.2 TREE](docs/assets/readme/kernel/kernel-p52-tree.png) |
 | P5.2 ADDRESS 页（6 条 VMA + PTE R/W） | P5.2 FD/SIG 页（fd0/1、SIGFPE、#PF） |
@@ -216,7 +240,10 @@ P5.3 把「反复 fork/wait 100 轮」压测落在 P5.1 的池页外壳上，不
 | P5.2 滚动窗口（`PgDn` 后 3-12/12，选中 ZOMBIE） | 四页共享选中槽；空槽显示 `EMPTY` 与池统计 |
 | ![P5.2 滚动窗口](docs/assets/readme/kernel/kernel-p52-scroll.png) | `SLOT 2..11` 全部出现；`TASK ZOMB ... AS CR3 0011A000` |
 
+P5.3 压测：
+
 | P5.3 第一轮 100 轮 fork/wait（PID 5 -> 5，PHYS 6/255） | P5.3 第二轮（ASID 102，PID/页/栈仍回到基线） |
+| --- | --- |
 | ![P5.3 第一轮压测](docs/assets/readme/kernel/kernel-p53-run1.png) | ![P5.3 第二轮压测](docs/assets/readme/kernel/kernel-p53-run2.png) |
 
 #### 构建与运行
@@ -255,9 +282,11 @@ make debug
 
 - 单核、平坦段、固定 255 页物理池。
 - 没有文件系统、路径 `open`，也没有 ELF 加载；fd 表接匿名 pipe，fd 0/1 已接到全局 console。已有内嵌 flat 镜像 `exec`、`argv/envp`（最多 4 项、每串最多 31 字符）、用户态 handler/signal frame/`sigreturn`，但没有 `kill()`、信号排队或真正阻塞的 mask。`wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠。
-- `TASK_MAX=16`、`PROC_MAX=12`、`AEVUM_AS_MAX=12`、`AEVUM_KSTACK_COUNT=12`；`V` 跑 A/B/C/D/F 五个用户任务，D 做四轮 fork/wait，第三轮 fork 子进程 exec 并传 `argv/envp`，第四轮用 pipe 证明 exec 后 fd 表仍保留；`Y` 跑 root + 8 个 LIVE 子进程并验证两轮槽位/栈复用。
+- 进程上下文按当前边界已经闭环：GPR/iret、FPU/SSE、CR3、内核栈、fork/exec/信号/回收都有实现；通用 x86 的 FS/GS/TLS、AVX/XSAVE 和信号中的 FPU 现场仍未覆盖。
+- `TASK_MAX=16`、`PROC_MAX=12`、`AEVUM_AS_MAX=12`、`AEVUM_KSTACK_COUNT=12`；`V` 跑 A/B/C/D/F 五个用户任务，D 做四轮 fork/wait，第三轮 fork 子进程 exec 并传 `argv/envp`，第四轮用 pipe 证明 exec 后 fd 表仍保留；`Y` 跑 root + 8 个 LIVE 子进程并验证两轮槽位/栈复用；`S` 复用同一池页跑 100 轮 fork/wait，两轮都回到 `proc/AS/KSTK 1/12`。
 - P5.1 的 12 个 4KB 内核栈槽是固定池，不可按需增长，也没有 guard 页；4KB 槽含底部 512B FXSAVE 区，实际可用 3.5KB。
 - P5.2 的 `V` 页固定 4 页；原第 5 页 `DEMO` 因 68,744B 超过 65,536B 上限被删除，旧证据压进 `ADDRESS` 页。P5.3 clean `kernel.bin=64,808`，余量 728B；`--gc-sections` 已回收不可达代码，但新增页面或长文案前仍必须先算镜像体积。
+- P5.3 的 `S` 与 `Y` 共用同一池页外壳并互斥。`S` 停止后再按 `Y` 可以进入，但首次进入明显变慢；目前作为观察项保留，未改代码。
 - `V` 页的页面状态是单个静态实例，四页共享选中槽；`process_slot_space()` / `process_slot_fd_info()` 是只读快照，没有 seqlock，PIT 切换窗口可能看到半更新字段。ZOMBIE 观察依赖 D lane 在 wait 前 yield 262144 次，属于演示时序，不改变 wait 语义。
 - fd/pipe 都是非阻塞语义：空读且仍有写端返回 `-1`，写端全关返回 `0`，满写返回 `-1`；`fork` 复制 fd 表并逐端点 acquire，`exec` 保留，`exit`/信号终止/`reap` 关闭全部 fd。
 - `fork` 已改为 COW：可写用户页共享、写时复制；control 页对用户只读，但内核写停止字前也会先拆分。
@@ -265,7 +294,7 @@ make debug
 - 内核态 `#PF` 已能捕获并显示现场；只有 `K` 的受控探针可按 `R` 临时修复 PDE 1、执行完出错指令并 `iret` 返回，然后撤销映射重新武装。非探针内核 fault 仍是终止性诊断；双重 fault、栈溢出仍未处理。
 - 这是教学与验证内核，不是生产内核。
 
-> Single-core, flat segments and a fixed 255-page physical pool. No filesystem, path-based `open` or ELF loader; the fd table binds console 0/1 and anonymous pipes. An embedded flat-image `exec`, `argv/envp` (up to four entries, 31 characters each), user handlers, signal frames and `sigreturn` exist, but signal queues and blocking masks do not. `wait` polls with `task_yield()` instead of sleeping. `TASK_MAX=16`, `PROC_MAX=12`, twelve address-space slots and twelve 4 KB kernel-stack slots are the hard limits; the stack pool cannot grow and has no guard page. D runs four fork/wait rounds, and `Y` forks eight live children and proves two rounds of PID/AS/stack reuse. Pipe I/O is non-blocking: an empty read with a live writer returns `-1`, a read after all writers close returns `0`, and a full write returns `-1`; `fork` copies and acquires endpoints, `exec` preserves the table, and exit/signal termination/reap close every fd. `fork` is copy-on-write: writable user pages are shared, an already-COW page keeps its COW bit across a second fork, and the faulting writer gets a private copy; the user-read-only control page is split before the kernel writes its stop word. `family.c` still owns only the kernel-task tree; the user-process tree lives in `process.c`. Kernel-mode page faults are captured and rendered with a full register dump. Only the controlled `K` probe can recover: `R` installs a temporary PDE 1, lets the faulting store complete, returns through `iret`, then unmaps. Unexpected kernel faults remain terminal; double faults and stack overflow still halt. This is a teaching and validation kernel, not a production kernel.
+> Single-core, flat segments and a fixed 255-page physical pool. No filesystem, path-based `open` or ELF loader; the fd table binds console 0/1 and anonymous pipes. An embedded flat-image `exec`, `argv/envp` (up to four entries, 31 characters each), user handlers, signal frames and `sigreturn` exist, but signal queues and blocking masks do not. `wait` polls with `task_yield()` instead of sleeping. `TASK_MAX=16`, `PROC_MAX=12`, twelve address-space slots and twelve 4 KB kernel-stack slots are the hard limits; the stack pool cannot grow and has no guard page. D runs four fork/wait rounds, and `Y` forks eight live children and proves two rounds of PID/AS/stack reuse. Pipe I/O is non-blocking: an empty read with a live writer returns `-1`, a read after all writers close returns `0`, and a full write returns `-1`; `fork` copies and acquires endpoints, `exec` preserves the table, and exit/signal termination/reap close every fd. `fork` is copy-on-write: writable user pages are shared, an already-COW page keeps its COW bit across a second fork, and the faulting writer gets a private copy; the user-read-only control page is split before the kernel writes its stop word. `family.c` still owns only the kernel-task tree; the user-process tree lives in `process.c`. Kernel-mode page faults are captured and rendered with a full register dump. Only the controlled `K` probe can recover: `R` installs a temporary PDE 1, lets the faulting store complete, returns through `iret`, then unmaps. Unexpected kernel faults remain terminal; double faults and stack overflow still halt. Process context is closed within this boundary: GPR/iret, FPU/SSE, CR3, the kernel stack, fork/exec/signals and reap are implemented, while general x86 FS/GS/TLS, AVX/XSAVE and FPU state in signal frames are not. `S` and `Y` share one pool-page shell and are mutually exclusive; after stopping `S`, `Y` still enters but is noticeably slower, currently kept as an observation item rather than a code change. This is a teaching and validation kernel, not a production kernel.
 
 ### 2. Fortuna 内核骨架 / Fortuna kernel skeleton
 
