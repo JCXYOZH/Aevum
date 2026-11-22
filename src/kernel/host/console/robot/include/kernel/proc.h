@@ -65,6 +65,7 @@ struct process_info {
     u32 sigchld_count;
     u32 sig_handled;
     u32 sig_mask;
+    u32 image_id;
 };
 
 void process_boot(void);
@@ -76,6 +77,13 @@ struct process *process_create_user(int priority, const char *name,
 
 /* fork 当前 ring3 进程：复制 VMA 用户页、内核帧和 FPU；父返回子 PID，子返回 0。 */
 struct process *process_fork(struct irq_frame *frame);
+
+/*
+ * P4.1 exec：保留当前 PID/PPID/任务槽，新建 AS 并切换到内嵌用户镜像，
+ * 重置用户栈、入口和同步信号状态；成功返回 0，失败保留原 AS 并返回 -1。
+ * 成功后调用方直接归还改写的 irq_frame，新镜像从 0x400000 开始执行。
+ */
+int process_exec_current(struct irq_frame *frame, int image_id);
 
 /* 标记当前进程 ZOMBIE 并记录退出码；调用方随后 task_exit()。 */
 int process_exit_current(u32 code);
@@ -103,6 +111,9 @@ int process_signal_deliver(struct irq_frame *frame, int sig, u32 vector);
 /* sigreturn：从用户栈 signal frame 恢复原 GPR/EIP/CS/EFLAGS/ESP/SS。 */
 int process_sigreturn_current(struct irq_frame *frame);
 
+/* 当前进程已执行 handler 的次数；异常记录在投递时取一次快照，避免 PID 复用后失真。 */
+u32 process_sig_handled_current(void);
+
 /* wait 子进程：P1 用 task_yield() 轮询，找到 ZOMBIE 后写 user status 并回收。 */
 int process_wait(int pid, u32 user_status);
 
@@ -125,5 +136,7 @@ int process_count(void);
 int process_pid_of(struct process *proc);
 struct address_space *process_space(struct process *proc);
 u32 process_read32(int pid, u32 va);
+/* exec 后镜像编号；0 表示初始 ring3 镜像，1 表示 P4.1 exec 镜像。 */
+int process_image_id(int pid);
 
 #endif

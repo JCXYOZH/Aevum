@@ -350,6 +350,11 @@ struct process *task_process_of(struct task_struct *task)
     return task ? task->proc : 0;
 }
 
+void task_set_space(struct task_struct *task, struct address_space *space)
+{
+    if (task && space) task->space = space;
+}
+
 char task_state_char(int state)
 {
     switch (state) {

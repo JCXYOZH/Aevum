@@ -14,7 +14,8 @@ struct address_space;
  * 五个 ring3 用户进程共用同一段虚拟代码。
  * userA/userB 正常计数并做 brk/heap peek/poke；userC 计数后探测内核页，
  * 验证 #PF 故障隔离；userD 先 fork 出 userE 验证正常 exit(7)+COW，
- * 再 fork 第二个 E 触发 #DE，验证 wait 的 SIGFPE 状态；userF 写 guard 页。
+ * 再 fork 第二个 E 触发 #DE，验证 wait 的 SIGFPE 状态；最后 fork 第三个 E
+ * 执行 exec(1)，验证 PID 不变、镜像切换和 wait(10)；userF 写 guard 页。
  */
 const char *user_demo_start(void);
 void user_demo_stop(void);
@@ -40,6 +41,12 @@ u32 user_demo_sig_child(int lane);
 u32 user_demo_sig_status(int lane);
 u32 user_demo_sig_ret(int lane);
 u32 user_demo_sig_ok(int lane);
+
+/* P4.1：D 的第三个子进程 exec(1)，新镜像 exit(10)，父 wait 后写 EXEC。 */
+u32 user_demo_exec_child(int lane);
+u32 user_demo_exec_status(int lane);
+u32 user_demo_exec_ret(int lane);
+u32 user_demo_exec_ok(int lane);
 
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);

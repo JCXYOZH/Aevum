@@ -10,6 +10,8 @@
 
 extern u8 user_program_start[];
 extern u8 user_sigreturn_trampoline[];
+extern u8 user_exec_start[];
+extern u8 user_exec_end[];
 
 struct proc_sigaction {
     u32 handler;
@@ -45,6 +47,7 @@ struct process {
     struct proc_sigaction sigactions[PROC_NSIG];
     u32 sig_mask;
     u32 sig_handled;
+    u32 image_id;
 };
 
 static struct process procs[PROC_MAX];
@@ -54,17 +57,10 @@ static const u32 stack_tops[PROC_STACK_COUNT] = {
 };
 static u32 stack_map;
 
-static void proc_zero(struct process *p)
+static void proc_reset_signals(struct process *p)
 {
     int i;
-    p->pid = 0;
-    p->ppid = 0;
-    p->state = PROC_FREE;
-    p->exit_code = 0;
-    for (i = 0; i <= PROC_NAME_MAX; i++) p->comm[i] = 0;
-    p->stack_top = 0;
-    p->space = 0;
-    p->task = 0;
+
     p->pending = 0;
     p->last_sig = 0;
     p->term_sig = 0;
@@ -77,6 +73,21 @@ static void proc_zero(struct process *p)
         p->sigactions[i].mask = 0;
         p->sigactions[i].flags = 0;
     }
+}
+
+static void proc_zero(struct process *p)
+{
+    int i;
+    p->pid = 0;
+    p->ppid = 0;
+    p->state = PROC_FREE;
+    p->exit_code = 0;
+    for (i = 0; i <= PROC_NAME_MAX; i++) p->comm[i] = 0;
+    p->stack_top = 0;
+    p->space = 0;
+    p->task = 0;
+    p->image_id = 0;
+    proc_reset_signals(p);
 }
 
 void process_boot(void)
@@ -289,6 +300,15 @@ int process_sigreturn_current(struct irq_frame *frame)
     frame->err = 0;
     self->sig_mask = sf.old_mask;
     return 0;
+}
+
+u32 process_sig_handled_current(void)
+{
+    struct process *self;
+
+    if (!task_current() || !task_process_current()) return 0;
+    self = task_process_current();
+    return self->sig_handled;
 }
 
 static void proc_notify_parent(struct process *self)
@@ -520,6 +540,7 @@ struct process *process_fork(struct irq_frame *frame)
     /* 信号动作与 mask 随 fork 继承；pending 不继承。 */
     for (i = 0; i < PROC_NSIG; i++) p->sigactions[i] = parent->sigactions[i];
     p->sig_mask = parent->sig_mask;
+    p->image_id = parent->image_id;
 
     rc = task_fork_user(pid, "userE", frame, stack_top, space, p, &task);
     if (rc) {
@@ -531,6 +552,68 @@ struct process *process_fork(struct irq_frame *frame)
     }
     p->task = task;
     return p;
+}
+
+static const u8 *proc_exec_image(int image_id, u32 *size)
+{
+    if (!size) return 0;
+    if (image_id == 1) {
+        *size = (u32)((u32)user_exec_end - (u32)user_exec_start);
+        return user_exec_start;
+    }
+    return 0;
+}
+
+/*
+ * P4.1 exec：PID/PPID/任务槽保持不变，用户地址空间整体换新。
+ * 新 AS 先分配成功再切 CR3，旧 AS 在任务空间指针更新后才释放；
+ * 分配失败时旧 AS、旧镜像和 frame 都不动，系统调用返回 -1。
+ */
+int process_exec_current(struct irq_frame *frame, int image_id)
+{
+    struct process *self;
+    struct address_space *old_space;
+    struct address_space *new_space;
+    const u8 *code;
+    u32 code_size;
+    u32 flags;
+
+    if (!frame || (frame->cs & 3u) != 3u) return -1;
+    if (!task_current() || !task_process_current()) return -1;
+    self = task_process_current();
+    if (self->state != PROC_LIVE || !self->space) return -1;
+
+    code = proc_exec_image(image_id, &code_size);
+    if (!code || !code_size) return -1;
+
+    new_space = address_space_create_user(code, code_size);
+    if (!new_space) return -1;
+
+    old_space = self->space;
+    __asm__ __volatile__("pushf; pop %0; cli" : "=r"(flags) : : "memory");
+    address_space_switch(new_space);
+    task_set_space(task_current(), new_space);
+    self->space = new_space;
+    self->image_id = image_id;
+    proc_reset_signals(self);
+    self->exit_code = 0;
+
+    frame->eax = 0;
+    frame->ebx = 0;
+    frame->ecx = 0;
+    frame->edx = 0;
+    frame->esi = 0;
+    frame->edi = 0;
+    frame->ebp = 0;
+    frame->eip = AEVUM_USER_CODE_VA;
+    frame->cs = 0x1B;
+    frame->eflags = 0x202;
+    frame->user_esp = AEVUM_USER_STACK_TOP;
+    frame->ss = 0x23;
+
+    address_space_release(old_space);
+    __asm__ __volatile__("push %0; popf" : : "r"(flags) : "memory", "cc");
+    return 0;
 }
 
 int process_exit_current(u32 code)
@@ -722,6 +805,7 @@ int process_snapshot(int slot, struct process_info *out)
     out->sigchld_count = p->sigchld_count;
     out->sig_handled = p->sig_handled;
     out->sig_mask = p->sig_mask;
+    out->image_id = p->image_id;
 
     has_task = task_snapshot_pid(p->pid, &info);
     if (has_task) {
@@ -762,4 +846,18 @@ u32 process_read32(int pid, u32 va)
     struct process *p = proc_find_active(pid);
     if (!p || !p->space) return 0;
     return address_space_user_read32(p->space, va);
+}
+
+int process_image_id(int pid)
+{
+    int i;
+    int image = 0;
+
+    if (pid <= 0) return 0;
+    for (i = 0; i < PROC_MAX; i++) {
+        if (procs[i].state != PROC_FREE && procs[i].pid == pid &&
+            (int)procs[i].image_id > image)
+            image = (int)procs[i].image_id;
+    }
+    return image;
 }

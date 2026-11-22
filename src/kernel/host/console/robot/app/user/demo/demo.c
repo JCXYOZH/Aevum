@@ -169,6 +169,30 @@ u32 user_demo_sig_ok(int lane)
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x4Cu);
 }
 
+u32 user_demo_exec_child(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x58u);
+}
+
+u32 user_demo_exec_status(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x5Cu);
+}
+
+u32 user_demo_exec_ret(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x64u);
+}
+
+u32 user_demo_exec_ok(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x60u);
+}
+
 u32 user_demo_brk(int lane)
 {
     if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;

@@ -20,6 +20,7 @@
 | TSS | `arch/x86/cpu/tss/tss.c` | `tss.esp0/ss0`、TSS 描述符、`ltr` | `tss_init/tss_set_esp0` |
 | 系统调用 | `arch/x86/cpu/syscall/syscall.c` | `int 0x80` 入口、调用计数、最后 CS | `syscall_init/dispatch/count_total/last_cs` |
 | 用户程序 | `user/ring3/ring3.asm` | 被复制进每个用户地址空间的 ring3 代码；同一段代码按 `mode` 进入正常/故障路径 | `user_program_start/end` |
+| 用户 exec 镜像 | `user/exec/exec.asm` | P4.1 的第二个 flat 镜像，固定链接在 `0x400000`；写 PID/`EXEC` 标记后 `exit(10)` | `user_exec_start/end` |
 | 用户演示 | `app/user/demo/demo.c` | A/B/C/D/F 的创建、停止、地址空间和 PID；D 的子进程由 fork 产生 | `user_demo_start/stop/alive/error/pid/space/...` |
 | 用户渲染 | `app/user/render/render.c` | 全屏 ring3 页；只读地址空间快照 | `user_render_frame` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
@@ -160,7 +161,7 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 
 ### 3.7 进程模型、地址空间与 ring3
 
-P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从“固定 4 页 + 固定 AS 槽”推进到“物理页池 + VMA + brk + guard + copyin/copyout”；P2.2 把 `fork` 从 eager copy 改成 COW，并给物理页加引用计数；P3.1 接通用户同步异常的默认终止、信号 pending/SIGCHLD 和 wait status 编码。职责仍是三分：
+P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从“固定 4 页 + 固定 AS 槽”推进到“物理页池 + VMA + brk + guard + copyin/copyout”；P2.2 把 `fork` 从 eager copy 改成 COW，并给物理页加引用计数；P3.1 接通用户同步异常的默认终止、信号 pending/SIGCHLD 和 wait status 编码；P3.2 增加用户 handler、signal frame 与 `sigreturn`；P4.1 增加内嵌 flat 镜像 `exec`。职责仍是三分：
 
 - `kernel/proc/process.c`：用户 PCB、PID/PPID、`PROC_LIVE/ZOMBIE/DEAD`、退出码、信号字段、`fork/wait/reap/cleanup` 的唯一写者。它只持有 `address_space *` 和 `task_struct *`，不直接改 PTE，也不切上下文。
 - `kernel/task/task.c`：任务槽、内核栈、调度和 FPU 的唯一 owner；`task_struct.proc` 只是对 PCB 的反向引用，不反向拥有 PID。
@@ -171,15 +172,20 @@ P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从�
 地址空间和用户进程：
 
 - 内核空间固定使用 `0x10000` 页目录，`0..4MB` 恒等映射保持 supervisor-only；VGA BIOS 影子 ROM `0xC0000..0xFFFFF` 不放进页池。
-- 用户物理页池 `0x100000..0x1FEFFF` 共 255 页，位图分配，每页一个引用计数；避开内核 `0x80000..0x8D400`、VGA/BIOS 和 `0x200000` 起的任务栈。
+- 用户物理页池 `0x100000..0x1FEFFF` 共 255 页，位图分配，每页一个引用计数；避开内核 `0x80000..0x8DC00`、VGA/BIOS 和 `0x200000` 起的任务栈。
 - 每个用户空间有独立 PD/PT；用户 VA 固定为 code `0x400000`（RX）、data `0x401000`（RW）、guard `0x402000`（VMA 无 PTE）、stack `0x403000`（RW，栈顶 `0x404000`）、control `0x404000`（R）、heap `0x405000..0x410000`（RW）。`fork` 只分配新 PD/PT，可写用户页共享为 COW，control 页因内核要写停止字也走 COW。
 - 6 个 VMA 是 `code/data/guard/stack/control/heap`；`address_space_user_range_ok()` 按 VMA 权限 + PTE present/user/RW 双重校验，`handle_user_fault()` 只对 heap VMA 内、brk 以下的缺页零填并 `iret` 重试，guard/RO/非法地址一律返回 0。
 - 用户内核栈顶为 A `0x201000`、B `0x202000`、C `0x203000`、D `0x204000`、E `0x205000`、F `0x206000`；`AEVUM_TASK_STACK_MAX=0x206000`。每栈底部 512 字节仍是 FXSAVE 区。
 - `task_create_user_with_pid()` 构造 14 槽中断帧：`cs=0x1B`、`ss=0x23`、`eflags=0x202`，并使用进程先保留的 PID。`task_fork_user()` 复制父进程的 ring3 中断帧、通用寄存器、用户栈和 FPU；子进程帧 `eax=0`，父进程系统调用返回时拿到子 PID。
-- `V` 演示创建 A/B/C/D/F 五个 lane：A/B 递增各自的 `0x401000` 计数器，并做 `brk(0x406000)`、`poke(0x405800,"HELP")`、`peek`、越界 `brk(0x500000)`、`poke(guard)`；C 用 `mode=1` 数到 5000 后写 `0xB8000`；D 用 `mode=2` 做两轮 fork/wait：第一轮子进程写 `CHLD` 后 `exit(7)`，第二轮子进程先 `sigaction(SIGFPE,handler,0)` 再 `1/0` 触发 `#DE`，handler 写 `0x401054` 计数，`sigreturn` 回到 `0x40021D`，最后 `exit(9)`；F 用 `mode=3` 写 guard `0x402000`。
+- `V` 演示创建 A/B/C/D/F 五个 lane：A/B 递增各自的 `0x401000` 计数器，并做 `brk(0x406000)`、`poke(0x405800,"HELP")`、`peek`、越界 `brk(0x500000)`、`poke(guard)`；C 用 `mode=1` 数到 5000 后写 `0xB8000`；D 用 `mode=2` 做三轮 fork/wait：第一轮子进程写 `CHLD` 后 `exit(7)`，第二轮子进程先 `sigaction(SIGFPE,handler,0)` 再 `1/0` 触发 `#DE`，handler 写 `0x401054` 计数，`sigreturn` 回到 `0x40021D`，最后 `exit(9)`；第三轮子进程 `eax=13, ebx=1` 调 `exec(1)`，新镜像写 `EXEC` 后 `exit(10)`；F 用 `mode=3` 写 guard `0x402000`。
 - P3.2 实测 D 的 PID 7、E1/E2 都复用 PID 8、PPID 7；第一轮 `fork 8 / wait 8 / status 7`，第二轮 `fork2 8 / wait 8 / st 00000009`，V 页显示 `HAND OK`，信号面板 `#DE eip 0040021B sig 8 SIGFPE hdl 1 chld 2 pend 0`。C/F 由 `process_terminate_current(SIGSEGV)` 终止，PCB 行显示 `SIG11`；E2 正常 `EXIT 9`，不再显示 `SIG8`。A/B 继续计数。
-- A/B/C/D/F 由 render 内核任务通过 `process_create_user()` 创建，E1/E2 是用户父进程 `fork` 创建的进程。P3.2 证明 VMA、brk、guard、copyin/copyout、物理页回收、COW、同步异常默认终止、用户 handler、signal frame 和 `sigreturn`；不证明 `exec`、`kill`、完整 POSIX 信号队列/阻塞管理。
-- `int 0x80` 是 DPL3 中断门：`eax=2` yield、`3` exit(ebx=code)、`4` wait(`ebx=pid,ecx=user status`)、`5` getpid、`6` fork、`7` getppid、`8` brk(ebx=new_brk)、`9` peek(ebx=user ptr)、`10` poke(ebx=user ptr,ecx=value)、`11` sigaction(`ebx=sig,ecx=handler,edx=mask`)、`12` sigreturn。`wait` 仍用 `task_yield()` 轮询；`copyout` 写 status，不直接解引用用户指针。
+- A/B/C/D/F 由 render 内核任务通过 `process_create_user()` 创建，E1/E2/E3 是用户父进程 `fork` 创建的进程。P3.2 证明 VMA、brk、guard、copyin/copyout、物理页回收、COW、同步异常默认终止、用户 handler、signal frame 和 `sigreturn`；P4.1 在此基础上补 `exec`，仍不证明 ELF、`argv/env`、`kill`、完整 POSIX 信号队列/阻塞管理。
+- P4.1 `exec` 的唯一入口是 `process_exec_current(frame,image_id)`，系统调用号为 `eax=13`，当前只接受 `image_id==1`。它先校验 CPL3/LIVE/有 AS，再用 `address_space_create_user(user_exec_start,size)` 分配新 AS；`cli` 下切 CR3，调用 `task_set_space()` 更新任务持有的 AS 指针和 `self->space`，然后重置 `sigactions`/`sig_mask`/`pending`/`sig_handled`，把 iret 帧改成 `eax..ebp=0`、`eip=0x400000`、`cs=0x1B`、`eflags=0x202`、`user_esp=0x404000`、`ss=0x23`，最后释放旧 AS。新 AS 分配失败时不动旧 AS 和帧，返回 -1。
+- `struct process` 新增 `image_id`：初始 ring3 镜像为 0，`exec` 镜像为 1；`fork` 继承父进程 `image_id`，`reap` 把它保留在墓碑里。`process_image_id(pid)` 在同一 PID 有多个墓碑时返回最大代次，避免 PID 8 的 P3.2 墓碑遮住 exec 子进程。
+- `user/exec/exec.asm` 与 `user/ring3/ring3.asm` 都固定链接到 `0x400000`，由内核 `Makefile` 分别汇编成 `build/user/exec.o` 和 ring3 目标；运行时不读盘，镜像内容直接进内核。exec 镜像先 `getpid` 写 `0x401000`、写 `EXEC` 魔数到 `0x401004`、记录 `esp` 到 `0x401008`，再 yield 300 次给 V 页观察窗口，最后 `exit(10)`。
+- `AEVUM_AS_MAX` 从 6 提到 8：exec 期间旧 AS、新 AS 和 fork 子 AS 必须同时存在，7 个槽会在第三轮 fork+exec 时耗尽。
+- `exception_info` 增加 `handled` 快照：`exception_dispatch()` 在 `process_signal_deliver()` 成功后记录当时的 handler 计数，V 页不再按 PID 扫描进程槽。PID 8 被 exec 子进程复用时，P3.2 的 `sig_handled` 墓碑可能已被 `proc_alloc_slot()` 清掉，按 PID 重查会显示 `hdl 0`。
+- `int 0x80` 是 DPL3 中断门：`eax=2` yield、`3` exit(ebx=code)、`4` wait(`ebx=pid,ecx=user status`)、`5` getpid、`6` fork、`7` getppid、`8` brk(ebx=new_brk)、`9` peek(ebx=user ptr)、`10` poke(ebx=user ptr,ecx=value)、`11` sigaction(`ebx=sig,ecx=handler,edx=mask`)、`12` sigreturn、`13` exec(`ebx=image_id`)。`wait` 仍用 `task_yield()` 轮询；`copyout` 写 status，不直接解引用用户指针。
 - 同步异常入口在 `loader.asm`：`#DE/#BP/#UD` 没有 CPU error code，stub 先补 `err=0` 再压 vector；`#GP` 由 CPU 压 error code，stub 只压 vector；四条路径共用 `exception_common`，帧布局与 `struct irq_frame` 对齐。
 - `exception_dispatch()` 的 CPL3 路径记录 `pid/cs/vector/sig/eip/err/cr2/comm` 后先调用 `process_signal_deliver()`：有用户 handler 时写 signal frame 并返回同一 `irq_frame`；没有 handler 或 frame 写入失败才调用 `process_terminate_current(sig)`。`#DE -> SIGFPE`、`#BP -> SIGTRAP`、`#UD -> SIGILL`、`#GP -> SIGSEGV`。CPL0 的非 #PF 同步异常没有 fixup，进入 `AEVUM / KERNEL TRAP` 后停机。
 - 信号状态：`pending` 用 `1u << (sig-1)`；子进程正常退出或被信号终止都会给 LIVE 父进程置 SIGCHLD。`process_wait()` 成功回收 ZOMBIE 后清父进程 SIGCHLD pending；`process_reap()` 保留 `term_sig/exit_code/comm/sig_handled` 墓碑，V 页仍能显示已回收进程的死因和 handler 次数。
@@ -187,19 +193,19 @@ P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从�
 - wait status：正常退出 `exit(7)` 仍返回 `7`；默认信号终止返回 `0x80000000 | sig`，`#DE` 为 `0x80000008`。`PROC_WAIT_EXIT_CODE()` 取低 8 位，`PROC_WAIT_SIGNAL()` 取低 7 位信号号。
 - PID 复用：`process_fork()` 优先复用刚退出的直接子 PID（`task_pid_reserve_hint()`），避免第二轮 D 子进程覆盖 F 的墓碑；V 页按 `comm[4]=='C'/'F'` 判 FAULT/GUARD，不按旧 lane PID 猜。
 - 调度记账：`task_schedule_irq()` 对 `int 0x40` 的 `SCHED_YIELD` 也按 `WEIGHT_QUANTUM / weight` 记 vruntime，防止 `wait` 轮询的父进程一直保持最低 vruntime 而饿死其他 lane。
-- `V` 页直接读 `process_snapshot()`：列为 `PID PPID ST EXIT CR3 AS PGS/C BRK COMM`；`EXIT` 列对 `term_sig` 显示 `SIG11/SIG8`，正常退出显示 `EXIT 9`。另有 VMA 摘要、heap/guard 结果、COW 统计、`PHYS PAGES used/total`、`int 0x80 traps`、fork/wait 摘要、#PF 面板、`#DE` 面板（含 `hdl` handler 计数）和 `SIGCHLD n pend` 行。
+- `V` 页直接读 `process_snapshot()`：列为 `PID PPID ST EXIT CR3 AS PGS/C BRK COMM`；`EXIT` 列对 `term_sig` 显示 `SIG11/SIG8`，正常退出显示 `EXIT 9/10`，exec 子进程的 `image_id=1` 会保留到墓碑。另有 VMA 摘要、heap/guard 结果、COW 统计、`PHYS PAGES used/total`、`int 0x80 traps`、fork/wait 摘要、#PF 面板、`#DE` 面板（含 `hdl` handler 计数）、`P4 exec` 面板和 `SIGCHLD n pend` 行。
 - `page_fault_dispatch()` 的用户路径先 `address_space_handle_user_fault()`；修好 heap 缺页就返回原帧重试，否则 `process_terminate_current(SIGSEGV)` 再 `task_exit()`，所以 C/F 的 `EXIT` 是 `SIG11`。内核态受控探针条件不变：`probe_armed`、`CR2=0x00400000`、CPL0、`ERR.P=0`、`CR3=内核 PD`。
 - 调度器 `task_reap()` 只自动回收没有 `proc` 的内核任务，并调用 `process_reap_orphans()` 回收没有活父进程的用户 ZOMBIE；`process_reap()` 统一释放任务槽、地址空间、PID 和内核栈，保留 DEAD 墓碑供 V 页显示。
 
-边界：32 位、平坦段、单核、255 页固定物理池的最小实现。没有 ELF 加载、`exec`、fd/pipe，也没有文件系统和多核。信号已有每进程 handler 表、signal frame、`sigreturn` 和 SIGCHLD pending，但没有 `kill()`、信号排队或真正阻塞的 mask；`#DE` 只解码 `F6/F7`，其他同步异常直接 `ret` 会重试 faulting 指令。`fork` 是 COW，但 `wait` 是 yield 轮询；`family` 和 `process` 是两套树；非探针内核 trap 仍终止性停机。
+边界：32 位、平坦段、单核、255 页固定物理池的最小实现。没有 ELF 加载、`argv/env`、fd/pipe，也没有文件系统和多核；`exec` 只接受内嵌 flat 镜像 1，不是通用装载器。信号已有每进程 handler 表、signal frame、`sigreturn` 和 SIGCHLD pending，但没有 `kill()`、信号排队或真正阻塞的 mask；`#DE` 只解码 `F6/F7`，其他同步异常直接 `ret` 会重试 faulting 指令。`fork` 是 COW，但 `wait` 是 yield 轮询；`family` 和 `process` 是两套树；非探针内核 trap 仍终止性停机。
 
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
 | `0x80000` | 内核镜像起点 |
-| `0x80000..0x8C000` | boot 一次 LBA 读取的 96 扇区（48KB）窗口；当前 `kernel.bin` 44,392 字节 |
-| `0x8AD60..0x8D3C0` | `.bss`，由 loader 的 `rep stosb` 清零；尾部 `0x8C000..0x8D3C0` 高于加载窗口 |
+| `0x80000..0x8C000` | boot 一次 LBA 读取的 96 扇区（48KB）窗口；当前 `kernel.bin` 45,544 字节 |
+| `0x8B200..0x8D9C0` | `.bss`，由 loader 的 `rep stosb` 清零；尾部 `0x8C000..0x8D9C0` 高于加载窗口 |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
 | `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -229,10 +235,10 @@ P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从�
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 用一次 LBA 读 96 个扇区到 `0x80000`，所以 `kernel.bin` 必须不超过 49,152 字节。
-当前构建 44,392 字节，BSS 结束于 `0x8D3C0`；镜像余量 4,760 字节。BSS 尾部 `0x8C000..0x8D3C0` 不在加载窗口内，loader 按链接符号清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
+当前构建 45,544 字节，BSS 结束于 `0x8D9C0`；镜像余量 3,608 字节。BSS 尾部 `0x8C000..0x8D9C0` 不在加载窗口内，loader 按链接符号清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时同步 `kernel.ld` 与 `config/memory.h` 的 `AEVUM_KERNEL_END`，并确认 BSS 不越过内核主线程栈底 `0xC000`。`AEVUM_TASK_STACK_MIN=0x8000`，
-`AEVUM_TASK_STACK_MAX=0x206000`，`AEVUM_AS_MAX=6`，`PROC_MAX=8`，`TASK_MAX=10`，`AEVUM_PHYS_POOL_BASE=0x100000`，`AEVUM_PHYS_POOL_END=0x1FF000`。
+`AEVUM_TASK_STACK_MAX=0x206000`，`AEVUM_AS_MAX=8`，`PROC_MAX=8`，`TASK_MAX=10`，`AEVUM_PHYS_POOL_BASE=0x100000`，`AEVUM_PHYS_POOL_END=0x1FF000`。
 
 ## 五、验收
 

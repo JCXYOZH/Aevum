@@ -7,6 +7,8 @@
 ; 0x401038 COW 魔数（父写 PAPA，子写 CHLD），0x40103C 父读回值，
 ; 0x401040 COW 验收字，0x401044 信号子进程 pid，0x401048 信号 wait status，
 ; 0x40104C SIG 验收字，0x401050 信号 wait 返回值，0x401054 handler 调用计数；
+; 0x401058 exec 子进程 pid，0x40105C exec wait status，0x401060 exec 验收字，
+; 0x401064 exec wait 返回值，0x401068 exec 只执行一次标记；
 ; 0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
 ; stack 0x403000，control 0x404000，heap 0x405000 起。
@@ -87,7 +89,7 @@ user_program_start:
 
 .fork_mode:
     cmp dword [0x401008], 0
-    jne .yield              ; 两轮 fork/wait 只做一次，之后继续计数
+    jne .yield              ; D 的 fork/wait 流程只进入一次，之后继续计数
 
     ; 第一轮：fork 前先写父侧魔数；fork 后父子共享同一数据物理页。
     mov dword [0x401038], 0x50415041   ; "PAPA"
@@ -142,7 +144,44 @@ user_program_start:
     mov eax, [0x401038]
     cmp eax, 0x50415041
     jne .cow_bad
+
+    ; 第三轮：fork 子进程执行 exec(1)。新镜像写 EXEC 后 yield 若干次，
+    ; 最后 exit(10)；父进程 wait 到 10 后写 EXEC 验收字。
+    cmp dword [0x401068], 0
+    jne .yield
+    mov dword [0x401068], 1
+    mov eax, 6              ; syscall: fork
+    int 0x80
+    test eax, eax
+    jz .child_exec
+
+    mov ebx, eax
+    mov [0x401058], ebx             ; exec child pid
+    mov ecx, 0x40105C
+    mov eax, 4              ; syscall: wait
+    int 0x80
+    mov [0x401064], eax
+    cmp dword [0x40105C], 10
+    jne .exec_bad
+    mov dword [0x401060], 0x45584543 ; "EXEC"
     jmp .yield
+
+.exec_bad:
+    mov dword [0x401060], 0x424144   ; "BAD"
+    jmp .yield
+
+.child_exec:
+    mov eax, 13             ; syscall: exec(image 1)
+    mov ebx, 1
+    int 0x80
+    test eax, eax
+    jnz .child_exec_bad
+    jmp $                   ; exec 成功不会返回
+
+.child_exec_bad:
+    mov eax, 3              ; syscall: exit(11)
+    mov ebx, 11
+    int 0x80
 
 .cow_bad:
     mov dword [0x401040], 0x424144   ; "BAD"

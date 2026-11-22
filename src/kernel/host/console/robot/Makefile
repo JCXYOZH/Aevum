@@ -46,7 +46,7 @@ SRCS = \
 	app/user/demo/demo.c \
 	app/user/render/render.c
 
-OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o)) build/user/ring3.o
+OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o)) build/user/ring3.o build/user/exec.o
 IMG     = os.img
 
 GENERATED = boot.bin $(IMG) disk.img kernel.bin kernel.elf $(BUILD)
@@ -69,6 +69,10 @@ $(BUILD)/loader.o: loader.asm
 $(BUILD)/user/ring3.o: user/ring3/ring3.asm
 	@mkdir -p $(BUILD)/user
 	$(AS) $(ASFLAGS_ELF32) user/ring3/ring3.asm -o $@
+
+$(BUILD)/user/exec.o: user/exec/exec.asm
+	@mkdir -p $(BUILD)/user
+	$(AS) $(ASFLAGS_ELF32) user/exec/exec.asm -o $@
 
 kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 	$(LD) -m elf_i386 -T $(LDSCRIPT) $(BUILD)/loader.o $(OBJS) -o kernel.elf

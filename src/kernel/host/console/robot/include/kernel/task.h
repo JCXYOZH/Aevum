@@ -62,6 +62,11 @@ int task_current_pid(void);
 int task_pid_of(struct task_struct *task);
 struct process *task_process_current(void);
 struct process *task_process_of(struct task_struct *task);
+/*
+ * exec 更换地址空间时，任务持有的 space 指针必须一起换。
+ * 只允许 process 模块调用；CR3 切换由 address_space 负责。
+ */
+void task_set_space(struct task_struct *task, struct address_space *space);
 int task_pid_used(void);
 int task_pid_capacity(void);
 struct task_struct *task_current(void);

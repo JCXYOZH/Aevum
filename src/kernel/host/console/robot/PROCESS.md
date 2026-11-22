@@ -2,9 +2,9 @@
 
 本文只讨论 ring3 用户进程，不把 `control/render/idle` 这三个内核任务当成完整进程。
 
-P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题。
+P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题；P4.1 加入内嵌 flat 镜像 `exec`，保留 PID/任务槽，替换用户 AS、入口、栈和信号状态。
 
-## 一、P3.1/P3.2 现在的实现
+## 一、P3.1/P3.2/P4.1 现在的实现
 
 | 能力 | 当前实现 | 位置 |
 | --- | --- | --- |
@@ -18,6 +18,9 @@ P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/re
 | handler 继承 | `fork` 复制父进程 `sigactions` 与 `sig_mask`，不复制 pending；`sig_handled` 从 0 开始 | `process_fork()` |
 | 信号常量 | `SIGILL 4 / SIGTRAP 5 / SIGFPE 8 / SIGSEGV 11 / SIGCHLD 17` | `include/kernel/proc.h` |
 | P3.2 系统调用 | `eax=11 sigaction(sig,handler,mask)`、`eax=12 sigreturn()`；复用 `int80_stub` 返回同一 `irq_frame` 的路径 | `arch/x86/cpu/syscall/syscall.c` |
+| P4.1 exec | `eax=13 exec(image_id)`；`process_exec_current()` 建新 AS、切 CR3、更新任务 AS 指针、重置帧和信号状态、释放旧 AS；只接受镜像 1 | `kernel/proc/process.c`、`syscall.c` |
+| P4.1 镜像代次 | `struct process.image_id`：ring3=0、exec=1；`fork` 继承，`reap` 保留墓碑；`process_image_id(pid)` 取同 PID 最大代次 | `include/kernel/proc.h`、`process.c` |
+| P4.1 任务 AS 指针 | `task_set_space()` 是 exec 更新任务持有 AS 的唯一入口；CR3 切换仍归 `address_space` | `kernel/task/task.c` |
 | wait status | 正常退出保留原退出码（`exit(7) -> 7`）；信号终止为 `0x80000000` 按位或 `sig`（`#DE -> 0x80000008`） | `PROC_WAIT_STATUS()` |
 | PCB 信号字段 | `pending/last_sig/term_sig/sig_count/sigchld_count`；`process_info` 同步暴露 | `kernel/proc/process.c` |
 | pending 位图 | `pending |= 1u << (sig - 1)`；只记录 1..31 号信号，不在这里改进程状态 | `proc_signal_pending()` |
@@ -26,9 +29,9 @@ P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/re
 | 用户态 #PF | 不可恢复的 guard/RO/非法 #PF 改走 `process_terminate_current(SIGSEGV)`；C/F 显示 `SIG11` 而不是 `EXIT 142` | `page_fault.c` |
 | PID 复用 | `process_fork()` 优先复用刚退出的直接子 PID，保留另一条 lane 的墓碑；V 页按 `comm` 判 FAULT/GUARD，不按旧 PID 猜 | `proc_reusable_child_pid()`、`task_pid_reserve_hint()` |
 | 调度记账 | `int 0x40` 的 `SCHED_YIELD` 也按 `WEIGHT_QUANTUM / weight` 记 vruntime，避免 `wait` 轮询饿死其他任务 | `task_schedule_irq()` |
-| V 页 | 标题 `AEVUM / COW FORK + SIGNALS + PHYS`；PCB 表 `EXIT` 显示 `SIG11/SIG8`，新增 #DE、SIGCHLD、D 第二轮 fork/wait 面板 | `app/user/render/render.c` |
+| V 页 | 标题 `AEVUM / COW FORK + SIGNALS + PHYS`；PCB 表 `EXIT` 显示 `SIG11/SIG8` 或 `EXIT 9/10`；新增 #DE、SIGCHLD、D 第二轮 fork/wait 和 `P4 exec` 面板 | `app/user/render/render.c` |
 
-槽位预算：`TASK_MAX=10`（3 内核 + 6 用户 + 1 余量）、`PROC_MAX=8`、`AEVUM_AS_MAX=6`、`PID_MAX=31`。
+槽位预算：`TASK_MAX=10`（3 内核 + 6 用户 + 1 余量）、`PROC_MAX=8`、`AEVUM_AS_MAX=8`（exec 期间旧 AS、新 AS、fork 子 AS 同时存在，6 槽不够）、`PID_MAX=31`。
 用户内核栈顶 A `0x201000`、B `0x202000`、C `0x203000`、D `0x204000`、E `0x205000`、F `0x206000`。
 物理池仍为 `0x100000..0x1FEFFF` 的 255 页位图池。
 
@@ -119,14 +122,55 @@ QEMU 实测（本构建 `kernel.bin` 44,392 字节，BSS 结束 `0x8D3C0`，96 �
 - `PHYS PAGES used/total` 为 `26/255`，没有因为 signal frame 或 handler 泄漏页；`int 0x80 traps` 和 `last CS 0000001B` 正常。
 - 再按 `V` 停止后回机械臂；没有 ZOMBIE/PID/页泄漏。
 
-## 五、后续阶段
+## 五、P4.1 用户态 exec
 
-### P4：exec 与每进程资源
+### 语义
 
-- `exec` 用内嵌用户镜像或最小 ELF loader 替换当前 AS；保留 PID，重置用户栈和入口。
-- `argv/env` 复制到用户栈；`exit` 关闭 fd。
-- 每进程 fd 表 + console read/write + pipe；`pipe` 连接父子进程。
-- 验收：`exec` 后 `/proc` 页 PID 不变、镜像变化；pipe 两端可读写；`wait` 仍能回收。
+`exec` 只替换当前进程的用户地址空间和用户镜像，PID、PPID、`task_struct` 槽、内核栈、调度权重和父进程关系都不变。它不创建新进程，也不走 `fork` 的复制路径。
+
+- 入口：`process_exec_current(struct irq_frame *frame, uint32_t image_id)`，系统调用为 `eax=13`、`ebx=image_id`。P4.1 只接受 `image_id==1`；其他值返回 `0xFFFFFFFF`。
+- 前置校验：当前必须是 CPL3、`PROC_LIVE`、持有非空 `space`，且 `current_task` 与 `self` 一致。
+- 新 AS：`address_space_create_user(user_exec_start, user_exec_end - user_exec_start)` 从 255 页池分配 PD/PT/code/data/stack/control；失败时旧 AS、旧帧和 `image_id` 都不动，返回 -1。
+- 切换：`cli` 下 `address_space_switch(new_space)` 写 CR3，`task_set_space(current_task, new_space)` 更新任务持有的 AS 指针，`self->space = new_space`；旧 AS 在所有引用切走后 `address_space_release()`。
+- 信号状态：`proc_reset_signals(self)` 清空 `sigactions[32]`、`sig_mask`、`pending` 和 `sig_handled`。exec 后 handler 表不继承。
+- iret 帧：`eax/ebx/ecx/edx/esi/edi/ebp=0`，`eip=0x400000`、`cs=0x1B`、`eflags=0x202`、`user_esp=0x404000`、`ss=0x23`；`fs/ds/es` 保持用户数据段。
+- 镜像代次：`image_id=1` 写入 PCB；`fork` 让子进程继承父进程 `image_id`；`reap` 保留该字段作为墓碑。`process_image_id(pid)` 遍历同 PID 的所有槽取最大代次，避免 PID 复用后旧墓碑覆盖新镜像。
+
+### 镜像
+
+`user/exec/exec.asm` 是第二个固定链接在 `0x400000` 的 flat 镜像，由 `Makefile` 用 `nasm -f elf32` 汇编成 `build/user/exec.o` 并链进内核；运行时不读盘。镜像开头：
+
+1. `eax=5 getpid`，把 PID 写到 `0x401000`。
+2. 把 `0x45584543`（`"EXEC"`）写到 `0x401004`。
+3. 把当前 `esp` 写到 `0x401008`，证明入口栈已重置。
+4. `eax=2 yield` 300 次，给 V 页留观察窗口。
+5. `eax=3 exit(10)`。
+
+D 第三轮由父进程 `fork` 出子进程；子进程 `eax=13, ebx=1` 调 `exec`，失败则 `exit(11)`。父进程把 child pid、wait status、wait 返回值和 `EXEC/BAD` 验收字写到 D 页。
+
+### 验收
+
+QEMU 实测（P4.1 构建 `kernel.bin` 45,544 字节，BSS `0x8B200..0x8D9C0`，96 扇区 / 49,152 字节窗口）：
+
+- `D fork2 8 wait 8 st 00000009 HAND OK` 仍成立，说明 exec 没有破坏前两轮状态。
+- `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK`：子进程 PID 8 不变；exec 镜像 `image_id=1`；退出码 10 被父进程 `wait` 回收。
+- PCB `userE PID 8 PPID 7 EXIT 10 AS 0 PGS 0/0`：wait 回收后 AS 已释放；`image_id=1` 保留在墓碑。
+- 信号面板 `#DE 1 pid 8 eip 004002A6 sig 8 SIGFPE hdl 1 chld 3 pend 00000000`：第三轮 fork/exec 后 P3.2 的 handler 计数仍可见。`exception_info.handled` 在投递成功时快照，避免 PID 8 旧墓碑被清掉后按 PID 重查变成 0。
+- COW `forks 3 shared 12 live 2 breaks 6 last AS4 old 0011B000 -> 0011C000`；`PHYS PAGES 20/255`；`int 0x80 traps` 持续增长，`last CS 0000001B`。
+- 再按 `V` 停止后回机械臂；没有 ZOMBIE/PID/页泄漏。
+
+## 六、后续阶段
+
+### P4.2：argv/env 与 exec 参数
+
+- `exec(image_id, argv, envp)` 把字符串复制到新用户栈，按 SysV 布局写 `argc/argv/envp`。
+- 保留 PID、AS 替换和信号重置语义；失败时仍保证旧 AS 可用。
+
+### P4.3：fd 与 pipe
+
+- 每进程 fd 表；`exit` 关闭 fd；console read/write。
+- `pipe` 连接父子进程；`wait` 仍能回收。
+- 验收：`exec` 后 PID 不变、镜像变化；pipe 两端可读写；`wait` 仍能回收。
 
 ### P5：规模与可观测性
 
@@ -134,10 +178,10 @@ QEMU 实测（本构建 `kernel.bin` 44,392 字节，BSS 结束 `0x8D3C0`，96 �
 - `V` 页分页/滚动，进程树、ZOMBIE、waiters、VMA、信号、fd 全部可观察。
 - 压测：反复 fork/wait 100 轮，无 PID/页/栈泄漏。
 
-## 六、P3.1/P3.2 边界与已知取舍
+## 七、P3.1/P3.2/P4.1 边界与已知取舍
 
 - `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；本轮给 yield 补了 vruntime 记账，并给 fork 子任务 `vruntime=0` 的起跑保证，避免父进程轮询时把子任务或其他 lane 饿死。
-- P3.2 已有用户 handler、signal frame 和 `sigreturn`；仍没有 `kill()`、信号排队、真正阻塞的 mask、`SA_SIGINFO`/`SA_RESTART` 等 POSIX 语义。
+- P3.2 已有用户 handler、signal frame 和 `sigreturn`；P4.1 已有内嵌 flat 镜像 `exec`、PID/任务槽保留、AS 替换和信号重置。仍没有 ELF loader、`argv/env`、`kill()`、信号排队、真正阻塞的 mask、`SA_SIGINFO`/`SA_RESTART` 等 POSIX 语义。
 - `sig_mask` 只随 frame 保存/恢复，不阻止信号投递；handler 执行期间同一信号仍可能再次进入。
 - `#DE` 解码只覆盖 `F6/F7` 的 `div/idiv` group，且只处理可读的用户代码字节；其他同步异常把原 EIP 存入 frame，handler 若直接 `ret` 会回到 faulting 指令，需要自行修改 frame 的 `eip`。
 - `SIG_IGN` 只对可安全前移的 `#DE` 和保存 EIP 已指向下一条的 `#BP` 生效；`#UD/#GP` 的忽略会退回默认终止，避免死循环。
@@ -145,10 +189,11 @@ QEMU 实测（本构建 `kernel.bin` 44,392 字节，BSS 结束 `0x8D3C0`，96 �
 - COW 拆分后如果旧页引用已降到 1，当前实现仍会复制一次；这是为了保持“拆分函数只做复制”的最小语义，后续可按引用计数改成原地恢复 RW。
 - 第二次 fork 的 COW 继承修复只保证已有 COW 页不退化；没有改变 code 页只读共享、data/stack/heap/control 走 COW 的边界。
 - `fork` 的 code 页只读共享，不参与 COW；data/stack/heap 和 control 走 COW。
-- A/B/C/D/F 由 render 内核任务通过 `process_create_user()` 创建；E1/E2 是用户父进程 `fork` 创建的进程。
+- A/B/C/D/F 由 render 内核任务通过 `process_create_user()` 创建；E1/E2/E3 是用户父进程 `fork` 创建的进程。
 - `family.c` 只维护内核任务树，用户进程树由 `process.c` 维护；`G` 页和 `V` 页是两套树。
-- 没有 `exec`、fd/pipe、argv/env；用户堆已有 brk 和按需零填，但不是完整 `mmap`。
+- `exec` 只接受内嵌镜像 1，不读盘、不解析 ELF；没有 `argv/env`、fd/pipe，用户堆已有 brk 和按需零填，但不是完整 `mmap`。
+- exec 新 AS 分配失败时返回 -1，旧 AS、旧帧和 `image_id` 都不动；成功后旧 AS 已释放，不再保留旧页。`exec` 不改变 PID/PPID/父进程 notify 关系。
 - 非探针内核 trap 仍是终止性诊断；用户态 `#PF` 与 `#DE/#UD/#GP` 已分发，但 CPL0 的 `#DE/#UD/#GP` 没有 fixup，直接停机。
 - VGA BIOS 影子 ROM 位于 `0xC0000..0xFFFFF`，物理池必须避开；当前池选在 `0x100000..0x1FEFFF`，不与内核、VGA、任务栈重叠。
 
-P3.1 的目标是让“同步异常 -> 致命信号 -> ZOMBIE 墓碑 -> 父进程 wait status + SIGCHLD”这条默认动作链路先成立；P3.2 的目标是让用户 handler 接管同步异常并在 `sigreturn` 后继续原指令。两条链路当前都已成立并有 QEMU 证据。
+P3.1 的目标是让“同步异常 -> 致命信号 -> ZOMBIE 墓碑 -> 父进程 wait status + SIGCHLD”这条默认动作链路先成立；P3.2 的目标是让用户 handler 接管同步异常并在 `sigreturn` 后继续原指令；P4.1 的目标是在不换 PID/任务槽的前提下，把当前进程从 ring3 镜像切到 exec 镜像并释放旧 AS。三条链路当前都已成立并有 QEMU 证据。

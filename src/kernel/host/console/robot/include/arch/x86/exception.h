@@ -23,6 +23,7 @@ struct exception_info {
     u32 eip;
     u32 err;
     u32 cr2;
+    u32 handled;
     char comm[16];
 };
 

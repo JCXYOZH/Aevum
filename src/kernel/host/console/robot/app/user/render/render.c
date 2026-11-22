@@ -179,12 +179,9 @@ static void draw_signal(int row)
 {
     struct exception_info x;
     struct process_info p = {0};
-    struct process_info c = {0};
     int have = exception_last(&x);
     int i;
     int have_d = 0;
-    int have_c = 0;
-    u32 child;
 
     vga_text(2, row, "SIG", C_GRAY);
     if (!have) {
@@ -192,17 +189,12 @@ static void draw_signal(int row)
         return;
     }
 
-    child = user_demo_sig_child(USER_DEMO_FORK_LANE);
     for (i = 0; i < process_count(); i++) {
         struct process_info cur;
         if (!process_snapshot(i, &cur)) continue;
         if (cur.pid == user_demo_pid(USER_DEMO_FORK_LANE)) {
             p = cur;
             have_d = 1;
-        }
-        if (child && cur.pid == (int)child) {
-            c = cur;
-            have_c = 1;
         }
     }
 
@@ -216,8 +208,7 @@ static void draw_signal(int row)
     put_dec(37, row, x.sig, C_MAG);
     vga_text(41, row, exception_signal_name(x.sig), C_MAG);
     vga_text(50, row, "hdl", C_GRAY);
-    if (have_c)
-        put_dec(54, row, c.sig_handled, C_GREEN);
+    put_dec(54, row, x.handled, x.handled ? C_GREEN : C_YELLOW);
     vga_text(57, row, "chld", C_GRAY);
     if (have_d) {
         put_dec(62, row, p.sigchld_count, C_CYAN);
@@ -254,6 +245,7 @@ void user_render_frame(void)
     u32 child, wait_pid, status, wait_ret, magic;
     u32 readback, cow_ok;
     u32 sig_child, sig_status, sig_ret, sig_ok;
+    u32 exec_child, exec_status, exec_ret, exec_ok, exec_img;
 
     vga_clear(C_BG);
     vga_fill(0, 0, 79, 0, ' ', C_HDR);
@@ -292,6 +284,11 @@ void user_render_frame(void)
     sig_status = user_demo_sig_status(USER_DEMO_FORK_LANE);
     sig_ret = user_demo_sig_ret(USER_DEMO_FORK_LANE);
     sig_ok = user_demo_sig_ok(USER_DEMO_FORK_LANE);
+    exec_child = user_demo_exec_child(USER_DEMO_FORK_LANE);
+    exec_status = user_demo_exec_status(USER_DEMO_FORK_LANE);
+    exec_ret = user_demo_exec_ret(USER_DEMO_FORK_LANE);
+    exec_ok = user_demo_exec_ok(USER_DEMO_FORK_LANE);
+    exec_img = exec_child ? (u32)process_image_id((int)exec_child) : 0;
 
     vga_text(2, 14, "userD fork", C_GRAY);
     put_dec(12, 14, child, C_WHITE);
@@ -342,6 +339,18 @@ void user_render_frame(void)
         vga_text(32, 22, "HAND ..", C_YELLOW);
     vga_text(40, 22, "handler + sigreturn, child exit 9", C_GRAY);
 
-    vga_text(2, 23, "C #PF/F guard -> SIGSEGV; D #DE -> handler -> sigreturn.", C_GRAY);
+    vga_text(2, 23, "P4 exec", C_GRAY);
+    put_dec(10, 23, exec_child, C_WHITE);
+    vga_text(14, 23, "wait", C_GRAY);
+    put_dec(19, 23, exec_ret, C_WHITE);
+    vga_text(23, 23, "st", C_GRAY);
+    put_hex(26, 23, exec_status, C_WHITE);
+    vga_text(37, 23, "img", C_GRAY);
+    put_dec(41, 23, exec_img, exec_img ? C_GREEN : C_YELLOW);
+    if (exec_ok == 0x45584543u)
+        vga_text(45, 23, "EXEC OK", C_GREEN);
+    else
+        vga_text(45, 23, "EXEC ..", C_YELLOW);
+
     vga_text(2, 24, "V: stop all user processes; second V starts a fresh AS/PID round.", C_YELLOW);
 }

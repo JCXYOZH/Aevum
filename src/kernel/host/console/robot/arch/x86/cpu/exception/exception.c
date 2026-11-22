@@ -144,6 +144,7 @@ u32 exception_dispatch(struct irq_frame *frame)
     last_trap.eip = frame->eip;
     last_trap.err = frame->err;
     last_trap.cr2 = read_cr2();
+    last_trap.handled = 0;
     if (task_snapshot_pid((int)last_trap.pid, &info)) {
         int i;
         for (i = 0; i < TASK_NAME_MAX && info.comm[i]; i++)
@@ -157,8 +158,10 @@ u32 exception_dispatch(struct irq_frame *frame)
     if ((frame->cs & 3u) != 3u)
         kernel_trap_panic(frame);
 
-    if (process_signal_deliver(frame, (int)sig, vector))
+    if (process_signal_deliver(frame, (int)sig, vector)) {
+        last_trap.handled = process_sig_handled_current();
         return (u32)frame;
+    }
 
     if (process_terminate_current((int)sig) == 0) {
         task_exit();
