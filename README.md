@@ -122,15 +122,15 @@ http://127.0.0.1:8766/interface/web/world.html
 
 ### 1. 32 位裸机内核 / Bare-metal kernel
 
-这个内核不依赖 libc，也不跑在桌面操作系统里。BIOS 引导扇区把 58 个扇区读到 `0x80000`，进入保护模式、建立 GDT、IDT、TSS 和 0–4 MB 恒等分页，然后运行内核任务。
+这个内核不依赖 libc，也不跑在桌面操作系统里。BIOS 引导扇区把 60 个扇区读到 `0x80000`，进入保护模式、建立 GDT、IDT、TSS 和 0–4 MB 恒等分页，然后运行内核任务。
 
-> This kernel does not use libc and does not run on top of a desktop OS. The BIOS boot sector loads 58 sectors to `0x80000`, enters protected mode, builds GDT/IDT/TSS and identity-maps 0–4 MB, then starts kernel tasks.
+> This kernel does not use libc and does not run on top of a desktop OS. The BIOS boot sector loads 60 sectors to `0x80000`, enters protected mode, builds GDT/IDT/TSS and identity-maps 0–4 MB, then starts kernel tasks.
 
 #### 已实现
 
 | 模块 | 实现 |
 | --- | --- |
-| 启动 | `boot.asm` 一次 LBA 读 58 个扇区到 `0x80000`；`loader.asm` 清 BSS、加载 6 项 GDT、启用 FPU/SSE |
+| 启动 | `boot.asm` 一次 LBA 读 60 个扇区到 `0x80000`；`loader.asm` 清 BSS、加载 6 项 GDT、启用 FPU/SSE |
 | 中断 | 256 项 IDT；PIT 100Hz IRQ0；8259A PIC 重映射；`int 0x40` 软件调度门；`int 0x80` DPL3 系统调用门 |
 | 任务 | 6 个固定任务槽；独立内核栈；统一中断帧；`task_yield/block/wake/exit`；优先级加权 `vruntime` 调度 |
 | 上下文 | `fxsave/fxrstor` 保存 FPU/SSE；每个任务栈底预留 512 字节 FXSAVE 区 |
@@ -138,36 +138,38 @@ http://127.0.0.1:8766/interface/web/world.html
 | ring3 | 3 个用户地址空间；同一段用户代码映射到相同虚拟地址 `0x400000`，物理代码页和数据页不同 |
 | 系统调用 | 用户进程通过 `int 0x80` 让出或退出；内核记录调用次数和真实 `CS=0x1B` |
 | 故障隔离 | IDT 第 14 项 `#PF`；记录 `CR2/ERR/EIP/CS/PID`；用户态故障只 `task_exit()` 当前进程，内核态故障进入 panic 页 |
-| 内核态故障页 | `K` 键从 kernel task 写 `0x00400000`（PDE 1 未映射）触发 CPL0 `#PF`；页面显示 PID/任务名、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count 与 kernel image 范围；入口 `cli` 后停机 |
+| 内核态故障页 | `K` 键从 kernel task 写 `0x00400000`（PDE 1 未映射）触发 CPL0 `#PF`；页面显示 PID/任务名、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count、recoveries 与 kernel image 范围；`R` 临时建立 PDE 1、执行完出错写并 `iret` 返回，`H` 停机 |
 
 #### 当前验收数据
 
 | 项 | 当前值 |
 | --- | --- |
-| `kernel.bin` | 29,416 字节，小于 58 扇区上限 29,696 字节 |
+| `kernel.bin` | 30,280 字节，小于 60 扇区上限 30,720 字节 |
 | 加载基址 | `0x80000` |
-| BSS | `0x87300..0x88328` |
+| BSS | `0x87660..0x88688` |
 | 常驻任务 | `control` / `render` / `idle` |
 | 用户任务 | `userA` / `userB` / `userC`；`CR3=0x40000 / 0x46000 / 0x4C000` |
 | 用户虚拟地址 | code `0x400000`、data `0x401000`、stack `0x402000`、control `0x403000` |
 | 故障样例 | `#PF pid 6 eip 00400029 cr2 000B8000 err 00000007` |
 | 故障结果 | `userC` 被单独回收，`userA/userB` 的 CR3 和计数器继续运行 |
-| 内核态故障样例 | `#PF task 2 render cs 00000008 cpl 0 eip 00081868 cr2 00400000 err 00000002 cr3 00010000` |
-| 内核态故障结果 | `P=0 W/R=1 U/S=0 RSVD=0 I/D=0`；页面进入 `RING0 FAULT - DIAGNOSTIC HALT`，不再调度任何任务 |
+| 内核态故障样例 | `#PF task 2 render cs 00000008 cpl 0 eip 00081ABC cr2 00400000 err 00000002 cr3 00010000` |
+| 内核态故障结果 | `P=0 W/R=1 U/S=0 RSVD=0 I/D=0`；页面进入 `RING0 FAULT - CONTROLLED PROBE`，按 `R` 后 fault 执行成功并返回主画面；再按 `K` 时 `fault count` 递增、`recoveries` 保留 |
 
 `userC` 在数据页写入 `mode=1`，计数到 20000 后故意写内核显存 `0xB8000`。CPU 触发 `#PF`，内核读取 `CR2=0xB8000`、`ERR=0x7`（P/W/U）、`EIP=0x400029`，只回收当前用户任务。机械臂主画面和 V 页的 q 值保持正常，说明故障路径没有破坏调度器和 FPU 状态。
 
 > `userC` sets `mode=1` in its private data page, counts to 20,000, then writes the kernel VGA buffer at `0xB8000`. The CPU raises `#PF`; the kernel records `CR2/ERR/EIP`, exits only that user task, and leaves `userA/userB` running. The arm page and joint values remain valid after the fault.
 
-内核态边界单独验证：在机械臂主画面按 `K`，kernel task 主动写 `0x00400000`。该地址正好越过 0–4 MB 恒等映射，PDE 1 不存在，CPL0 触发 `#PF`（`ERR=0x2`，P=0、W=1、U=0）。panic 页先 `cli` 阻止递归 fault，再打印现场并停机；它不会调用 `task_exit()`，也不会把 fault 伪装成可恢复错误。
+内核态边界单独验证：在机械臂主画面按 `K`，kernel task 主动写 `0x00400000`。该地址正好越过 0–4 MB 恒等映射，PDE 1 不存在，CPL0 触发 `#PF`（`ERR=0x2`，P=0、W=1、U=0）。panic 页先 `cli` 阻止递归 fault，再打印现场；此时按 `R`，内核临时把 PDE 1 指向 `0x13000` 页表、PTE 0 指向 `0x14000` 诊断页，执行完出错写指令后通过原异常帧 `iret` 返回，再撤销映射并重新武装 `K`。按 `H` 或遇到非探针内核 fault 仍走停机路径。
 
-> Kernel-mode boundary: pressing `K` makes the kernel task write `0x00400000`, just past the 0–4 MB identity map. With PDE 1 absent, CPL0 raises `#PF` (`ERR=0x2`, P=0, W=1, U=0). The panic page runs `cli` first, prints the saved frame, and halts; it never calls `task_exit()`.
+> Kernel-mode boundary: pressing `K` makes the kernel task write `0x00400000`, just past the 0–4 MB identity map. With PDE 1 absent, CPL0 raises `#PF` (`ERR=0x2`, P=0, W=1, U=0). The panic page runs `cli` first and renders the saved frame. Pressing `R` installs a temporary PDE 1/PTE 0 mapping (`0x13000` page table, `0x14000` diagnostic page), lets the faulting store execute, returns through the original exception frame with `iret`, then unmaps the page and re-arms `K`. `H`, or any non-probe kernel fault, still halts.
 
 #### 截图
 
-| 机械臂主画面 | ring3 + 用户态 `#PF` | 内核态 `#PF` panic 页 |
-| --- | --- | --- |
-| ![机械臂主画面](docs/assets/readme/kernel/kernel-main.png) | ![ring3 与 #PF 故障隔离](docs/assets/readme/kernel/kernel-ring3-pf.png) | ![内核态 #PF panic](docs/assets/readme/kernel/kernel-kernel-pf.png) |
+| 机械臂主画面 | ring3 + 用户态 `#PF` |
+| --- | --- |
+| ![机械臂主画面](docs/assets/readme/kernel/kernel-main.png) | ![ring3 与 #PF 故障隔离](docs/assets/readme/kernel/kernel-ring3-pf.png) |
+| 内核态 `#PF` 受控探针 | 按 `R` 恢复后的主画面 |
+| ![内核态 #PF 受控探针](docs/assets/readme/kernel/kernel-kernel-pf.png) | ![恢复后的主画面](docs/assets/readme/kernel/kernel-recover-main.png) |
 
 #### 构建与运行
 
@@ -207,10 +209,10 @@ make debug
 - 没有 ELF 加载、按需分页、COW、完整 `wait/reap`。
 - `TASK_MAX=6`；`V` 运行三个用户任务时不能再创建 probe/tree/duel。
 - 地址空间槽只有 3 个。
-- 内核态 `#PF` 已能捕获并显示现场，但仍是终止性诊断：`K` 触发后 `cli` 停机，只有重启 QEMU 才能继续；双重 fault、栈溢出仍是停机路径。
+- 内核态 `#PF` 已能捕获并显示现场；只有 `K` 的受控探针可按 `R` 临时修复 PDE 1、执行完出错指令并 `iret` 返回，然后撤销映射重新武装。非探针内核 fault 仍是终止性诊断；双重 fault、栈溢出仍未处理。
 - 这是教学与验证内核，不是生产内核。
 
-> Single-core, flat segments and a fixed physical page pool. No ELF loading, demand paging, COW or full wait/reap. `TASK_MAX=6` and three address-space slots are hard limits. Kernel-mode page faults are captured and rendered with a full register dump, but remain terminal: `K` enters the panic page, runs `cli` and halts until QEMU restarts. Double faults and stack overflow still halt. This is a teaching and validation kernel, not a production kernel.
+> Single-core, flat segments and a fixed physical page pool. No ELF loading, demand paging, COW or full wait/reap. `TASK_MAX=6` and three address-space slots are hard limits. Kernel-mode page faults are captured and rendered with a full register dump. Only the controlled `K` probe can recover: `R` installs a temporary PDE 1, lets the faulting store complete, returns through `iret`, then unmaps. Unexpected kernel faults remain terminal; double faults and stack overflow still halt. This is a teaching and validation kernel, not a production kernel.
 
 ### 2. Fortuna 内核骨架 / Fortuna kernel skeleton
 

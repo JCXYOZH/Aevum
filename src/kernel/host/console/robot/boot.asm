@@ -6,7 +6,7 @@ start:
     mov ax, 0
     mov ds, ax
     mov es, ax
-    ; 58 个扇区一次 LBA 读到 0x80000。内核不再落在 BIOS 低内存暂存区，
+    ; 60 个扇区一次 LBA 读到 0x80000。内核不再落在 BIOS 低内存暂存区，
     ; 也不会覆盖正在执行的 boot 代码。
     mov ah, 0x42
     mov si, dap
@@ -73,7 +73,7 @@ disk_error:
 align 4
 dap:
     db 0x10, 0
-    dw 58
+    dw 60
     dw 0x0000
     dw 0x8000
     dq 1

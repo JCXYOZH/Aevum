@@ -22,7 +22,7 @@ u32 page_fault_dispatch(struct irq_frame *frame);
 int page_fault_last(struct page_fault_info *out);
 u32 page_fault_count(void);
 
-/* 受控 CPL0 故障探针：写 4MB 未映射边界，验证内核态 panic 页后停机。 */
-void page_fault_probe(void) __attribute__((noreturn));
+/* 受控 CPL0 故障探针：写 4MB 未映射边界；panic 页按 R 修复并返回。 */
+void page_fault_probe(void);
 
 #endif

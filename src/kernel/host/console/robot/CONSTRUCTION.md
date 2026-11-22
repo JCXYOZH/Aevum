@@ -164,19 +164,20 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 - 调度器在 `next != prev` 时调用 `address_space_switch(next->space)`；同一地址空间不重复写 CR3。切到用户任务前还要 `tss_set_esp0(next->stack_top)`，ring3 中断/系统调用才能落到该任务的内核栈。
 - `int 0x80` 是 DPL3 中断门：`eax=2` 调 `task_yield()`，`eax=3` 调 `task_exit()`；`syscall_dispatch` 记录调用次数和真实 `frame->cs`，页面显示 `CS=0x1B` 作为 ring3 证据。
 - `V` 演示创建 `userA/userB/userC`：三段代码都复制到 `0x400000`，但物理代码页分别为 `0x42000/0x48000/0x4E000`，数据页 `0x43000/0x49000/0x4F000`；三个任务各自递增同一个虚拟地址 `0x401000` 的私有计数器，页面上的数值不同就是地址空间隔离的直接证据。
-- `page_fault_init()` 在 `interrupt_init()` / `syscall_init()` 之后安装 IDT 第 14 项：`flags=0x8E`、DPL0，CPU 已压入 error code，`page_fault_stub` 只用 `SAVE_EXC 0x0E` 补 vector。`page_fault_dispatch()` 读取 `CR2`，记录 `pid/cs/eip/err/cr2/comm`；`frame->cs & 3 == 3` 时只调用 `task_exit()` 回收当前用户任务，内核态故障进入专用 panic 页：入口 `cli`，打印 PID/comm、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count 和 kernel image 范围，然后停机；`page_fault_probe()` 从 kernel task 写 `0x00400000` 触发同一路径。
+- `page_fault_init()` 在 `interrupt_init()` / `syscall_init()` 之后安装 IDT 第 14 项：`flags=0x8E`、DPL0，CPU 已压入 error code，`page_fault_stub` 只用 `SAVE_EXC 0x0E` 补 vector。它同时清零 `0x13000` 恢复页表、清 PDE 1、复位探针状态。`page_fault_dispatch()` 读取 `CR2`，记录 `pid/cs/eip/err/cr2/comm`；`frame->cs & 3 == 3` 时只调用 `task_exit()` 回收当前用户任务。内核态故障进入专用页：入口 `cli`，打印 PID/comm、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count、recoveries 和 kernel image 范围。若命中受控探针条件（`probe_armed`、`CR2=0x00400000`、CPL0、`ERR.P=0`、`CR3=内核 PD`），页面提供 `R`：`pd[1]=0x13000|P|RW`、`pt[0]=0x14000|P|RW`、`invlpg`，执行完出错写后按原异常帧 `iret`；返回后 `page_fault_probe()` 撤销 PTE/PDE 并重新武装。非探针内核 fault 只提供 `H` 停机。
+- `page_fault_probe()` 从 kernel task 写 `0x00400000`。第一次触发后若按 `R`，CPU 真正完成这次写；第二次按 `K` 会重新触发，`fault count` 递增而 `recoveries` 保留，证明探针不是一次性假页面。
 - `userC` 的数据页偏移 4 是 `mode`；用户代码读到 `mode=1` 后计数到 20000，执行 `mov [0xB8000], 0xDEADBEEF`。该地址不在用户页表，CPU 触发 `#PF`：`CR2=0xB8000`、`ERR=0x7`（P/W/U）、`EIP=0x400029`；A/B 的 CR3 和计数器继续增长，`page_fault_count()` 变为 1。
 - 调度器在 ZOMBIE 上先 `fpu_save(prev->fpu_state)` 再 `task_reap()`，并用 `prev_reaped` 跳过已清槽的 `prev->switches++` 与第二次 `fpu_save`；否则 `#PF` kill 路径会经 `task_zero()` 把 `prev->fpu_state` 变成 0 地址，破坏控制状态。
 
-边界：这是 32 位、平坦段、单核、固定物理页池的最小实现；没有 ELF 加载、按需分页、COW、完整 `wait/reap`，也没有文件系统和多核。`userA/userB/userC` 的任务槽与内核栈是编译期固定的，地址空间槽只有 3 个。`TASK_MAX=6` 正好容纳 control/render/idle + A/B/C，V 运行期间不能再创建 probe/tree/duel。`#PF` 对用户态越界只 kill 当前任务；对内核态越界已能进入 panic 页并显示完整现场，但仍是终止性诊断，不做恢复。双重 fault、栈溢出仍未单独处理。
+边界：这是 32 位、平坦段、单核、固定物理页池的最小实现；没有 ELF 加载、按需分页、COW、完整 `wait/reap`，也没有文件系统和多核。`userA/userB/userC` 的任务槽与内核栈是编译期固定的，地址空间槽只有 3 个。`TASK_MAX=6` 正好容纳 control/render/idle + A/B/C，V 运行期间不能再创建 probe/tree/duel。`#PF` 对用户态越界只 kill 当前任务；内核对 `K` 探针可按 `R` 恢复并重新武装，但非探针内核 fault 仍是终止性诊断。双重 fault、栈溢出仍未单独处理。
 
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
 | `0x80000` | 内核镜像起点 |
-| `0x80000..0x872E8` | boot 一次 LBA 读取的 58 扇区（29KB）窗口；当前 `kernel.bin` 29,416 字节 |
-| `0x87300..0x88328` | `.bss`，由 loader 的 `rep stosb` 清零 |
+| `0x80000..0x87648` | boot 一次 LBA 读取的 60 扇区（30KB）窗口；当前 `kernel.bin` 30,280 字节 |
+| `0x87660..0x88688` | `.bss`，由 loader 的 `rep stosb` 清零 |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
 | `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -188,9 +189,11 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 | `0x201000..0x201FFF` | `userB` 内核栈（栈顶 `0x202000`） |
 | `0x202000..0x202FFF` | `userC` 内核栈（栈顶 `0x203000`） |
 | `0x10000 / 0x11000` | 内核页目录 / 页表（0–4MB 恒等映射） |
+| `0x13000..0x13FFF` | `K` 探针恢复用的 PDE 1 页表 |
+| `0x14000..0x14FFF` | `K` 探针恢复用的诊断页（承接 `0x00400000` 写） |
 | `0x12000..0x127FF` | 256 项 IDT（0x20 IRQ0、0x40 软件调度门、0x80 ring3 系统调用门） |
-| `0x86EE0..0x86F0F` | 内核 GDT（6 项） |
-| `0x87980..0x879E7` | TSS（`esp0/ss0`） |
+| `0x875E0..0x8760F` | 内核 GDT（6 项） |
+| `0x88080..0x880E7` | TSS（`esp0/ss0`） |
 | `0x40000..0x45FFF` | 用户 A 的 PD/PT/代码/数据/栈/控制页 |
 | `0x46000..0x4BFFF` | 用户 B 的 PD/PT/代码/数据/栈/控制页 |
 | `0x4C000..0x51FFF` | 用户 C 的 PD/PT/代码/数据/栈/控制页 |
@@ -198,8 +201,8 @@ PIT 通道 0 以 100Hz 触发 IRQ0，`task_schedule_irq()` 在 IRQ0 和 `int 0x4
 | `0x30000` | 串口帧快照 |
 | `0xB8000` | VGA 文本显存 |
 
-`boot.asm` 用一次 LBA 读 58 个扇区到 `0x80000`，所以 `kernel.bin` 必须不超过 29,696 字节。
-当前构建 29,416 字节，BSS 结束于 `0x88328`；镜像余量 280 字节，BSS 距 `0x9000` 的 `render` 栈还有很大空间。
+`boot.asm` 用一次 LBA 读 60 个扇区到 `0x80000`，所以 `kernel.bin` 必须不超过 30,720 字节。
+当前构建 30,280 字节，BSS 结束于 `0x88688`；镜像余量 440 字节，BSS 距 `0x9000` 的 `render` 栈还有很大空间。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时确认 BSS 不越过 `0x9000`。`AEVUM_TASK_STACK_MIN=0x8000`，
 `AEVUM_TASK_STACK_MAX=0x203000`，`AEVUM_AS_MAX=3`。
@@ -229,4 +232,4 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - 按 `V`（扫描码 `0x2F`）进入全屏 `AEVUM / RING3 PROCESS CONTEXT`：`userA` / `userB` / `userC` 的 `CPL 3` 与 `CR3 0x40000 / 0x46000 / 0x4C000` 同时出现；三者都映射虚拟 `0x400000` 和 `0x401000`，但代码/数据物理页不同，私有计数器各自增长；`int 0x80` 行显示真实 `last CS 0x1B`。
 - `userC` 的 `mode=1` 计数到 20000 后写 `0xB8000`，页面出现 `#PF pid 6 eip 00400029 cr2 000B8000 err 00000007`、`P=1 W=1 U=1`、`KILLED 1`，C 行变 `FAULT`；A/B 的计数器继续增长，证明故障只杀死当前用户进程。
 - 再按 `V` 停止 A/B 并回机械臂；机械臂 q 值保持正常，证明启动/调度/FPU 状态没有被 `#PF` 路径破坏。
-- 在机械臂主画面按 `K`（扫描码 `0x25`）：页面切到 `AEVUM / KERNEL PAGE FAULT`，显示 `task 2 render`、`CS=0x0008 / CPL 0`、`EIP`、`CR2=0x00400000`、`ERR=0x00000002`、`CR3=0x00010000`、`P=0 W/R=1 U/S=0 RSVD=0 I/D=0`、`fault count 1` 和 `kernel image 0x00080000..0x00088328`；页面不再更新，QEMU 需重启。
+- 在机械臂主画面按 `K`（扫描码 `0x25`）：页面切到 `AEVUM / KERNEL PAGE FAULT`，显示 `task 2 render`、`CS=0x0008 / CPL 0`、`EIP=0x00081ABC`、`CR2=0x00400000`、`ERR=0x00000002`、`CR3=0x00010000`、`P=0 W/R=1 U/S=0 RSVD=0 I/D=0`、`fault count 1`、`recoveries 0` 和 `kernel image 0x00080000..0x00088688`；按 `R` 后回到机械臂，q 值继续变化，再按 `K` 时 `fault count 2`、`recoveries 1`。按 `H` 才停机。
