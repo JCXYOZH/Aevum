@@ -12,7 +12,7 @@
 
 ## 能做什么
 
-- **引导**：`boot.asm` 用 LBA 扩展一次读 56 个扇区到 `0x80000`，建立 GDT、0~4MB 恒等页表，跳到内核入口；`loader.asm` 加载内核自己的 6 项 GDT（ring0/ring3 代码、数据、TSS 槽），清 BSS，再 `ltr 0x28` 启用 TSS。内核完全避开 BIOS 低内存暂存区与 `0x7C00` boot 代码。
+- **引导**：`boot.asm` 用 LBA 扩展一次读 58 个扇区到 `0x80000`，建立 GDT、0~4MB 恒等页表，跳到内核入口；`loader.asm` 加载内核自己的 6 项 GDT（ring0/ring3 代码、数据、TSS 槽），清 BSS，再 `ltr 0x28` 启用 TSS。内核完全避开 BIOS 低内存暂存区与 `0x7C00` boot 代码。
 - **多任务**：`task.c` 管理 6 个任务槽，三个常驻任务按 READY/RUNNING 状态轮转；PIT 通道 0 以 100Hz 触发 IRQ0，CPU 密集型任务也会被定时抢占；主动让出统一走 `int 0x40`，调度策略归 `task.c`，应用层不再指定“下一个是谁”。
 - **任务描述符**：每个任务保存 PID、状态、优先级、栈底/栈顶、上下文、切出次数、`cpu_ticks`、`vruntime`、`fpu_state`、`space`（地址空间指针）和 `user` 标志；栈底填魔数，运行时扫描得到真实栈水位。每个任务栈底部还预留 512 字节 FXSAVE 区，切换时保存/恢复 FPU/SSE。**PID 由 `task.c` 的 31 位位图自动分配**，`task_create` 不再接收显式 PID，应用层也不写 1/2/3；任务 `task_exit()` 后置为 ZOMBIE，调度器下一次进入时回收 PID。
 - **状态链路**：`UNUSED -> READY -> RUNNING`；`RUNNING -> READY` 由 `task_yield()` 或 PIT IRQ0；`RUNNING -> BLOCKED` 由 `task_block()`，`BLOCKED -> READY` 由 `task_wake(pid)`；`RUNNING -> ZOMBIE` 由 `task_exit()`，`ZOMBIE -> UNUSED` 由 `task_reap()`。这三种 `RUNNING` 离开方式都收敛到 `task_set_current_state(state)`，状态字段只由 `task.c` 写入；`B` 键演示阻塞/唤醒，`P` 键演示 PID 分配/回收，`T` 键演示 PIT 抢占下的双任务同时推进，`C` 键查看每任务 CPU 时间。
@@ -21,11 +21,12 @@
 - **进程家族树**：按 `G` 进入全屏 `AEVUM / PROCESS FAMILY TREE`；`famP` 创建 `famA` / `famB` 后退出，`family.c` 只把这两个直接子进程重挂到 `idle`，右侧面板显示父 PID、子 PID 和 `reaper`。树形页读的是真实 `ppid` 关系，不是画出来的假树。
 - **进程上下文 / ring3**：按 `V` 启动三个用户进程。每个进程有独立 PD/PT 和 CR3，同一段用户代码被复制到相同虚拟地址 `0x400000`，但代码/数据物理页不同；三个任务从 CPL3 执行，用 `int 0x80` 让出或结束。全屏页显示 ASID、CR3、用户页物理地址、私有计数器和真实系统调用 `CS=0x1B`。地址空间由 `kernel/mm/address_space` 唯一维护，TSS、ring3 门和系统调用分别归 `tss.c`、`interrupt.c`、`syscall.c`。
 - **`#PF` 故障隔离**：`userC` 在私有数据页置 `mode=1`，计数到 20000 后故意写内核显存 `0xB8000`；CPU 触发 `#PF`，内核读取 `CR2/ERR/EIP`，只 `task_exit()` 当前用户任务。全屏页显示 `P/W/U`、`KILLED` 计数和故障 task 的 `comm`，A/B 的 CR3 与计数器继续推进，证明故障边界只杀死越界进程而不是整机。
+- **内核态 #PF 诊断页**：按 `K` 从 render 的 kernel task 写 `0x00400000`，越过 0–4 MB 恒等映射，CPL0 触发 `#PF`。panic 页先 `cli`，再显示 PID/comm、CS/CPL、EIP、CR2、ERR、CR3、P/W/U/RSVD/I-D、fault count 和 kernel image 范围，最后停机。
 - **CPU 统计**：按 `C` 打开全屏 `AEVUM / CPU TIME ACCOUNTING`，三行任务显示 PID、TASK、PRI、WT、STATE、CPU%、TICKS、SHARE，底部是 PIT TICKS、SWITCHES、PREEMPTIONS。百分比来自每个任务的 `cpu_ticks`，并随 PIT 持续变化。
 - **机械臂**：三自由度平面臂，Q16.16 定点运算；阻尼最小范数控制、零空间投影、2×2 雅可比奇异值面板。
 - **显示**：80×25 VGA 文本，影子显存在 `0x20000`，整块刷新到 `0xB8000`；右侧 `TASK SCHED` 第二行显示每任务 CPU 百分比，第三行保留栈水位条，底部是滚动调度时间轴。
 - **串口**：COM1 差量帧 `A5 5A 01 COUNT [row col ch attr] CRC`，每 8 帧扫描一次，每 120 次扫描强制全帧。
-- **交互**：空格扫描码 `0x39` 切换零空间；每 420 帧自动切换一次；`P`（扫描码 `0x19`）创建一个全屏 `probe` 任务；`B`（扫描码 `0x30`）把 `idle` 任务阻塞成 `3id B`，再按一次 `B` 唤醒；`T`（扫描码 `0x14`）进入/退出全屏抢占决斗；`C`（扫描码 `0x2E`）进入/退出 CPU 统计页；`F`（扫描码 `0x21`）进入/退出 FPU 页；`G`（扫描码 `0x22`）进入/退出家族树页；`V`（扫描码 `0x2F`）进入/退出 ring3 进程上下文页；`userC` 的越界写会触发 `#PF`，只回收该用户进程。
+- **交互**：空格扫描码 `0x39` 切换零空间；每 420 帧自动切换一次；`P`（扫描码 `0x19`）创建一个全屏 `probe` 任务；`B`（扫描码 `0x30`）把 `idle` 任务阻塞成 `3id B`，再按一次 `B` 唤醒；`T`（扫描码 `0x14`）进入/退出全屏抢占决斗；`C`（扫描码 `0x2E`）进入/退出 CPU 统计页；`F`（扫描码 `0x21`）进入/退出 FPU 页；`G`（扫描码 `0x22`）进入/退出家族树页；`V`（扫描码 `0x2F`）进入/退出 ring3 进程上下文页；`K`（扫描码 `0x25`）触发内核态 `#PF` 诊断页并停机；`userC` 的越界写会触发 `#PF`，只回收该用户进程。
 - **错误**：统一 `0xRRFFTT` 错误码；失败时由 `aevum_fail()` 打印错误码、owner、field、detail，并停机。
 
 ## 模块结构
@@ -54,7 +55,7 @@ kernel/mm/address_space/address_space.c  用户 PD/PT、用户页、CR3 切换
 arch/x86/cpu/interrupt/interrupt.c  IDT / PIC / PIT 100Hz / DPL3 门
 arch/x86/cpu/tss/tss.c           TSS 与 esp0
 arch/x86/cpu/syscall/syscall.c   int 0x80 分发
-arch/x86/cpu/fault/page_fault.c  IDT 14 门、CR2/ERR/EIP 与用户故障 kill
+arch/x86/cpu/fault/page_fault.c  IDT 14 门、CR2/ERR/EIP、用户故障 kill、内核态 panic 页与受控探针
 user/ring3/ring3.asm             被复制的 ring3 用户代码
 drivers/video/vga/text/vga.c    VGA 唯一写者
 drivers/serial/uart/uart.c      COM1 与帧快照唯一写者
@@ -78,7 +79,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 28,672 字节（`boot.asm` 一次 LBA 读 56 个扇区到 `0x80000`）；当前构建 28,488 字节，BSS 结束于 `0x87F88`，镜像余量 184 字节。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 29,696 字节（`boot.asm` 一次 LBA 读 58 个扇区到 `0x80000`）；当前构建 29,416 字节，BSS 结束于 `0x88328`，镜像余量 280 字节。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 
@@ -112,5 +113,7 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - 底部 `PIT TICKS` 是三个任务 tick 之和，`SWITCHES` 和 `PREEMPTIONS` 持续增长；再按 `C` 回到机械臂，帧号继续前进。
 
 按 `V` 后，全屏变成 `AEVUM / RING3 PROCESS CONTEXT`：`userA` / `userB` 各自显示 `CPL 3`、`ASID`、`CR3`、代码/数据页物理地址和独立计数器；两行都映射 `VA 00400000` / `VA 00401000`，但物理页不同，计数器分别增长。底部 `int 0x80 traps` 记录系统调用次数和最近一次真实 `CS=0x1B`。再按 `V`，两个用户任务走 `task_exit()`，地址空间被回收，画面回到机械臂。
+
+按 `K` 后，画面变成 `AEVUM / KERNEL PAGE FAULT`：`task 2 render` 写 `0x00400000`，`CS=0x0008`、`CPL 0`，`CR2=0x00400000`、`ERR=0x00000002`、`CR3=0x00010000`，`P=0 W/R=1 U/S=0`。页面明确写 `RING0 FAULT - DIAGNOSTIC HALT`；它不调用 `task_exit()`，也不再调度，只有重启 QEMU 才能离开。
 
 更细的字段归属、错误码表和验收口径见 `CONSTRUCTION.md`；机器人学下一目标见 `ROBOTICS.md`。

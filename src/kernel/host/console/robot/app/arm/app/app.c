@@ -11,6 +11,7 @@
 #include "kernel/task.h"
 #include "kernel/task/family.h"
 #include "kernel/error.h"
+#include "arch/x86/page_fault.h"
 #include "drivers/video/vga.h"
 #include "drivers/serial/uart.h"
 #include "drivers/input/keyboard.h"
@@ -120,6 +121,10 @@ static void proc_render(void)
                 }
                 user_live = 1;
             }
+        }
+
+        if (key == 0x25 && !duel_live && !cpu_live && !probe_live && !fpu_demo_live() && !tree_live && !user_live) { /* K：内核实控 #PF panic 页 */
+            page_fault_probe();
         }
 
         if (!duel_live && !cpu_live && !probe_live && !fpu_demo_live() && !tree_live && !user_live) {
