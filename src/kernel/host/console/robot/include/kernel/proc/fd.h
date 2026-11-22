@@ -7,8 +7,8 @@ struct address_space;
 struct pipe;
 
 /*
- * P4.3 每进程 fd 表的唯一 owner。0/1 预留给后续 console，pipe 从 2 起分配；
- * 表内只保存 pipe 端点引用，read/write/close 的用户指针校验也在这里完成。
+ * P4.4 每进程 fd 表的唯一 owner。fd 0/1 是 console 字符端点，pipe 从 2 起分配；
+ * 表内 pipe 端点带引用，console 端点只记录 kind，close 仅关闭本进程句柄。
  */
 #define PROC_FD_MAX   8
 #define PROC_FD_FIRST 2
@@ -16,7 +16,9 @@ struct pipe;
 enum proc_fd_kind {
     PROC_FD_CLOSED = 0,
     PROC_FD_PIPE_READ = 1,
-    PROC_FD_PIPE_WRITE = 2
+    PROC_FD_PIPE_WRITE = 2,
+    PROC_FD_CONSOLE_READ = 3,
+    PROC_FD_CONSOLE_WRITE = 4
 };
 
 struct proc_fd_entry {
@@ -31,7 +33,10 @@ struct proc_fd_table {
 void proc_fd_table_init(struct proc_fd_table *table);
 void proc_fd_table_close_all(struct proc_fd_table *table);
 
-/* fork：复制引用并 acquire；exec 不调用本函数，因此 fd 表原样保留。 */
+/* 新用户进程安装 fd 0 读 console、fd 1 写 console；free slot 保持全关。 */
+void proc_fd_console_open(struct proc_fd_table *table);
+
+/* fork：复制引用；pipe acquire，console 直接继承。exec 不调用本函数。 */
 int proc_fd_table_copy(struct proc_fd_table *dst,
                        const struct proc_fd_table *src);
 u32 proc_fd_count(const struct proc_fd_table *table);

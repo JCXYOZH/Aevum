@@ -13,6 +13,10 @@
 ; 0x401078 父读回 4 字节，0x40107C pipe 验收字，0x401080 pipe 子进程 pid，
 ; 0x401084 pipe wait status，0x401088 pipe wait 返回值，0x40108C pipe 只执行一次标记，
 ; 0x401090 父 close 写端返回值，0x401094 父 close 读端返回值，0x401098 父 read 返回值；
+; 0x4010A0 console 子进程 pid，0x4010A4 父 close fd0，0x4010A8 父 close fd1，
+; 0x4010AC 父 read fd0，0x4010B0 父 write fd1，0x4010B4 console wait status，
+; 0x4010B8 console wait 返回值，0x4010BC console 验收字，0x4010F0 console 只执行一次标记，
+; 0x401120 console 输入缓冲，0x401130 console 输出构造缓冲；
 ; 0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
 ; stack 0x403000，control 0x404000，heap 0x405000 起。
@@ -22,6 +26,8 @@
 ;         再 fork 子进程2 安装 SIGFPE handler，div 0 后由 sigreturn 返回
 ;         除零后的指令，写 HAND 并 exit(9)。
 ; 模式 3：直接写 guard 0x402000，由 #PF 只杀死这个进程。
+; 模式 4：父 fork 后先关闭自己的 fd0/fd1，子进程仍用继承端点读键盘并写 console；
+;         父 wait 到 14 后写 "CON!" 并 exit(15)。
 [bits 32]
 section .text
 global user_program_start
@@ -42,6 +48,8 @@ user_program_start:
     je .fork_mode
     cmp dword [0x401004], 3
     je .guard_mode
+    cmp dword [0x401004], 4
+    je .console_mode
 
     ; 模式 0：只做一次 heap/guard 指针验收。
     cmp dword [0x401030], 0
@@ -270,6 +278,113 @@ user_program_start:
     mov dword [0x40104C], 0x424144   ; "BAD"
     jmp .yield
 
+; P4.4：父进程先 fork，再关闭自己的 fd0/fd1；子进程用继承端点继续读 console。
+.console_mode:
+    cmp dword [0x4010F0], 0
+    jne .yield
+    mov dword [0x4010F0], 1
+
+    mov eax, 6              ; syscall: fork
+    int 0x80
+    test eax, eax
+    jz .console_child
+
+    ; 父进程：关闭自己的 0/1 后，read/write 必须失败，但子句柄不受影响。
+    mov [0x4010A0], eax
+    mov eax, 17
+    xor ebx, ebx
+    int 0x80
+    mov [0x4010A4], eax
+
+    mov eax, 17
+    mov ebx, 1
+    int 0x80
+    mov [0x4010A8], eax
+
+    mov eax, 15
+    xor ebx, ebx
+    mov ecx, 0x401120
+    mov edx, 1
+    int 0x80
+    mov [0x4010AC], eax
+
+    mov eax, 16
+    mov ebx, 1
+    mov ecx, console_text - user_program_start + 0x400000
+    mov edx, console_text_end - console_text
+    int 0x80
+    mov [0x4010B0], eax
+
+    ; 父进程不 wait：关闭自己的 0/1 后保持存活，子进程继续用继承端点。
+    mov dword [0x4010BC], 0x214E4F43 ; "CON!"
+.console_parent_hold:
+    cmp dword [0x404000], 0
+    jne .console_parent_stop
+    mov eax, 2
+    int 0x80
+    jmp .console_parent_hold
+
+.console_parent_stop:
+    mov eax, 3
+    mov ebx, 16
+    int 0x80
+    jmp .hang
+
+.console_child:
+    mov eax, 15             ; syscall: read(fd0, buf, 1)
+    xor ebx, ebx
+    mov ecx, 0x401120
+    mov edx, 1
+    int 0x80
+    cmp eax, 1
+    je .console_child_got
+    cmp dword [0x404000], 0
+    jne .console_child_stop
+    mov eax, 2              ; syscall: yield
+    int 0x80
+    jmp .console_child
+
+.console_child_got:
+    mov byte [0x401130], 'C'
+    mov byte [0x401131], 'O'
+    mov byte [0x401132], 'N'
+    mov byte [0x401133], ':'
+    mov al, [0x401120]
+    mov [0x401134], al
+    mov byte [0x401135], 10
+    mov eax, 16             ; syscall: write(fd1, "CON:<key>\n", 6)
+    mov ebx, 1
+    mov ecx, 0x401130
+    mov edx, 6
+    int 0x80
+    cmp eax, 6
+    jne .console_child_bad
+
+    mov eax, 16             ; syscall: write(fd1, "FD01 OK\n", 8)
+    mov ebx, 1
+    mov ecx, console_tail - user_program_start + 0x400000
+    mov edx, console_tail_end - console_tail
+    int 0x80
+    cmp eax, 8
+    jne .console_child_bad
+
+    mov eax, 3
+    mov ebx, 14
+    int 0x80
+    jmp .hang
+
+.console_child_bad:
+    mov eax, 3
+    mov ebx, 15
+    int 0x80
+    jmp .hang
+
+.console_child_stop:
+    mov eax, 3
+    mov ebx, 16
+    int 0x80
+    jmp .hang
+
 .child_exit:
     mov dword [0x401038], 0x43484C44   ; "CHLD"，触发子侧 COW 拆分
     mov eax, 3              ; syscall: exit
@@ -356,5 +471,13 @@ pipe_arg1:
     db "writer", 0
 pipe_arg2:
     db "FD=3", 0
+
+; P4.4 console 文本：父 write 到已关闭 fd1 用于验证失败；子写尾标记。
+console_text:
+    db "PARENT", 10
+console_text_end:
+console_tail:
+    db "FD01 OK", 10
+console_tail_end:
 
 user_program_end:

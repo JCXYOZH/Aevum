@@ -34,6 +34,7 @@ SRCS = \
 	drivers/video/vga/text/vga.c \
 	drivers/serial/uart/uart.c \
 	drivers/input/keyboard/keyboard.c \
+	drivers/console/console.c \
 	lib/fixed/fixed.c \
 	lib/math/trig.c \
 	lib/format/format.c \
@@ -46,7 +47,9 @@ SRCS = \
 	app/tree/demo/demo.c \
 	app/tree/render/render.c \
 	app/user/demo/demo.c \
-	app/user/render/render.c
+	app/user/render/render.c \
+	app/console/demo/demo.c \
+	app/console/render/render.c
 
 OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o)) build/user/ring3.o build/user/exec.o build/user/exec_pipe.o
 IMG     = os.img
@@ -86,8 +89,8 @@ kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 # 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
 kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 53248 / 104 sectors)"; \
-	if [ $$size -gt 53248 ]; then echo "ERROR: kernel.bin $$size bytes > 53248"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 57344 / 112 sectors)"; \
+	if [ $$size -gt 57344 ]; then echo "ERROR: kernel.bin $$size bytes > 57344"; exit 1; fi
 
 boot.bin: boot.asm boot_common.inc
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin

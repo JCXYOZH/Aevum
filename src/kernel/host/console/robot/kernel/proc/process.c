@@ -509,6 +509,7 @@ struct process *process_create_user(int priority, const char *name,
     p->task = 0;
     p->exit_code = 0;
     proc_copy_name(p, name);
+    proc_fd_console_open(&p->fds);
 
     rc = task_create_user_with_pid(priority, name, AEVUM_USER_CODE_VA,
                                    stack_top, space, user_stack_top,

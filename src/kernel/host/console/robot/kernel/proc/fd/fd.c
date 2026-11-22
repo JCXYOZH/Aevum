@@ -1,11 +1,18 @@
 #include "kernel/proc/fd.h"
 #include "kernel/ipc/pipe.h"
 #include "kernel/mm/address_space.h"
+#include "drivers/console/console.h"
+
+static int proc_fd_is_pipe(u32 kind)
+{
+    return kind == PROC_FD_PIPE_READ || kind == PROC_FD_PIPE_WRITE;
+}
 
 static void proc_fd_entry_close(struct proc_fd_entry *e)
 {
     if (!e || e->kind == PROC_FD_CLOSED) return;
-    pipe_release(e->pipe, e->kind == PROC_FD_PIPE_WRITE);
+    if (proc_fd_is_pipe(e->kind))
+        pipe_release(e->pipe, e->kind == PROC_FD_PIPE_WRITE);
     e->pipe = 0;
     e->kind = PROC_FD_CLOSED;
 }
@@ -15,7 +22,7 @@ static void proc_fd_table_link(struct proc_fd_table *table, u32 fd,
 {
     table->entries[fd].pipe = p;
     table->entries[fd].kind = kind;
-    pipe_acquire(p, kind == PROC_FD_PIPE_WRITE);
+    if (proc_fd_is_pipe(kind)) pipe_acquire(p, kind == PROC_FD_PIPE_WRITE);
 }
 
 void proc_fd_table_init(struct proc_fd_table *table)
@@ -36,6 +43,13 @@ void proc_fd_table_close_all(struct proc_fd_table *table)
     if (!table) return;
     for (i = 0; i < PROC_FD_MAX; i++)
         proc_fd_entry_close(&table->entries[i]);
+}
+
+void proc_fd_console_open(struct proc_fd_table *table)
+{
+    if (!table) return;
+    proc_fd_table_link(table, 0, 0, PROC_FD_CONSOLE_READ);
+    proc_fd_table_link(table, 1, 0, PROC_FD_CONSOLE_WRITE);
 }
 
 int proc_fd_table_copy(struct proc_fd_table *dst,
@@ -106,11 +120,22 @@ int proc_fd_read(struct proc_fd_table *table, struct address_space *space,
     u8 buf[PIPE_CAPACITY];
     int n;
 
-    if (!table || !space || fd >= PROC_FD_MAX || !user_buf) return -1;
+    if (!table || !space || fd >= PROC_FD_MAX) return -1;
+    if (!len) return 0;
+    if (!user_buf) return -1;
     e = &table->entries[fd];
+
+    if (e->kind == PROC_FD_CONSOLE_READ) {
+        if (len > CONSOLE_INPUT_MAX) len = CONSOLE_INPUT_MAX;
+        if (!address_space_user_range_ok(space, user_buf, len, 1)) return -1;
+        n = console_read(buf, len);
+        if (n <= 0) return n;
+        if (address_space_copyout(space, user_buf, buf, (u32)n) != 0) return -1;
+        return n;
+    }
+
     if (e->kind != PROC_FD_PIPE_READ) return -1;
     if (len > PIPE_CAPACITY) len = PIPE_CAPACITY;
-    if (!len) return 0;
     if (!address_space_user_range_ok(space, user_buf, len, 1)) return -1;
 
     n = pipe_read(e->pipe, buf, len);
@@ -125,10 +150,19 @@ int proc_fd_write(struct proc_fd_table *table, struct address_space *space,
     struct proc_fd_entry *e;
     u8 buf[PIPE_CAPACITY];
 
-    if (!table || !space || fd >= PROC_FD_MAX || !user_buf) return -1;
-    e = &table->entries[fd];
-    if (e->kind != PROC_FD_PIPE_WRITE) return -1;
+    if (!table || !space || fd >= PROC_FD_MAX) return -1;
     if (!len) return 0;
+    if (!user_buf) return -1;
+    e = &table->entries[fd];
+
+    if (e->kind == PROC_FD_CONSOLE_WRITE) {
+        if (len > CONSOLE_WRITE_MAX) return -1;
+        if (!address_space_user_range_ok(space, user_buf, len, 0)) return -1;
+        if (address_space_copyin(space, buf, user_buf, len) != 0) return -1;
+        return console_write(buf, len);
+    }
+
+    if (e->kind != PROC_FD_PIPE_WRITE) return -1;
     if (len > PIPE_CAPACITY) return -1;
     if (!address_space_user_range_ok(space, user_buf, len, 0)) return -1;
     if (address_space_copyin(space, buf, user_buf, len) != 0) return -1;

@@ -7,6 +7,8 @@
 #include "app/tree/render.h"
 #include "app/user/demo.h"
 #include "app/user/render.h"
+#include "app/console/demo.h"
+#include "app/console/render.h"
 #include "kernel/mm/address_space.h"
 #include "kernel/task.h"
 #include "kernel/task/family.h"
@@ -15,6 +17,7 @@
 #include "drivers/video/vga.h"
 #include "drivers/serial/uart.h"
 #include "drivers/input/keyboard.h"
+#include "drivers/console/console.h"
 #include "config/memory.h"
 #include "lib/format.h"
 
@@ -36,6 +39,8 @@ static volatile int duel_live;
 static volatile int cpu_live;
 static volatile int tree_live;
 static volatile int user_live;
+static volatile int console_live;
+static volatile int console_exiting;
 static volatile u8 duel_tape[DUEL_TAPE];
 static volatile u32 duel_tape_head;
 static u32 probe_runs;
@@ -70,6 +75,61 @@ static void proc_render(void)
     for (;;) {
         struct arm_status status;
         u8 key = keyboard_poll();
+
+        /* P4.4 console 页是独立全屏模式；X 进入后所有非命令键进入 fd0 队列。 */
+        if (key == 0x2D && !console_live && !duel_live && !cpu_live &&
+            !probe_live && !fpu_demo_live() && !tree_live && !user_live) {
+            const char *rc = console_demo_start();
+            if (rc) {
+                struct aevum_error e = app_dep_template;
+                e.field = rc;
+                e.at = "proc_render -> console_demo_start";
+                aevum_fail(&e);
+            }
+            console_live = 1;
+            console_exiting = 0;
+            continue;
+        }
+
+        if (console_live) {
+            const char *rc;
+
+            if (key == 0x2D) {
+                if (console_demo_alive()) {
+                    console_exiting = 1;
+                    console_demo_stop();
+                } else {
+                    console_demo_cleanup();
+                    console_live = 0;
+                    console_exiting = 0;
+                    continue;
+                }
+            } else if (key) {
+                console_input_push(key);
+            }
+
+            rc = console_demo_error();
+            if (rc) {
+                struct aevum_error e = app_dep_template;
+                e.field = rc;
+                e.at = "proc_render -> console_demo";
+                aevum_fail(&e);
+            }
+            if (console_exiting && !console_demo_alive()) {
+                console_demo_cleanup();
+                console_live = 0;
+                console_exiting = 0;
+                continue;
+            }
+            console_render_frame();
+            vga_flush();
+            if (task_yield()) {
+                struct aevum_error e = app_state_template;
+                e.field = "task_yield(render/console)";
+                aevum_fail(&e);
+            }
+            continue;
+        }
 
         if (key == 0x2E && !duel_live && !probe_live && !fpu_demo_live() && !tree_live && !user_live) { /* C：CPU 时间统计 */
             cpu_live = !cpu_live;

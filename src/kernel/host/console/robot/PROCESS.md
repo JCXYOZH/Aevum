@@ -2,9 +2,9 @@
 
 本文只讨论 ring3 用户进程，不把 `control/render/idle` 这三个内核任务当成完整进程。
 
-P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题；P4.1 加入内嵌 flat 镜像 `exec`，保留 PID/任务槽，替换用户 AS、入口、栈和信号状态；P4.2 给 `exec` 增加 `argv/envp` 解析、字符串迁移和 SysV 初始栈；P4.3 增加每进程 fd 表、匿名 pipe、`pipe/read/write/close`，并证明 exec 后 fd 表继续有效。
+P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题；P4.1 加入内嵌 flat 镜像 `exec`，保留 PID/任务槽，替换用户 AS、入口、栈和信号状态；P4.2 给 `exec` 增加 `argv/envp` 解析、字符串迁移和 SysV 初始栈；P4.3 增加每进程 fd 表、匿名 pipe、`pipe/read/write/close`，并证明 exec 后 fd 表继续有效；P4.4 把 fd 0/1 接到 console 字符设备，验证键盘输入、VGA/COM1 输出、fork 继承和 close 边界。
 
-## 一、P3.1/P3.2/P4.1/P4.2/P4.3 现在的实现
+## 一、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4 现在的实现
 
 | 能力 | 当前实现 | 位置 |
 | --- | --- | --- |
@@ -21,10 +21,13 @@ P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/re
 | P4.2 exec | `eax=13 exec(image_id,argv,envp)`；`process_exec_current()` 先在旧 AS 解析两个向量，再建新 AS、构造 `argc/argv/envp` 新栈、切 CR3、更新任务 AS 指针、重置帧和信号状态、释放旧 AS；只接受镜像 1 | `kernel/proc/process.c`、`syscall.c` |
 | P4.2 exec 元数据 | `struct process.image_id/exec_argc/exec_envc`：ring3=0、exec=1；`fork` 继承，`reap` 保留墓碑；`process_image_id(pid)` 与 `process_exec_counts(pid)` 都取同 PID 最大镜像代次 | `include/kernel/proc.h`、`process.c` |
 | P4.2 任务 AS 指针 | `task_set_space()` 是 exec 更新任务持有 AS 的唯一入口；CR3 切换仍归 `address_space` | `kernel/task/task.c` |
-| P4.3 fd 表 | PCB 内嵌 `struct proc_fd_table fds`，8 槽；fd 0/1 预留 console，pipe 从 2 起；`fork` 复制并 acquire、exec 保留、exit/terminate/reap 关闭 | `kernel/proc/fd/fd.c`、`include/kernel/proc/fd.h` |
+| P4.3 fd 表 | PCB 内嵌 `struct proc_fd_table fds`，8 槽；fd 0 为 console 读、fd 1 为 console 写，pipe 从 2 起；`kind` 区分 console 与 pipe；`fork` 复制，pipe 端点 acquire、console 端点继承；exec 保留、exit/terminate/reap 关闭 | `kernel/proc/fd/fd.c`、`include/kernel/proc/fd.h` |
 | P4.3 pipe | 4 个对象、每对象 64 字节非阻塞环形缓冲；`refs/readers/writers` 控制生命周期；空读有写端 `-1`、写端全关 `0`、满写 `-1` | `kernel/ipc/pipe/pipe.c` |
 | P4.3 系统调用 | `eax=14 pipe(ebx=user u32[2])`、`15 read(ebx=fd,ecx=buf,edx=count)`、`16 write`、`17 close(ebx=fd)`；失败统一 `-1` | `syscall.c`、`fd.c` |
 | P4.3 exec 镜像 2 | `user/exec-pipe/exec_pipe.asm` 从 `argv={"pipe","writer","FD=3"}` 取 fd，向继承写端写 `PIPE`，成功 `exit(12)`；失败码 26..31 | `process.c`、`user/exec-pipe/` |
+| P4.4 console | `drivers/console/console.c`：16 字节 ASCII 输入队列、8×64 输出行缓存、COM1 镜像、scan/push/drop 统计；`read(0)` 非阻塞，`write(1)` 最多 64 字节 | `drivers/console/console.c` |
+| P4.4 fd 0/1 | 新用户进程创建后安装 fd0 读、fd1 写；`fork` 复制父表，`exec` 保持，`close` 只清本进程句柄；console 端点不参与 pipe 引用计数 | `kernel/proc/fd/fd.c`、`process.c` |
+| P4.4 X 页 | mode 4 父进程 fork 后关闭自身 0/1，子进程继续读键并写 `CON:<key>` / `FD01 OK`，`exit(14)`；页面显示 close 结果、输入队列、输出行和 UART 字节 | `app/console/demo`、`app/console/render` |
 | wait status | 正常退出保留原退出码（`exit(7) -> 7`）；信号终止为 `0x80000000` 按位或 `sig`（`#DE -> 0x80000008`） | `PROC_WAIT_STATUS()` |
 | PCB 信号字段 | `pending/last_sig/term_sig/sig_count/sigchld_count`；`process_info` 同步暴露 | `kernel/proc/process.c` |
 | pending 位图 | `pending |= 1u << (sig - 1)`；只记录 1..31 号信号，不在这里改进程状态 | `proc_signal_pending()` |
@@ -35,7 +38,7 @@ P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/re
 | 调度记账 | `int 0x40` 的 `SCHED_YIELD` 也按 `WEIGHT_QUANTUM / weight` 记 vruntime，避免 `wait` 轮询饿死其他任务 | `task_schedule_irq()` |
 | V 页 | 标题 `AEVUM / COW FORK + SIGNALS + PHYS`；PCB 表 `EXIT` 显示 `SIG11/SIG8` 或 `EXIT 9/10/12`；新增 #DE、SIGCHLD、D 第二轮 fork/wait、`P4 exec`（`arg/env` 计数）、`P4.3 pipe`（`fd 2>3 r4 PIPE OK`）和 `pipe obj` | `app/user/render/render.c` |
 
-槽位预算：`TASK_MAX=10`（3 内核 + 6 用户 + 1 余量）、`PROC_MAX=8`、`AEVUM_AS_MAX=8`（exec 期间旧 AS、新 AS、fork 子 AS 同时存在，6 槽不够）、`PID_MAX=31`。P4.3 另加 `PROC_FD_MAX=8`、`PROC_FD_FIRST=2`、`PIPE_MAX=4`、`PIPE_CAPACITY=64`。
+槽位预算：`TASK_MAX=10`（3 内核 + 6 用户 + 1 余量）、`PROC_MAX=8`、`AEVUM_AS_MAX=8`（exec 期间旧 AS、新 AS、fork 子 AS 同时存在，6 槽不够）、`PID_MAX=31`。P4.3 另加 `PROC_FD_MAX=8`、`PROC_FD_FIRST=2`、`PIPE_MAX=4`、`PIPE_CAPACITY=64`；P4.4 加 `CONSOLE_INPUT_MAX=16`、`CONSOLE_LINES=8`、`CONSOLE_LINE_MAX=64`、`CONSOLE_WRITE_MAX=64`。
 用户内核栈顶 A `0x201000`、B `0x202000`、C `0x203000`、D `0x204000`、E `0x205000`、F `0x206000`。
 物理池仍为 `0x100000..0x1FEFFF` 的 255 页位图池。
 
@@ -200,7 +203,28 @@ QEMU 实测（P4.3 final clean 构建 `kernel.bin` 50,760 字节，BSS `0x8C660.
 - 再按 `V` 停止后回机械臂，再按 `V` 重建：仍是 `20/255`、`pipe obj 0`、P4.2/P4.3 两行一致；V 停止→重启→再跑一轮也保持同样结果，证明 fd/pipe 引用、AS、PID 和进程历史都随新一轮清场。
 - 取证说明：`screendump` 在 `-display none` / 无持续 VNC 客户端时可能读到旧显示 surface；验收以 QEMU monitor `pmemsave 0xB8000 4000 "/tmp/vga.bin"` 读到的 guest VGA 文本缓冲为准，再用等宽字体渲染成截图。稳定文本为 `PHYS PAGES used/total 20 /255`、两行 P4/P4.3 证据、`pipe obj 0`。
 
-## 七、后续阶段
+## 七、P4.4 console fd 0/1
+
+### 语义
+
+- **设备归属**：`drivers/console/console.c` 是 console 字符设备的唯一 owner；它只维护输入队列、输出行缓存、COM1 镜像和统计，不直接抢 VGA 布局。X 页渲染器只读 `console_line()`，VGA 写者仍是 `vga.c`。
+- **fd 0**：`proc_fd_console_open()` 在新用户进程创建成功后安装 `CONSOLE_READ`；`read(0)` 从 16 字节 US ASCII 环形队列取数据，非阻塞，空队列返回 `-1`，有数据返回 1..len。输入源仍是 render 的 `keyboard_poll()`：X 页把非 `X` 的 scancode set 1 交给 `console_input_push()`，支持左右 Shift，release/未知键忽略。
+- **fd 1**：同一入口安装 `CONSOLE_WRITE`；`write(1)` 最多 `CONSOLE_WRITE_MAX=64` 字节，追加到 8×64 行缓存，并逐字节 `uart_write()` 镜像 COM1。原始 ASCII 位于 VGA 差量帧之间，桌面 bridge 按 `A5 5A` 重新同步。
+- **fork/exec/close**：`fork` 复制整张 fd 表；pipe 端点 `pipe_acquire()`，console 端点直接继承；`exec` 保留 fd 表；`close`、exit、terminate、reap 都只清本进程句柄。`proc_fd_entry_close()` 只对 pipe kind 调 `pipe_release()`，console 没有 pipe 指针，不能走 pipe 释放路径。
+- **共享边界**：console 是全局字符设备，没有进程私有副本，也没有前台焦点；所有持 fd0 的进程竞争同一条输入队列，所有持 fd1 的进程写同一行缓存和 COM1。`close` 只关闭调用者的句柄；只要另一个进程仍持有端点，console 对象继续工作。
+- **X 页演示**：mode 4 用户进程先 `fork`。父进程关闭自己的 fd0/fd1，验证 `read(0)=-1`、`write(1)=-1`，设置 `CON!` 后保持存活；子进程继续用继承端点循环读 fd0，读到按键后写 `CON:<key>` 和 `FD01 OK`，再 `exit(14)`。父进程不 `wait`，避免在 X 页里再引入一轮 `yield` 轮询；`wait` 语义已由 P4.3 的 D 第四轮覆盖。页面用 `out 14` 与 `child EXIT 14` 判定子进程完成。
+
+### 验收
+
+QEMU 实测（P4.4 final clean 构建 `kernel.bin` 55,208 字节，BSS `0x8D7C0..0x906D4`，112 扇区 / 57,344 字节窗口，`AEVUM_KERNEL_END=0x90800`）：
+
+- X 页首屏显示 `AEVUM / CONSOLE FD 0/1`，`pid 4 child 5`，父进程关闭 0/1 后 `close0 0 close1 0 r0 -1 w1 -1`。
+- 发送 `a` 后同一帧变为 `scan 3 push 1 frames 1590`、`in 1 last a q 0 drop 0`、`out 14 uart 14`、`child EXIT 14`、`CLOSE OK`；输出区两行 `CON:a` 与 `FD01 OK`。
+- COM1 原始日志中包含 `CON:a\nFD01 OK\n`，同时仍有 `A5 5A` 差量帧，说明 fd1 文本与桌面 VGA 协议共用 COM1 时没有破坏帧同步。
+- 按 `X` 退出后回到机械臂主画面，再按 `X` 可重新进入并再次读键；页面帧计数持续增长，子进程 `out` 和输出行重置后重新建立。
+- 取证同样使用 `pmemsave 0xB8000 4000` 读取 guest VGA 文本缓冲，再渲染成 PNG；串口日志用原始字节检查。
+
+## 八、后续阶段
 
 ### P5：规模与可观测性
 
@@ -208,10 +232,10 @@ QEMU 实测（P4.3 final clean 构建 `kernel.bin` 50,760 字节，BSS `0x8C660.
 - `V` 页分页/滚动，进程树、ZOMBIE、waiters、VMA、信号、fd 全部可观察。
 - 压测：反复 fork/wait 100 轮，无 PID/页/栈泄漏。
 
-## 八、P3.1/P3.2/P4.1/P4.2/P4.3 边界与已知取舍
+## 九、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4 边界与已知取舍
 
-- `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；本轮给 yield 补了 vruntime 记账，并给 fork 子任务 `vruntime=0` 的起跑保证，避免父进程轮询时把子任务或其他 lane 饿死。
-- P3.2 已有用户 handler、signal frame 和 `sigreturn`；P4.1 已有内嵌 flat 镜像 `exec`、PID/任务槽保留、AS 替换和信号重置；P4.2 已有 `argv/envp` 解析、字符串迁移、SysV 初始栈和 `exec_argc/exec_envc` 元数据；P4.3 已有每进程 fd 表、匿名 pipe、`pipe/read/write/close` 和 exec 后 fd 保留。仍没有 ELF loader、文件系统/路径 `open`、console fd 0/1、`kill()`、信号排队、真正阻塞的 mask、`SA_SIGINFO`/`SA_RESTART` 等 POSIX 语义。
+- `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；本轮给 yield 补了 vruntime 记账，并给 fork 子任务 `vruntime=0` 的起跑保证，避免父进程轮询时把子任务或其他 lane 饿死。P4.4 X 页为了保持交互帧率，父进程关闭 0/1 后不进入 `wait`，子进程完成后由页面 `out 14` / `EXIT 14` 判定。
+- P3.2 已有用户 handler、signal frame 和 `sigreturn`；P4.1 已有内嵌 flat 镜像 `exec`、PID/任务槽保留、AS 替换和信号重置；P4.2 已有 `argv/envp` 解析、字符串迁移、SysV 初始栈和 `exec_argc/exec_envc` 元数据；P4.3 已有每进程 fd 表、匿名 pipe、`pipe/read/write/close` 和 exec 后 fd 保留；P4.4 已有全局 console fd 0/1、fork 继承、close 边界和 VGA/COM1 双写。仍没有 ELF loader、文件系统/路径 `open`、console 会话/前台焦点、`kill()`、信号排队、真正阻塞的 mask、`SA_SIGINFO`/`SA_RESTART` 等 POSIX 语义。
 - `sig_mask` 只随 frame 保存/恢复，不阻止信号投递；handler 执行期间同一信号仍可能再次进入。
 - `#DE` 解码只覆盖 `F6/F7` 的 `div/idiv` group，且只处理可读的用户代码字节；其他同步异常把原 EIP 存入 frame，handler 若直接 `ret` 会回到 faulting 指令，需要自行修改 frame 的 `eip`。
 - `SIG_IGN` 只对可安全前移的 `#DE` 和保存 EIP 已指向下一条的 `#BP` 生效；`#UD/#GP` 的忽略会退回默认终止，避免死循环。
