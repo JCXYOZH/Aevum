@@ -1,5 +1,5 @@
 /* kernel.ld 链接脚本
- * 内核加载到 0x80000，避开 BIOS 低内存暂存区；boot 用 80 扇区 LBA 读到
+ * 内核加载到 0x80000，避开 BIOS 低内存暂存区；boot 用 96 扇区 LBA 读到
  * 0x80000。BSS 由 loader 清零，页目录/页表仍在 0x10000/0x11000。
  */
 ENTRY(start);

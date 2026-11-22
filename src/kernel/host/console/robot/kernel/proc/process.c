@@ -16,6 +16,11 @@ struct process {
     u32 stack_top;
     struct address_space *space;
     struct task_struct *task;
+    u32 pending;
+    u32 last_sig;
+    u32 term_sig;
+    u32 sig_count;
+    u32 sigchld_count;
 };
 
 static struct process procs[PROC_MAX];
@@ -36,6 +41,11 @@ static void proc_zero(struct process *p)
     p->stack_top = 0;
     p->space = 0;
     p->task = 0;
+    p->pending = 0;
+    p->last_sig = 0;
+    p->term_sig = 0;
+    p->sig_count = 0;
+    p->sigchld_count = 0;
 }
 
 void process_boot(void)
@@ -57,6 +67,45 @@ static struct process *proc_find_active(int pid)
             procs[i].pid == pid)
             return &procs[i];
     }
+    return 0;
+}
+
+/* pending 只记录 1..31 号信号；推荐动作由投递方决定，不在这里改状态。 */
+static void proc_signal_pending(struct process *p, int sig)
+{
+    if (!p || sig <= 0 || sig > 31) return;
+    p->pending |= 1u << (sig - 1);
+    p->last_sig = (u32)sig;
+    p->sig_count++;
+    if (sig == PROC_SIGCHLD) p->sigchld_count++;
+}
+
+static void proc_notify_parent(struct process *self)
+{
+    struct process *parent;
+
+    if (!self || self->ppid <= 0) return;
+    parent = proc_find_active(self->ppid);
+    if (parent && parent->state == PROC_LIVE)
+        proc_signal_pending(parent, PROC_SIGCHLD);
+}
+
+static void proc_orphan_children(struct process *self)
+{
+    int i;
+    for (i = 0; i < PROC_MAX; i++)
+        if (procs[i].state == PROC_LIVE && procs[i].ppid == self->pid)
+            procs[i].ppid = 0;
+}
+
+/* 连续 fork/wait 时优先复用刚退出的直接子 PID，保住无关 lane 的墓碑。 */
+static int proc_reusable_child_pid(const struct process *parent)
+{
+    int i;
+    if (!parent) return 0;
+    for (i = 0; i < PROC_MAX; i++)
+        if (procs[i].state == PROC_DEAD && procs[i].ppid == parent->pid)
+            return procs[i].pid;
     return 0;
 }
 
@@ -226,7 +275,9 @@ struct process *process_fork(struct irq_frame *frame)
     if (!parent || parent->state != PROC_LIVE) return 0;
     if ((frame->cs & 3u) != 3u) return 0;
 
-    pid = task_pid_reserve();
+    pid = proc_reusable_child_pid(parent);
+    if (pid && task_pid_reserve_hint(pid) != pid) pid = 0;
+    if (!pid) pid = task_pid_reserve();
     if (!pid) return 0;
     p = proc_alloc_slot(pid);
     if (!p) {
@@ -270,18 +321,35 @@ struct process *process_fork(struct irq_frame *frame)
 int process_exit_current(u32 code)
 {
     struct process *self;
-    int i;
 
     if (!task_current() || !task_process_current()) return ERR_TASK_BAD_STATE;
     self = task_process_current();
     if (self->state != PROC_LIVE) return ERR_TASK_BAD_STATE;
     self->state = PROC_ZOMBIE;
-    self->exit_code = code;
+    self->term_sig = 0;
+    self->exit_code = code & 0xFFu;
 
     /* 父进程先退：直接子进程变成 0 号孤儿，交给调度器 reaper。 */
-    for (i = 0; i < PROC_MAX; i++)
-        if (procs[i].state == PROC_LIVE && procs[i].ppid == self->pid)
-            procs[i].ppid = 0;
+    proc_orphan_children(self);
+    proc_notify_parent(self);
+    return 0;
+}
+
+int process_terminate_current(int sig)
+{
+    struct process *self;
+
+    if (sig <= 0 || sig > 31) return ERR_TASK_BAD_STATE;
+    if (!task_current() || !task_process_current()) return ERR_TASK_BAD_STATE;
+    self = task_process_current();
+    if (self->state != PROC_LIVE) return ERR_TASK_BAD_STATE;
+
+    proc_signal_pending(self, sig);
+    self->state = PROC_ZOMBIE;
+    self->term_sig = (u32)sig;
+    self->exit_code = PROC_WAIT_STATUS(sig);
+    proc_orphan_children(self);
+    proc_notify_parent(self);
     return 0;
 }
 
@@ -320,8 +388,10 @@ int process_wait(int pid, u32 user_status)
                 /*
                  * 回收必须在切走子任务之后；此时 current 是父进程，
                  * process_reap() 会清掉子进程的调度槽。
+                 * wait 取走 ZOMBIE 即消费掉一次 SIGCHLD pending。
                  */
                 process_reap(child);
+                self->pending &= ~(1u << (PROC_SIGCHLD - 1));
                 return child_pid;
             }
         }
@@ -430,6 +500,11 @@ int process_snapshot(int slot, struct process_info *out)
     out->user_pages = address_space_user_pages(p->space);
     out->cow_pages = address_space_cow_pages(p->space);
     out->vma_count = address_space_vma_count(p->space);
+    out->pending = p->pending;
+    out->last_sig = p->last_sig;
+    out->term_sig = p->term_sig;
+    out->sig_count = p->sig_count;
+    out->sigchld_count = p->sigchld_count;
 
     has_task = task_snapshot_pid(p->pid, &info);
     if (has_task) {

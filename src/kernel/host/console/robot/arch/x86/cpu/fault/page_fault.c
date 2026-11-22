@@ -285,8 +285,8 @@ u32 page_fault_dispatch(struct irq_frame *frame)
         struct address_space *space = proc ? process_space(proc) : 0;
         if (space && address_space_handle_user_fault(space, cr2, frame->err))
             return (u32)frame;
-        /* 128+SIGSEGV：wait 父进程能看出这是故障退出，而不是正常 exit(0)。 */
-        (void)process_exit_current(128u + 14u);
+        /* 统一投递 SIGSEGV：wait status 高位置 1，父进程可区分信号终止。 */
+        (void)process_terminate_current(PROC_SIGSEGV);
         task_exit();
     }
 

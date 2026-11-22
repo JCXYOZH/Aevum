@@ -7,6 +7,7 @@
 #include "lib/format.h"
 #include "arch/x86/syscall.h"
 #include "arch/x86/page_fault.h"
+#include "arch/x86/exception.h"
 
 #define C_BG     0x01
 #define C_HDR    0x1F
@@ -37,8 +38,10 @@ static void put_hex(int col, int row, u32 value, u8 attr)
 static const char *proc_state(const struct process_info *p)
 {
     if (p->state == PROC_DEAD) {
-        if (p->pid == user_demo_pid(USER_DEMO_GUARD_LANE)) return "GUARD";
-        if (p->pid == user_demo_pid(USER_DEMO_FAULT_LANE)) return "FAULT";
+        /* PID 会被 fork 子进程复用，角色只能看 comm，不能拿旧 lane PID 比对。 */
+        if (p->term_sig == PROC_SIGSEGV && p->comm[4] == 'C') return "FAULT";
+        if (p->term_sig == PROC_SIGSEGV && p->comm[4] == 'F') return "GUARD";
+        if (p->term_sig) return "SIG";
         return "REAP";
     }
     if (p->state == PROC_ZOMBIE) return "ZOMB";
@@ -48,10 +51,10 @@ static const char *proc_state(const struct process_info *p)
 static u8 proc_attr(const struct process_info *p)
 {
     if (p->state == PROC_DEAD) {
-        if (user_demo_pid_faulted(p->pid)) return C_MAG;
+        if (p->term_sig) return C_MAG;
         return C_GRAY;
     }
-    if (p->state == PROC_ZOMBIE) return C_GRAY;
+    if (p->state == PROC_ZOMBIE) return C_MAG;
     if (p->task_state == TASK_RUNNING) return C_GREEN;
     if (p->task_state == TASK_READY) return C_YELLOW;
     return C_GRAY;
@@ -70,10 +73,16 @@ static void draw_process_row(int slot, int row)
     vga_text(15, row, "ST", C_GRAY);
     vga_text(18, row, proc_state(&p), proc_attr(&p));
     vga_text(24, row, "EXIT", C_GRAY);
-    if (p.state == PROC_ZOMBIE || p.state == PROC_DEAD)
-        put_dec(29, row, p.exit_code, C_WHITE);
-    else
+    if (p.state == PROC_ZOMBIE || p.state == PROC_DEAD) {
+        if (p.term_sig) {
+            vga_text(29, row, "SIG", C_MAG);
+            put_dec(32, row, p.term_sig, C_MAG);
+        } else {
+            put_dec(29, row, p.exit_code, C_WHITE);
+        }
+    } else {
         vga_text(29, row, "-", C_GRAY);
+    }
     vga_text(34, row, "CR3", C_GRAY);
     put_hex(38, row, p.cr3, C_CYAN);
     vga_text(47, row, "AS", C_GRAY);
@@ -139,7 +148,6 @@ static void draw_fault(int row)
     if (!page_fault_last(&f)) {
         vga_text(2, row, "#PF pending: C probes kernel 0xB8000; F writes guard", C_GRAY);
         vga_text(2, row + 1, "guard 0x402000 is VMA without PTE; guard poke returns 0", C_CYAN);
-        vga_text(2, row + 2, "faulting process dies alone; parent sees exit status 142", C_GRAY);
         return;
     }
 
@@ -164,9 +172,46 @@ static void draw_fault(int row)
     vga_cell(8, row + 1, write ? '1' : '0', write ? C_MAG : C_GRAY);
     vga_text(10, row + 1, "U=", C_GRAY);
     vga_cell(12, row + 1, user ? '1' : '0', user ? C_MAG : C_GRAY);
-    vga_text(15, row + 1, "ring3 fault; only the faulting process died", C_GREEN);
+    vga_text(15, row + 1, "ring3 #PF -> SIGSEGV; only the faulting process died", C_GREEN);
+}
 
-    vga_text(2, row + 2, "C kernel probe and F guard write both exit 142 (128+SIGSEGV)", C_GREEN);
+static void draw_signal(int row)
+{
+    struct exception_info x;
+    struct process_info p;
+    int have = exception_last(&x);
+    int i;
+    int have_d = 0;
+
+    vga_text(2, row, "SIG", C_GRAY);
+    if (!have) {
+        vga_text(6, row, "#DE pending: D second child writes COW page, then div 0", C_GRAY);
+        return;
+    }
+
+    for (i = 0; i < process_count(); i++) {
+        if (process_snapshot(i, &p) &&
+            p.pid == user_demo_pid(USER_DEMO_FORK_LANE)) {
+            have_d = 1;
+            break;
+        }
+    }
+
+    vga_text(6, row, exception_vector_name(x.vector), C_MAG);
+    put_dec(10, row, exception_vector_count(x.vector), C_WHITE);
+    vga_text(12, row, "pid", C_GRAY);
+    put_dec(16, row, x.pid, C_WHITE);
+    vga_text(19, row, "eip", C_GRAY);
+    put_hex(23, row, x.eip, C_WHITE);
+    vga_text(33, row, "sig", C_GRAY);
+    put_dec(37, row, x.sig, C_MAG);
+    vga_text(41, row, exception_signal_name(x.sig), C_MAG);
+    vga_text(50, row, "|SIGCHLD", C_GRAY);
+    if (have_d) {
+        put_dec(59, row, p.sigchld_count, C_CYAN);
+        vga_text(62, row, "pend", C_GRAY);
+        put_hex(67, row, p.pending, C_MAG);
+    }
 }
 
 static void draw_cow(int row)
@@ -196,11 +241,12 @@ void user_render_frame(void)
     int slot, row;
     u32 child, wait_pid, status, wait_ret, magic;
     u32 readback, cow_ok;
+    u32 sig_child, sig_status, sig_ret, sig_ok;
 
     vga_clear(C_BG);
     vga_fill(0, 0, 79, 0, ' ', C_HDR);
-    vga_text(13, 0, "AEVUM / COW FORK + VMA + PHYS PAGES", C_HDR);
-    vga_text(2, 2, "A/B HEAP | C #PF | D COW FORK+WAIT | F GUARD | PGS/COW", C_CYAN);
+    vga_text(4, 0, "AEVUM / COW FORK + SIGNALS + PHYS", C_HDR);
+    vga_text(2, 2, "A/B HEAP | C #PF | D COW+SIG | F GUARD | PGS/COW/SIG", C_CYAN);
 
     vga_text(2, 3, "PID", C_GRAY);
     vga_text(9, 3, "PP", C_GRAY);
@@ -230,6 +276,10 @@ void user_render_frame(void)
     magic = user_demo_wait_magic(USER_DEMO_FORK_LANE);
     readback = user_demo_cow_readback(USER_DEMO_FORK_LANE);
     cow_ok = user_demo_cow_ok(USER_DEMO_FORK_LANE);
+    sig_child = user_demo_sig_child(USER_DEMO_FORK_LANE);
+    sig_status = user_demo_sig_status(USER_DEMO_FORK_LANE);
+    sig_ret = user_demo_sig_ret(USER_DEMO_FORK_LANE);
+    sig_ok = user_demo_sig_ok(USER_DEMO_FORK_LANE);
 
     vga_text(2, 14, "userD fork", C_GRAY);
     put_dec(12, 14, child, C_WHITE);
@@ -252,9 +302,10 @@ void user_render_frame(void)
 
     vga_text(2, 16, "userF guard lane", C_GRAY);
     put_dec(18, 16, (u32)user_demo_pid(USER_DEMO_GUARD_LANE), C_WHITE);
-    vga_text(25, 16, "writes 0x402000; expected exit 142", C_GRAY);
+    vga_text(25, 16, "writes 0x402000; expected SIGSEGV", C_GRAY);
 
     draw_fault(17);
+    draw_signal(19);
 
     vga_text(2, 20, "PHYS PAGES used/total", C_GRAY);
     put_dec(25, 20, address_space_phys_used(), C_WHITE);
@@ -267,7 +318,18 @@ void user_render_frame(void)
     vga_text(33, 21, "last CS", C_GRAY);
     put_hex(41, 21, syscall_last_cs(), C_CYAN);
 
-    vga_text(2, 22, "copyin/peek + copyout/poke walk VMA + PTE; brk 500000 rejected.", C_GRAY);
-    vga_text(2, 23, "guard 402000 has VMA but no PTE; F dies alone; C remains 142.", C_GRAY);
+    vga_text(2, 22, "D fork2", C_GRAY);
+    put_dec(9, 22, sig_child, C_WHITE);
+    vga_text(13, 22, "wait", C_GRAY);
+    put_dec(17, 22, sig_ret, C_WHITE);
+    vga_text(20, 22, "st", C_GRAY);
+    put_hex(23, 22, sig_status, C_WHITE);
+    if (sig_ok == 0x53494721)
+        vga_text(32, 22, "SIG OK", C_GREEN);
+    else
+        vga_text(32, 22, "SIG ..", C_YELLOW);
+    vga_text(39, 22, "second child: write + div0", C_GRAY);
+
+    vga_text(2, 23, "C #PF and F guard -> SIGSEGV; D second child -> #DE SIGFPE.", C_GRAY);
     vga_text(2, 24, "V: stop all user processes; second V starts a fresh AS/PID round.", C_YELLOW);
 }

@@ -28,6 +28,7 @@ SRCS = \
 	arch/x86/cpu/tss/tss.c \
 	arch/x86/cpu/syscall/syscall.c \
 	arch/x86/cpu/fault/page_fault.c \
+	arch/x86/cpu/exception/exception.c \
 	drivers/video/vga/text/vga.c \
 	drivers/serial/uart/uart.c \
 	drivers/input/keyboard/keyboard.c \
@@ -75,8 +76,8 @@ kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 # 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
 kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 40960 / 80 sectors)"; \
-	if [ $$size -gt 40960 ]; then echo "ERROR: kernel.bin $$size bytes > 40960"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 49152 / 96 sectors)"; \
+	if [ $$size -gt 49152 ]; then echo "ERROR: kernel.bin $$size bytes > 49152"; exit 1; fi
 
 boot.bin: boot.asm
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin

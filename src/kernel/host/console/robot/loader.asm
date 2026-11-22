@@ -5,11 +5,16 @@ global irq0_stub
 global int40_stub
 global int80_stub
 global page_fault_stub
+global exception_de_stub
+global exception_bp_stub
+global exception_ud_stub
+global exception_gp_stub
 global gdt_new
 extern kernel_main
 extern task_schedule_irq
 extern syscall_dispatch
 extern page_fault_dispatch
+extern exception_dispatch
 extern __bss_start
 extern __bss_end
 
@@ -106,6 +111,34 @@ page_fault_stub:
     mov eax, esp
     push eax
     call page_fault_dispatch
+    add esp, 4
+    mov esp, eax
+    RESTORE_CTX
+
+; #DE/#BP/#UD 不压 error code，stub 先补 err=0；#GP 由 CPU 压 error code。
+exception_de_stub:
+    push dword 0
+    SAVE_EXC 0x00
+    jmp exception_common
+
+exception_bp_stub:
+    push dword 0
+    SAVE_EXC 0x03
+    jmp exception_common
+
+exception_ud_stub:
+    push dword 0
+    SAVE_EXC 0x06
+    jmp exception_common
+
+exception_gp_stub:
+    SAVE_EXC 0x0D
+    jmp exception_common
+
+exception_common:
+    mov eax, esp
+    push eax
+    call exception_dispatch
     add esp, 4
     mov esp, eax
     RESTORE_CTX

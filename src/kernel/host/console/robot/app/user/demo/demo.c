@@ -3,6 +3,7 @@
 #include "kernel/proc.h"
 #include "kernel/mm/address_space.h"
 #include "arch/x86/page_fault.h"
+#include "arch/x86/exception.h"
 #include "config/memory.h"
 #include "kernel/error.h"
 
@@ -40,8 +41,9 @@ u32 user_demo_start(void)
     code_size = (u32)user_program_end - (u32)user_program_start;
     demo_error = 0;
     process_cleanup();
-    /* 新演示从干净的 #PF 记录开始；旧记录的 PID 可能被下一次复用。 */
+    /* 新演示从干净的 #PF/异常记录开始；旧记录的 PID 可能被下一次复用。 */
     page_fault_clear();
+    exception_clear();
 
     for (i = 0; i < USER_DEMO_LANES; i++) {
         procs[i] = process_create_user(1, lane_names[i], user_program_start,
@@ -91,26 +93,6 @@ struct address_space *user_demo_space(int lane)
     return (lane >= 0 && lane < USER_DEMO_LANES) ? spaces[lane] : 0;
 }
 
-int user_demo_faulted(int lane)
-{
-    struct page_fault_info info;
-    if (lane < 0 || lane >= USER_DEMO_LANES) return 0;
-    if (lane != USER_DEMO_FAULT_LANE && lane != USER_DEMO_GUARD_LANE) return 0;
-    return page_fault_last(&info) && info.pid == (u32)pids[lane];
-}
-
-int user_demo_pid_faulted(int pid)
-{
-    struct page_fault_info info;
-    int lane;
-    if (!page_fault_last(&info) || info.pid != (u32)pid) return 0;
-    for (lane = 0; lane < USER_DEMO_LANES; lane++)
-        if ((lane == USER_DEMO_FAULT_LANE || lane == USER_DEMO_GUARD_LANE) &&
-            pids[lane] == pid)
-            return 1;
-    return 0;
-}
-
 int user_demo_lane_count(void)
 {
     return USER_DEMO_LANES;
@@ -156,6 +138,30 @@ u32 user_demo_cow_ok(int lane)
 {
     if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x40u);
+}
+
+u32 user_demo_sig_child(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x44u);
+}
+
+u32 user_demo_sig_status(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x48u);
+}
+
+u32 user_demo_sig_ret(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x50u);
+}
+
+u32 user_demo_sig_ok(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x4Cu);
 }
 
 u32 user_demo_brk(int lane)

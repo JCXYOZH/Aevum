@@ -5,13 +5,14 @@
 ; 0x401024 heap peek，0x401028 heap poke，0x40102C guard poke，
 ; 0x401030 heap_once，0x401034 越界 brk 返回值，
 ; 0x401038 COW 魔数（父写 PAPA，子写 CHLD），0x40103C 父读回值，
-; 0x401040 COW 验收字；0x404000 停止字。
+; 0x401040 COW 验收字，0x401044 信号子进程 pid，0x401048 信号 wait status，
+; 0x40104C SIG 验收字，0x401050 信号 wait 返回值；0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
 ; stack 0x403000，control 0x404000，heap 0x405000 起。
 ; 模式 0：正常计数、brk 扩堆、用 peek/poke 读写 heap，再 poke guard 失败。
-; 模式 1：计数到 20000 后写内核显存 0xB8000，由 #PF 只杀死这个进程。
-; 模式 2：fork 后父子共享 COW 数据页；子写 CHLD 并 exit(7)，
-;         父 wait 后读回自己的 PAPA，证明写时复制隔离。
+; 模式 1：计数到 5000 后写内核显存 0xB8000，由 #PF 只杀死这个进程。
+; 模式 2：fork 子进程1 写 CHLD 后 exit(7)，父 wait 并读回 PAPA；
+;         再 fork 子进程2 触发 #DE，父 wait 得到 0x80000008 SIGFPE。
 ; 模式 3：直接写 guard 0x402000，由 #PF 只杀死这个进程。
 [bits 32]
 section .text
@@ -71,7 +72,7 @@ user_program_start:
     jmp user_program_start
 
 .fault_mode:
-    cmp eax, 20000
+    cmp eax, 5000
     jb .yield
     mov eax, 0xB8000
     mov dword [eax], 0xDEADBEEF
@@ -83,15 +84,15 @@ user_program_start:
 
 .fork_mode:
     cmp dword [0x401008], 0
-    jne .yield              ; fork/wait 只做一次，之后继续计数
+    jne .yield              ; 两轮 fork/wait 只做一次，之后继续计数
 
-    ; fork 前先写父侧魔数；fork 后父子共享同一数据物理页，直到任一方写入。
+    ; 第一轮：fork 前先写父侧魔数；fork 后父子共享同一数据物理页。
     mov dword [0x401038], 0x50415041   ; "PAPA"
     mov dword [0x401008], 1
     mov eax, 6              ; syscall: fork
     int 0x80
     test eax, eax
-    jz .child
+    jz .child_exit
 
     ; 父进程：wait 前不写数据页，保留 COW 共享，等子进程先写 CHLD。
     mov ebx, eax
@@ -111,26 +112,59 @@ user_program_start:
     mov eax, [0x40100C]
     cmp eax, 0
     jne .cow_bad
-    mov eax, ebx             ; 保存 child pid（wait 返回前未写数据页）
-    mov [0x40100C], eax
+    mov [0x40100C], ebx             ; 保存 normal child pid
+    cmp dword [0x401010], 7
+    jne .no_wait_magic
+    mov dword [0x40101C], 0x4B4F     ; "OK"
+.no_wait_magic:
 
-    mov eax, [0x401010]
-    cmp eax, 7
-    jne .yield
-    mov dword [0x40101C], 0x4B4F   ; "OK"
+    ; 第二轮：fork 第二个子进程，让它在写 COW 页后执行 1/0。
+    mov dword [0x401008], 2
+    mov eax, 6              ; syscall: fork
+    int 0x80
+    test eax, eax
+    jz .child_de
+
+    mov ebx, eax
+    mov [0x401044], ebx             ; signal child pid
+    mov ecx, 0x401048
+    mov eax, 4              ; syscall: wait
+    int 0x80
+    mov [0x401050], eax
+
+    mov eax, [0x401048]
+    cmp eax, 0x80000008             ; high bit = signal, 8 = SIGFPE
+    jne .sig_bad
+    mov dword [0x40104C], 0x53494721 ; "SIG!"
+    mov eax, [0x401038]
+    cmp eax, 0x50415041
+    jne .cow_bad
     jmp .yield
 
 .cow_bad:
     mov dword [0x401040], 0x424144   ; "BAD"
     jmp .yield
 
-.child:
+.sig_bad:
+    mov dword [0x40104C], 0x424144   ; "BAD"
+    jmp .yield
+
+.child_exit:
     mov dword [0x401038], 0x43484C44   ; "CHLD"，触发子侧 COW 拆分
     mov eax, 3              ; syscall: exit
     mov ebx, 7
     int 0x80
 .hang_child:
     jmp .hang_child
+
+.child_de:
+    mov dword [0x401038], 0x53494746   ; "SIGF"，写父页后触发 COW
+    xor edx, edx
+    mov eax, 1
+    xor ecx, ecx
+    div ecx                 ; #DE -> SIGFPE
+.hang_de:
+    jmp .hang_de
 
 .done:
     mov eax, 3              ; syscall: exit

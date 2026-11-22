@@ -49,6 +49,7 @@ u32 task_fork_user(int pid, const char *name, struct irq_frame *frame,
 
 /* PID 由进程/任务共用；进程表保留 PID 后，任务创建不再二次分配。 */
 int task_pid_reserve(void);
+int task_pid_reserve_hint(int pid);
 void task_pid_release(int pid);
 
 /* 用户 ZOMBIE 由 process_wait/reaper 回收：清任务槽但不释放 PID/地址空间。 */

@@ -10,8 +10,22 @@ struct irq_frame;
 #define PROC_MAX 8
 #define PROC_NAME_MAX 15
 
+/* P3.1 只实现默认动作：同步异常投递致命信号，子进程退出给父进程 SIGCHLD。 */
+#define PROC_SIGILL  4
+#define PROC_SIGTRAP 5
+#define PROC_SIGFPE  8
+#define PROC_SIGSEGV 11
+#define PROC_SIGCHLD 17
+
+/* wait status 高位置 1 表示被信号终止；正常退出仍保留原 exit code。 */
+#define PROC_WAIT_SIGNAL_FLAG 0x80000000u
+#define PROC_WAIT_STATUS(sig) (PROC_WAIT_SIGNAL_FLAG | ((u32)(sig) & 0x7Fu))
+#define PROC_WAIT_IS_SIGNAL(status) (((status) & PROC_WAIT_SIGNAL_FLAG) != 0)
+#define PROC_WAIT_SIGNAL(status) ((status) & 0x7Fu)
+#define PROC_WAIT_EXIT_CODE(status) ((status) & 0xFFu)
+
 /*
- * 用户进程生命周期。PID、父子关系、退出码和 wait 状态归本模块；
+ * 用户进程生命周期。PID、父子关系、退出码、信号和 wait 状态归本模块；
  * 调度、内核栈和 FPU 现场仍归 task 模块；页表和用户页归 address_space。
  */
 enum proc_state {
@@ -41,6 +55,11 @@ struct process_info {
     u32 vma_count;
     u32 switches;
     u32 cpu_ticks;
+    u32 pending;
+    u32 last_sig;
+    u32 term_sig;
+    u32 sig_count;
+    u32 sigchld_count;
 };
 
 void process_boot(void);
@@ -55,6 +74,12 @@ struct process *process_fork(struct irq_frame *frame);
 
 /* 标记当前进程 ZOMBIE 并记录退出码；调用方随后 task_exit()。 */
 int process_exit_current(u32 code);
+
+/*
+ * 同步异常的唯一终止入口：把当前进程标成 ZOMBIE，exit status 记为
+ * PROC_WAIT_STATUS(sig)，并给父进程置 SIGCHLD pending；调用方随后 task_exit()。
+ */
+int process_terminate_current(int sig);
 
 /* wait 子进程：P1 用 task_yield() 轮询，找到 ZOMBIE 后写 user status 并回收。 */
 int process_wait(int pid, u32 user_status);

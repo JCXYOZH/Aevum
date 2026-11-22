@@ -13,8 +13,8 @@ struct address_space;
 /*
  * 五个 ring3 用户进程共用同一段虚拟代码。
  * userA/userB 正常计数并做 brk/heap peek/poke；userC 计数后探测内核页，
- * 验证 #PF 故障隔离；userD 先 fork 出 userE，再 wait 子进程退出码 7；
- * userF 直接写 guard 页，验证 VMA guard 拒绝。
+ * 验证 #PF 故障隔离；userD 先 fork 出 userE 验证正常 exit(7)+COW，
+ * 再 fork 第二个 E 触发 #DE，验证 wait 的 SIGFPE 状态；userF 写 guard 页。
  */
 u32 user_demo_start(void);
 void user_demo_stop(void);
@@ -22,8 +22,6 @@ int user_demo_alive(void);
 u32 user_demo_error(void);
 int user_demo_pid(int lane);
 struct address_space *user_demo_space(int lane);
-int user_demo_faulted(int lane);
-int user_demo_pid_faulted(int pid);
 int user_demo_lane_count(void);
 
 /* userD 的数据页是 fork/wait 的证据：child pid、wait pid/status/ret、WAIT 魔数。 */
@@ -36,6 +34,12 @@ u32 user_demo_wait_magic(int lane);
 /* COW 证据：fork 前父写 PAPA，子写 CHLD；父 wait 后读回 PAPA 并写 COW 验收字。 */
 u32 user_demo_cow_readback(int lane);
 u32 user_demo_cow_ok(int lane);
+
+/* P3.1：D 的第二个子进程触发 #DE，父 wait 得到 0x80000008 = SIGFPE。 */
+u32 user_demo_sig_child(int lane);
+u32 user_demo_sig_status(int lane);
+u32 user_demo_sig_ret(int lane);
+u32 user_demo_sig_ok(int lane);
 
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);

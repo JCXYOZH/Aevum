@@ -270,6 +270,17 @@ int task_pid_reserve(void)
     return pid_alloc();
 }
 
+/* fork 可指定刚回收的子 PID，避免无关墓碑被新进程覆盖。 */
+int task_pid_reserve_hint(int pid)
+{
+    u32 mask;
+    if (pid <= 0 || pid > PID_MAX) return 0;
+    mask = 1u << (pid - 1);
+    if (pid_map & mask) return 0;
+    pid_map |= mask;
+    return pid;
+}
+
 void task_pid_release(int pid)
 {
     pid_free(pid);
@@ -463,6 +474,9 @@ u32 task_schedule_irq(struct irq_frame *frame)
             prev->cpu_ticks++;
             prev->vruntime += WEIGHT_QUANTUM / task_weight(prev);
         }
+    } else if (reason == SCHED_YIELD && prev->state == TASK_READY) {
+        /* 主动 yield 也必须记账；否则 wait 轮询会以低 vruntime 饿死其他任务。 */
+        prev->vruntime += WEIGHT_QUANTUM / task_weight(prev);
     }
 
     prev->ctx.esp = (u32)frame;
