@@ -35,6 +35,9 @@ struct process_info {
     u32 counter;
     u32 code_phys;
     u32 data_phys;
+    u32 brk;
+    u32 user_pages;
+    u32 vma_count;
     u32 switches;
     u32 cpu_ticks;
 };
@@ -46,7 +49,7 @@ struct process *process_create_user(int priority, const char *name,
                                     const u8 *code, u32 code_size,
                                     u32 kernel_stack_top, u32 user_stack_top);
 
-/* fork 当前 ring3 进程：复制 4 个用户页、内核帧和 FPU；父返回子 PID，子返回 0。 */
+/* fork 当前 ring3 进程：复制 VMA 用户页、内核帧和 FPU；父返回子 PID，子返回 0。 */
 struct process *process_fork(struct irq_frame *frame);
 
 /* 标记当前进程 ZOMBIE 并记录退出码；调用方随后 task_exit()。 */

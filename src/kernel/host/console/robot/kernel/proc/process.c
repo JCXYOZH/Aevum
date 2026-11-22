@@ -312,8 +312,8 @@ int process_wait(int pid, u32 user_status)
             if (child->ppid != self->pid) continue;
             if (pid >= 0 && child->pid != pid) continue;
 
-            if (!address_space_user_write32(self->space, user_status,
-                                            child->exit_code))
+            if (address_space_copyout(self->space, user_status,
+                                      &child->exit_code, 4) != 0)
                 return -1;
             {
                 int child_pid = child->pid;
@@ -426,6 +426,9 @@ int process_snapshot(int slot, struct process_info *out)
     out->counter = address_space_counter(p->space);
     out->code_phys = address_space_code_phys(p->space);
     out->data_phys = address_space_data_phys(p->space);
+    out->brk = address_space_brk(p->space);
+    out->user_pages = address_space_user_pages(p->space);
+    out->vma_count = address_space_vma_count(p->space);
 
     has_task = task_snapshot_pid(p->pid, &info);
     if (has_task) {

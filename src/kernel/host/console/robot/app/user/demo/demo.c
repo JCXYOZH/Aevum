@@ -15,11 +15,12 @@ static int pids[USER_DEMO_LANES];
 static volatile u32 demo_error;
 
 static const char *const lane_names[USER_DEMO_LANES] = {
-    "userA", "userB", "userC", "userD"
+    "userA", "userB", "userC", "userD", "userF"
 };
 static const u32 lane_stacks[USER_DEMO_LANES] = {
     AEVUM_STACK_USER_A, AEVUM_STACK_USER_B,
-    AEVUM_STACK_USER_C, AEVUM_STACK_USER_D
+    AEVUM_STACK_USER_C, AEVUM_STACK_USER_D,
+    AEVUM_STACK_USER_F
 };
 
 static int lane_alive(int lane)
@@ -53,9 +54,11 @@ u32 user_demo_start(void)
         }
         spaces[i] = process_space(procs[i]);
         pids[i] = process_pid_of(procs[i]);
-        /* 同一段用户代码，用数据页里的 mode 区分正常/故障/fork-wait。 */
-        address_space_set_mode(spaces[i], i == USER_DEMO_FAULT_LANE ? 1u :
-                              (i == 3 ? 2u : 0u));
+        /* 同一段用户代码，用数据页里的 mode 区分正常/故障/fork-wait/guard。 */
+        address_space_set_mode(spaces[i],
+                               i == USER_DEMO_FAULT_LANE ? 1u :
+                               (i == USER_DEMO_FORK_LANE ? 2u :
+                                (i == USER_DEMO_GUARD_LANE ? 3u : 0u)));
     }
     return 0;
 }
@@ -91,8 +94,21 @@ struct address_space *user_demo_space(int lane)
 int user_demo_faulted(int lane)
 {
     struct page_fault_info info;
-    if (lane != USER_DEMO_FAULT_LANE) return 0;
+    if (lane < 0 || lane >= USER_DEMO_LANES) return 0;
+    if (lane != USER_DEMO_FAULT_LANE && lane != USER_DEMO_GUARD_LANE) return 0;
     return page_fault_last(&info) && info.pid == (u32)pids[lane];
+}
+
+int user_demo_pid_faulted(int pid)
+{
+    struct page_fault_info info;
+    int lane;
+    if (!page_fault_last(&info) || info.pid != (u32)pid) return 0;
+    for (lane = 0; lane < USER_DEMO_LANES; lane++)
+        if ((lane == USER_DEMO_FAULT_LANE || lane == USER_DEMO_GUARD_LANE) &&
+            pids[lane] == pid)
+            return 1;
+    return 0;
 }
 
 int user_demo_lane_count(void)
@@ -102,30 +118,60 @@ int user_demo_lane_count(void)
 
 u32 user_demo_fork_child(int lane)
 {
-    if (lane != 3 || !spaces[lane]) return 0;
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x0Cu);
 }
 
 u32 user_demo_wait_pid(int lane)
 {
-    if (lane != 3 || !spaces[lane]) return 0;
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x14u);
 }
 
 u32 user_demo_wait_status(int lane)
 {
-    if (lane != 3 || !spaces[lane]) return 0;
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x10u);
 }
 
 u32 user_demo_wait_ret(int lane)
 {
-    if (lane != 3 || !spaces[lane]) return 0;
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x18u);
 }
 
 u32 user_demo_wait_magic(int lane)
 {
-    if (lane != 3 || !spaces[lane]) return 0;
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x1Cu);
+}
+
+u32 user_demo_brk(int lane)
+{
+    if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x20u);
+}
+
+u32 user_demo_heap_peek(int lane)
+{
+    if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x24u);
+}
+
+u32 user_demo_heap_poke(int lane)
+{
+    if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x28u);
+}
+
+u32 user_demo_guard_poke(int lane)
+{
+    if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x2Cu);
+}
+
+u32 user_demo_bad_brk(int lane)
+{
+    if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x34u);
 }

@@ -2,6 +2,8 @@
 #include "arch/x86/frame.h"
 #include "arch/x86/interrupt.h"
 #include "kernel/task.h"
+#include "kernel/proc.h"
+#include "kernel/mm/address_space.h"
 #include "config/memory.h"
 #include "drivers/video/vga.h"
 #include "drivers/input/keyboard.h"
@@ -277,8 +279,14 @@ u32 page_fault_dispatch(struct irq_frame *frame)
         last_fault.comm[1] = 0;
     }
 
-    /* ring3 的错误地址/权限错误：只杀当前进程，不把内核拖下水。 */
+    /* ring3 的错误地址/权限错误：heap 缺页先零填并重试，其余只杀当前进程。 */
     if ((frame->cs & 3u) == 3u) {
+        struct process *proc = task_process_current();
+        struct address_space *space = proc ? process_space(proc) : 0;
+        if (space && address_space_handle_user_fault(space, cr2, frame->err))
+            return (u32)frame;
+        /* 128+SIGSEGV：wait 父进程能看出这是故障退出，而不是正常 exit(0)。 */
+        (void)process_exit_current(128u + 14u);
         task_exit();
     }
 

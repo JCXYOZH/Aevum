@@ -2,11 +2,11 @@
 #define AEVUM_CONFIG_MEMORY_H
 
 /*
- * 物理内存布局。boot.asm 建立 0~4MB 恒等映射；内核静态区在 0x80000..0x89A34，
+ * 物理内存布局。boot.asm 建立 0~4MB 恒等映射；内核静态区在 0x80000..0x8AE00，
  * 页表、任务栈和用户页都在 4MB 以内。地址是跨模块共享常量，只允许本文件定义。
  */
 #define AEVUM_KERNEL_BASE       0x00080000u
-#define AEVUM_KERNEL_END        0x00089A34u
+#define AEVUM_KERNEL_END        0x0008AE00u
 #define AEVUM_STACK_P1          0x00200000u
 #define AEVUM_STACK_P2          0x0000A000u
 #define AEVUM_STACK_IDLE        0x0000B000u
@@ -36,15 +36,25 @@
 #define AEVUM_SHADOW            0x00020000u
 #define AEVUM_FRAME_SNAP        0x00030000u
 
-/* 用户地址空间：每进程一套 PD/PT 和四张用户页，物理页仍落在 4MB 恒等映射内。 */
-#define AEVUM_AS_BASE           0x00040000u
-#define AEVUM_AS_STRIDE         0x00006000u
+/* 用户地址空间：每进程一套 PD/PT 和 VMA 映射，物理页从全局页池分配。 */
 #define AEVUM_AS_MAX            6
 #define AEVUM_USER_VA_BASE      0x00400000u
 #define AEVUM_USER_CODE_VA      0x00400000u
 #define AEVUM_USER_DATA_VA      0x00401000u
-#define AEVUM_USER_STACK_VA     0x00402000u
-#define AEVUM_USER_CONTROL_VA   0x00403000u
-#define AEVUM_USER_STACK_TOP    0x00403000u
+#define AEVUM_USER_GUARD_VA     0x00402000u
+#define AEVUM_USER_STACK_VA     0x00403000u
+#define AEVUM_USER_CONTROL_VA   0x00404000u
+#define AEVUM_USER_STACK_TOP    0x00404000u
+#define AEVUM_USER_HEAP_VA      0x00405000u
+#define AEVUM_USER_HEAP_MAX     0x00410000u
+#define AEVUM_USER_VMA_MAX      8
+
+/*
+ * 用户页物理池：内核镜像、VGA/BIOS ROM 影子、任务栈之外的空闲区。
+ * 0x100000..0x1FEFFF 共 255 页，位于 0..4MB 恒等映射内；避开 0xC0000
+ * 起的 VGA BIOS 影子 ROM 和 0x200000 起的任务栈。
+ */
+#define AEVUM_PHYS_POOL_BASE    0x00100000u
+#define AEVUM_PHYS_POOL_END     0x001FF000u
 
 #endif

@@ -6,9 +6,30 @@
 struct address_space;
 
 /*
- * 地址空间的唯一 owner。任务只持有指针，页目录、页表、用户页和 CR3
- * 切换都由本模块维护；其他模块不得直接改页表项。
+ * 地址空间的唯一 owner。任务只持有指针，页目录、页表、VMA、用户页、
+ * 物理页分配和 CR3 切换都由本模块维护；其他模块不得直接改页表项。
  */
+
+enum address_space_vma_kind {
+    ADDRESS_SPACE_VMA_CODE = 1,
+    ADDRESS_SPACE_VMA_DATA = 2,
+    ADDRESS_SPACE_VMA_GUARD = 3,
+    ADDRESS_SPACE_VMA_STACK = 4,
+    ADDRESS_SPACE_VMA_CONTROL = 5,
+    ADDRESS_SPACE_VMA_HEAP = 6
+};
+
+#define ADDRESS_SPACE_VMA_READ   0x1u
+#define ADDRESS_SPACE_VMA_WRITE  0x2u
+#define ADDRESS_SPACE_VMA_EXEC   0x4u
+
+struct address_space_vma_info {
+    u32 start;
+    u32 end;
+    u32 flags;
+    u32 kind;
+};
+
 void address_space_boot(void);
 struct address_space *address_space_kernel(void);
 struct address_space *address_space_create_user(const u8 *code, u32 code_size);
@@ -27,10 +48,33 @@ void address_space_set_stop(struct address_space *space, u32 stop);
 void address_space_set_mode(struct address_space *space, u32 mode);
 int address_space_user_active(const struct address_space *space);
 
-/* 系统调用用户指针校验：只接受当前四个用户页，写操作还要求 PTE.RW。 */
+/* 用户堆：brk 只能落在 [HEAP_VA, HEAP_MAX]；增长时按 VMA 零填新页。 */
+u32 address_space_brk(const struct address_space *space);
+int address_space_set_brk(struct address_space *space, u32 new_brk);
+
+int address_space_vma_count(const struct address_space *space);
+int address_space_vma_snapshot(const struct address_space *space, int slot,
+                               struct address_space_vma_info *out);
+u32 address_space_user_pages(const struct address_space *space);
+u32 address_space_phys_total(void);
+u32 address_space_phys_used(void);
+
+/*
+ * 用户态缺页：只处理 heap VMA 内、尚未建立 PTE 的页；分配零页并重试。
+ * 返回 1 表示已修复，调用方应 iret 重试；guard/无 VMA/权限错误返回 0。
+ */
+int address_space_handle_user_fault(struct address_space *space, u32 va, u32 err);
+
+/* 用户指针校验：按 VMA 和 PTE 双重检查；写操作还要求 VMA.W 与 PTE.RW。 */
 int address_space_user_range_ok(const struct address_space *space, u32 va,
                                 u32 len, int write);
 u32 address_space_user_read32(const struct address_space *space, u32 va);
 int address_space_user_write32(struct address_space *space, u32 va, u32 value);
+
+/* copyin/copyout：逐字节翻译用户 VA，失败返回 -1；不再让内核直接解引用用户指针。 */
+int address_space_copyin(const struct address_space *space, void *dst,
+                         u32 user_va, u32 len);
+int address_space_copyout(struct address_space *space, u32 user_va,
+                          const void *src, u32 len);
 
 #endif

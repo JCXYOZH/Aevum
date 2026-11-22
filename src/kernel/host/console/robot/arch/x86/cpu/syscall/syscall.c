@@ -2,11 +2,18 @@
 #include "arch/x86/interrupt.h"
 #include "kernel/task.h"
 #include "kernel/proc.h"
+#include "kernel/mm/address_space.h"
 
 extern void int80_stub(void);
 
 static u32 call_count;
 static u32 last_cs;
+
+static struct address_space *current_space(void)
+{
+    struct process *proc = task_process_current();
+    return proc ? process_space(proc) : 0;
+}
 
 void syscall_init(void)
 {
@@ -39,6 +46,34 @@ u32 syscall_dispatch(struct irq_frame *frame)
             break;
         case 7:
             frame->eax = (u32)process_getppid_current();
+            break;
+        case 8:
+            {
+                struct address_space *space = current_space();
+                frame->eax = (space && address_space_set_brk(space, frame->ebx) == 0)
+                                 ? address_space_brk(space)
+                                 : (u32)-1;
+            }
+            break;
+        case 9:
+            {
+                u32 value;
+                struct address_space *space = current_space();
+                frame->eax = (space &&
+                              address_space_copyin(space, &value, frame->ebx, 4) == 0)
+                                 ? value
+                                 : (u32)-1;
+            }
+            break;
+        case 10:
+            {
+                struct address_space *space = current_space();
+                frame->eax = (space &&
+                              address_space_user_write32(space, frame->ebx,
+                                                         frame->ecx))
+                                 ? 1u
+                                 : 0u;
+            }
             break;
         default:
             frame->eax = (u32)-1;
