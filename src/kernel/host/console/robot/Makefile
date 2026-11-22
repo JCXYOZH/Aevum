@@ -21,6 +21,7 @@ SRCS = \
 	kernel/main/main.c \
 	kernel/error/error.c \
 	kernel/task/task.c \
+	kernel/task/stack/stack.c \
 	kernel/task/family/family.c \
 	kernel/proc/process.c \
 	kernel/proc/fd/fd.c \
@@ -49,7 +50,9 @@ SRCS = \
 	app/user/demo/demo.c \
 	app/user/render/render.c \
 	app/console/demo/demo.c \
-	app/console/render/render.c
+	app/console/render/render.c \
+	app/pool/demo/demo.c \
+	app/pool/render/render.c
 
 OBJS    = $(addprefix $(BUILD)/,$(SRCS:.c=.o)) build/user/ring3.o build/user/exec.o build/user/exec_pipe.o
 IMG     = os.img
@@ -89,8 +92,8 @@ kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 # 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
 kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 57344 / 112 sectors)"; \
-	if [ $$size -gt 57344 ]; then echo "ERROR: kernel.bin $$size bytes > 57344"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 65536 / 128 sectors)"; \
+	if [ $$size -gt 65536 ]; then echo "ERROR: kernel.bin $$size bytes > 65536"; exit 1; fi
 
 boot.bin: boot.asm boot_common.inc
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin

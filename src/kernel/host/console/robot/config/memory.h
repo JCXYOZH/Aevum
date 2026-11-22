@@ -6,22 +6,24 @@
  * 页表、任务栈和用户页都在 4MB 以内。地址是跨模块共享常量，只允许本文件定义。
  */
 #define AEVUM_KERNEL_BASE       0x00080000u
-#define AEVUM_KERNEL_END        0x00090800u
+#define AEVUM_KERNEL_END        0x00092000u
 #define AEVUM_STACK_P1          0x00200000u
 #define AEVUM_STACK_P2          0x0000A000u
 #define AEVUM_STACK_IDLE        0x0000B000u
-#define AEVUM_STACK_USER_A      0x00201000u
-#define AEVUM_STACK_USER_B      0x00202000u
-#define AEVUM_STACK_USER_C      0x00203000u
-#define AEVUM_STACK_USER_D      0x00204000u
-#define AEVUM_STACK_USER_E      0x00205000u
-#define AEVUM_STACK_USER_F      0x00206000u
 #define AEVUM_STACK_MAIN        0x0000C000u
 #define AEVUM_STACK_PROBE       0x0000D000u
 #define AEVUM_STACK_DUEL_A      0x0000E000u
 #define AEVUM_STACK_DUEL_B      0x0000F000u
+/*
+ * 用户进程内核栈池：0x200000..0x20C000 共 12 个 4KB 槽。
+ * 槽 0 的 top 是 0x201000，槽 11 的 top 是 0x20C000；control 的静态栈
+ * 停在 0x1FF000..0x200000，不占池内空间。容量与 process 槽位解耦，
+ * 由 kernel/task/stack 位图分配/释放。
+ */
+#define AEVUM_KSTACK_BASE      0x00200000u
+#define AEVUM_KSTACK_COUNT     12
 #define AEVUM_TASK_STACK_MIN    0x00008000u
-#define AEVUM_TASK_STACK_MAX    0x00206000u
+#define AEVUM_TASK_STACK_MAX    0x0020C000u
 #define AEVUM_TASK_STACK_SIZE   0x00001000u
 #define AEVUM_PAGE_SIZE         0x00001000u
 #define AEVUM_FPU_STATE_SIZE    0x00000200u
@@ -39,7 +41,7 @@
 /* 用户地址空间：每进程一套 PD/PT 和 VMA 映射，物理页从全局页池分配。 */
 #define AEVUM_AS_BASE           0x00040000u
 #define AEVUM_AS_STRIDE         0x00006000u
-#define AEVUM_AS_MAX            8
+#define AEVUM_AS_MAX            12
 #define AEVUM_USER_VA_BASE      0x00400000u
 #define AEVUM_USER_CODE_VA      0x00400000u
 #define AEVUM_USER_DATA_VA      0x00401000u
@@ -54,7 +56,7 @@
 /*
  * 用户页物理池：内核镜像、VGA/BIOS ROM 影子、任务栈之外的空闲区。
  * 0x100000..0x1FEFFF 共 255 页，位于 0..4MB 恒等映射内；避开 0xC0000
- * 起的 VGA BIOS 影子 ROM 和 0x200000 起的任务栈。
+ * 起的 VGA BIOS 影子 ROM 和 0x200000..0x20C000 的内核栈池。
  */
 #define AEVUM_PHYS_POOL_BASE    0x00100000u
 #define AEVUM_PHYS_POOL_END     0x001FF000u

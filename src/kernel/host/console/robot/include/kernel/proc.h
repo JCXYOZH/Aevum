@@ -8,7 +8,7 @@ struct task_struct;
 struct irq_frame;
 struct proc_fd_table;
 
-#define PROC_MAX 8
+#define PROC_MAX 12
 #define PROC_NAME_MAX 15
 
 /* P3.2：同步异常先查每进程 handler；无 handler 才走 P3.1 的默认终止。 */
@@ -73,10 +73,10 @@ struct process_info {
 
 void process_boot(void);
 
-/* 由 kernel task 创建用户进程：保留 PID，分配 AS/内核栈，最后才发布任务 READY。 */
+/* 由 kernel task 创建用户进程：保留 PID，动态分配栈池槽与 AS，最后才发布任务 READY。 */
 struct process *process_create_user(int priority, const char *name,
                                     const u8 *code, u32 code_size,
-                                    u32 kernel_stack_top, u32 user_stack_top);
+                                    u32 user_stack_top);
 
 /* fork 当前 ring3 进程：复制 VMA 用户页、内核帧和 FPU；父返回子 PID，子返回 0。 */
 struct process *process_fork(struct irq_frame *frame);
@@ -138,6 +138,8 @@ void process_reap_orphans(void);
 
 int process_snapshot(int slot, struct process_info *out);
 int process_count(void);
+/* PROC_MAX 是静态 PCB 槽容量；live+ZOMBIE 墓碑都占用槽，DEAD 才归还。 */
+int process_slot_used(void);
 int process_pid_of(struct process *proc);
 struct address_space *process_space(struct process *proc);
 /* 每进程 fd 表归 kernel/proc/fd；exec 不重建它，fork 复制引用。 */

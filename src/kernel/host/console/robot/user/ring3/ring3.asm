@@ -17,6 +17,8 @@
 ; 0x4010AC 父 read fd0，0x4010B0 父 write fd1，0x4010B4 console wait status，
 ; 0x4010B8 console wait 返回值，0x4010BC console 验收字，0x4010F0 console 只执行一次标记，
 ; 0x401120 console 输入缓冲，0x401130 console 输出构造缓冲；
+; 0x4010C0 pool 子进程数量，0x4010C4 "POOL" 魔数，0x4010C8 pool 只执行一次标记，
+; 0x401100..0x40111F pool 8 个子进程 pid；
 ; 0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
 ; stack 0x403000，control 0x404000，heap 0x405000 起。
@@ -28,6 +30,9 @@
 ; 模式 3：直接写 guard 0x402000，由 #PF 只杀死这个进程。
 ; 模式 4：父 fork 后先关闭自己的 fd0/fd1，子进程仍用继承端点读键盘并写 console；
 ;         父 wait 到 14 后写 "CON!" 并 exit(15)。
+; 模式 5：池压力；父进程连续 fork 8 个子进程并全部保持存活，pid 写入
+;         0x401100..0x40111F，count 0x4010C0，魔数 0x4010C4；停止后父 exit(16)、
+;         子 exit(17)。本模式不 wait，仅验证任务/PROC/AS/栈池同时容纳 9 个用户进程。
 [bits 32]
 section .text
 global user_program_start
@@ -50,6 +55,8 @@ user_program_start:
     je .guard_mode
     cmp dword [0x401004], 4
     je .console_mode
+    cmp dword [0x401004], 5
+    je .pool_mode
 
     ; 模式 0：只做一次 heap/guard 指针验收。
     cmp dword [0x401030], 0
@@ -382,6 +389,54 @@ user_program_start:
 .console_child_stop:
     mov eax, 3
     mov ebx, 16
+    int 0x80
+    jmp .hang
+
+; P5.1：一个父进程连续 fork 8 个孩子，全部保持 READY/可调度，
+; 用来同时压 task 槽、PROC 槽、AS 槽和内核栈池。
+.pool_mode:
+    cmp dword [0x4010C8], 0
+    jne .yield              ; 父子都只执行一次；孩子 fork 返回后直接进 hold
+    mov dword [0x4010C8], 1
+    mov dword [0x4010C0], 0
+
+.pool_fork:
+    cmp dword [0x4010C0], 8
+    jae .pool_parent
+    mov eax, 6              ; syscall: fork
+    int 0x80
+    test eax, eax
+    jz .pool_child
+    mov ecx, [0x4010C0]
+    mov [0x401100 + ecx * 4], eax
+    inc dword [0x4010C0]
+    jmp .pool_fork
+
+.pool_parent:
+    mov dword [0x4010C4], 0x4C4F4F50 ; "POOL"
+.pool_parent_hold:
+    cmp dword [0x404000], 0
+    jne .pool_parent_stop
+    mov eax, 2
+    int 0x80
+    jmp .pool_parent_hold
+
+.pool_parent_stop:
+    mov eax, 3
+    mov ebx, 16
+    int 0x80
+    jmp .hang
+
+.pool_child:
+    cmp dword [0x404000], 0
+    jne .pool_child_stop
+    mov eax, 2
+    int 0x80
+    jmp .pool_child
+
+.pool_child_stop:
+    mov eax, 3
+    mov ebx, 17
     int 0x80
     jmp .hang
 

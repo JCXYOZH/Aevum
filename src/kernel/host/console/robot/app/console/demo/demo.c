@@ -42,8 +42,7 @@ const char *console_demo_start(void)
     console_reset();
 
     console_proc = process_create_user(1, "console", user_program_start,
-                                       code_size, AEVUM_STACK_USER_E,
-                                       AEVUM_USER_STACK_TOP);
+                                       code_size, AEVUM_USER_STACK_TOP);
     if (!console_proc) {
         console_error = "process_create_user";
         return console_error;

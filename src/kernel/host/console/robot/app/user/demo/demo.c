@@ -17,11 +17,6 @@ static const char *volatile demo_error;
 static const char *const lane_names[USER_DEMO_LANES] = {
     "userA", "userB", "userC", "userD", "userF"
 };
-static const u32 lane_stacks[USER_DEMO_LANES] = {
-    AEVUM_STACK_USER_A, AEVUM_STACK_USER_B,
-    AEVUM_STACK_USER_C, AEVUM_STACK_USER_D,
-    AEVUM_STACK_USER_F
-};
 
 static int lane_alive(int lane)
 {
@@ -46,8 +41,7 @@ const char *user_demo_start(void)
 
     for (i = 0; i < USER_DEMO_LANES; i++) {
         procs[i] = process_create_user(1, lane_names[i], user_program_start,
-                                       code_size, lane_stacks[i],
-                                       AEVUM_USER_STACK_TOP);
+                                       code_size, AEVUM_USER_STACK_TOP);
         if (!procs[i]) {
             demo_error = "process_create_user";
             user_demo_stop();

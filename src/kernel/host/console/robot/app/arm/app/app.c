@@ -9,6 +9,8 @@
 #include "app/user/render.h"
 #include "app/console/demo.h"
 #include "app/console/render.h"
+#include "app/pool/demo.h"
+#include "app/pool/render.h"
 #include "kernel/mm/address_space.h"
 #include "kernel/task.h"
 #include "kernel/task/family.h"
@@ -41,6 +43,8 @@ static volatile int tree_live;
 static volatile int user_live;
 static volatile int console_live;
 static volatile int console_exiting;
+static volatile int pool_live;
+static volatile int pool_exiting;
 static volatile u8 duel_tape[DUEL_TAPE];
 static volatile u32 duel_tape_head;
 static u32 probe_runs;
@@ -126,6 +130,60 @@ static void proc_render(void)
             if (task_yield()) {
                 struct aevum_error e = app_state_template;
                 e.field = "task_yield(render/console)";
+                aevum_fail(&e);
+            }
+            continue;
+        }
+
+        /* P5.1 池压力页：Y 进入；根进程 fork 8 个子进程，全部保持可调度。 */
+        if (key == 0x15 && !console_live && !duel_live && !cpu_live &&
+            !probe_live && !fpu_demo_live() && !tree_live && !user_live &&
+            !pool_live) {
+            const char *rc = pool_demo_start();
+            if (rc) {
+                struct aevum_error e = app_dep_template;
+                e.field = rc;
+                e.at = "proc_render -> pool_demo_start";
+                aevum_fail(&e);
+            }
+            pool_live = 1;
+            pool_exiting = 0;
+            continue;
+        }
+
+        if (pool_live) {
+            const char *rc;
+
+            if (key == 0x15) {
+                if (pool_demo_alive()) {
+                    pool_exiting = 1;
+                    pool_demo_stop();
+                } else {
+                    pool_demo_cleanup();
+                    pool_live = 0;
+                    pool_exiting = 0;
+                    continue;
+                }
+            }
+
+            rc = pool_demo_error();
+            if (rc) {
+                struct aevum_error e = app_dep_template;
+                e.field = rc;
+                e.at = "proc_render -> pool_demo";
+                aevum_fail(&e);
+            }
+            if (pool_exiting && !pool_demo_alive()) {
+                pool_demo_cleanup();
+                pool_live = 0;
+                pool_exiting = 0;
+                continue;
+            }
+            pool_render_frame();
+            vga_flush();
+            if (task_yield()) {
+                struct aevum_error e = app_state_template;
+                e.field = "task_yield(render/pool)";
                 aevum_fail(&e);
             }
             continue;

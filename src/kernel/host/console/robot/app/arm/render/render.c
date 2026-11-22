@@ -414,7 +414,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T/C/F/G/V/K ", C_WHITE);
+    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T/C/F/G/V/X/Y/K ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;

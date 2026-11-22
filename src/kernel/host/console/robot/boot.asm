@@ -10,7 +10,7 @@ start:
     xor ax, ax
     mov ds, ax
     mov es, ax
-    ; 112 个扇区一次 LBA 读到 0x80000。内核不再落在 BIOS 低内存暂存区，
+    ; 128 个扇区一次 LBA 读到 0x80000。内核不再落在 BIOS 低内存暂存区，
     ; 也不会覆盖正在执行的 boot 代码。
     mov ah, 0x42
     mov si, dap
@@ -34,7 +34,7 @@ boot_load_ok:
 align 4
 dap:
     db 0x10, 0
-    dw 112
+    dw 128
     dw 0x0000
     dw 0x8000
     dq 1

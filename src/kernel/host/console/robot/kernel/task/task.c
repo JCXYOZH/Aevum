@@ -390,6 +390,20 @@ int task_pid_capacity(void)
     return PID_MAX;
 }
 
+int task_slot_used(void)
+{
+    int i, n = 0;
+
+    for (i = 0; i < TASK_MAX; i++)
+        if (tasks[i].state != TASK_UNUSED) n++;
+    return n;
+}
+
+int task_slot_capacity(void)
+{
+    return TASK_MAX;
+}
+
 static void task_note_switch(struct task_struct *next)
 {
     switch_total++;

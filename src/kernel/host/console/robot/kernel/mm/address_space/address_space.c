@@ -526,6 +526,20 @@ u32 address_space_phys_used(void)
     return phys_used_pages;
 }
 
+int address_space_slot_used(void)
+{
+    int i, n = 0;
+
+    for (i = 0; i < AEVUM_AS_MAX; i++)
+        if (spaces[i].used && spaces[i].user) n++;
+    return n;
+}
+
+int address_space_slot_capacity(void)
+{
+    return AEVUM_AS_MAX;
+}
+
 /*
  * 只把两类用户缺页修好：
  * 1) heap VMA 内、brk 以下尚未 present 的页，零填；

@@ -70,6 +70,9 @@ u32 address_space_cow_pages(const struct address_space *space);
 void address_space_cow_snapshot(struct address_space_cow_info *out);
 u32 address_space_phys_total(void);
 u32 address_space_phys_used(void);
+/* 用户 AS 槽是 AEVUM_AS_MAX 静态池；kernel_space 不计入用户槽。 */
+int address_space_slot_used(void);
+int address_space_slot_capacity(void);
 
 /*
  * 用户态缺页：只处理 heap VMA 内、尚未建立 PTE 的页；分配零页并重试。

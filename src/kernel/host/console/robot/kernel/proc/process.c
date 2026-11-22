@@ -1,12 +1,12 @@
 #include "kernel/proc.h"
 #include "kernel/proc/fd.h"
 #include "kernel/task.h"
+#include "kernel/task/stack.h"
 #include "kernel/mm/address_space.h"
 #include "arch/x86/exception.h"
 #include "arch/x86/frame.h"
 #include "config/memory.h"
 
-#define PROC_STACK_COUNT 6
 #define PROC_SIGFRAME_MAGIC 0x53494746u  /* "SIGF" */
 #define PROC_EXEC_MAX_VEC 4
 #define PROC_EXEC_STRING_MAX 32
@@ -75,11 +75,6 @@ struct process {
 };
 
 static struct process procs[PROC_MAX];
-static const u32 stack_tops[PROC_STACK_COUNT] = {
-    AEVUM_STACK_USER_A, AEVUM_STACK_USER_B, AEVUM_STACK_USER_C,
-    AEVUM_STACK_USER_D, AEVUM_STACK_USER_E, AEVUM_STACK_USER_F
-};
-static u32 stack_map;
 
 static void proc_reset_signals(struct process *p)
 {
@@ -131,8 +126,9 @@ void process_boot(void)
         proc_zero(&procs[i]);
         procs[i].pid = -1;
     }
-    stack_map = 0;
+    kernel_stack_reset();
 }
+
 
 static struct process *proc_find_active(int pid)
 {
@@ -407,40 +403,6 @@ static struct process *proc_alloc_slot(int pid)
     return slot;
 }
 
-static u32 stack_alloc(u32 top)
-{
-    int i;
-    for (i = 0; i < PROC_STACK_COUNT; i++) {
-        if (stack_tops[i] == top) {
-            u32 mask = 1u << i;
-            if (stack_map & mask) return 0;
-            stack_map |= mask;
-            return top;
-        }
-    }
-    return 0;
-}
-
-static u32 stack_alloc_any(void)
-{
-    int i;
-    for (i = 0; i < PROC_STACK_COUNT; i++) {
-        u32 mask = 1u << i;
-        if (!(stack_map & mask)) {
-            stack_map |= mask;
-            return stack_tops[i];
-        }
-    }
-    return 0;
-}
-
-static void stack_free(u32 top)
-{
-    int i;
-    for (i = 0; i < PROC_STACK_COUNT; i++)
-        if (stack_tops[i] == top) stack_map &= ~(1u << i);
-}
-
 /* 回收一个 ZOMBIE：任务槽、地址空间、PID、内核栈一次释放；保留墓碑用于 V 页。 */
 static void process_reap(struct process *p)
 {
@@ -450,7 +412,7 @@ static void process_reap(struct process *p)
     task_release_slot(p->pid);
     if (p->space) address_space_release(p->space);
     task_pid_release(p->pid);
-    stack_free(p->stack_top);
+    kernel_stack_free(p->stack_top);
     p->task = 0;
     p->space = 0;
     p->stack_top = 0;
@@ -468,7 +430,7 @@ static int proc_copy_name(struct process *p, const char *name)
 
 struct process *process_create_user(int priority, const char *name,
                                     const u8 *code, u32 code_size,
-                                    u32 kernel_stack_top, u32 user_stack_top)
+                                    u32 user_stack_top)
 {
     struct process *p;
     struct task_struct *task;
@@ -486,7 +448,7 @@ struct process *process_create_user(int priority, const char *name,
         task_pid_release(pid);
         return 0;
     }
-    stack_top = stack_alloc(kernel_stack_top);
+    stack_top = kernel_stack_alloc();
     if (!stack_top) {
         proc_zero(p);
         task_pid_release(pid);
@@ -494,7 +456,7 @@ struct process *process_create_user(int priority, const char *name,
     }
     space = address_space_create_user(code, code_size);
     if (!space) {
-        stack_free(stack_top);
+        kernel_stack_free(stack_top);
         proc_zero(p);
         task_pid_release(pid);
         return 0;
@@ -516,7 +478,7 @@ struct process *process_create_user(int priority, const char *name,
                                    p, pid, &task);
     if (rc) {
         address_space_release(space);
-        stack_free(stack_top);
+        kernel_stack_free(stack_top);
         proc_zero(p);
         task_pid_release(pid);
         return 0;
@@ -552,7 +514,7 @@ struct process *process_fork(struct irq_frame *frame)
         task_pid_release(pid);
         return 0;
     }
-    stack_top = stack_alloc_any();
+    stack_top = kernel_stack_alloc();
     if (!stack_top) {
         proc_zero(p);
         task_pid_release(pid);
@@ -560,7 +522,7 @@ struct process *process_fork(struct irq_frame *frame)
     }
     space = address_space_clone(parent->space);
     if (!space) {
-        stack_free(stack_top);
+        kernel_stack_free(stack_top);
         proc_zero(p);
         task_pid_release(pid);
         return 0;
@@ -581,7 +543,7 @@ struct process *process_fork(struct irq_frame *frame)
     p->exec_envc = parent->exec_envc;
     if (proc_fd_table_copy(&p->fds, &parent->fds) != 0) {
         address_space_release(space);
-        stack_free(stack_top);
+        kernel_stack_free(stack_top);
         proc_zero(p);
         task_pid_release(pid);
         return 0;
@@ -590,7 +552,7 @@ struct process *process_fork(struct irq_frame *frame)
     rc = task_fork_user(pid, "userE", frame, stack_top, space, p, &task);
     if (rc) {
         address_space_release(space);
-        stack_free(stack_top);
+        kernel_stack_free(stack_top);
         proc_zero(p);
         task_pid_release(pid);
         return 0;
@@ -1016,6 +978,16 @@ int process_snapshot(int slot, struct process_info *out)
 int process_count(void)
 {
     return PROC_MAX;
+}
+
+int process_slot_used(void)
+{
+    int i, n = 0;
+
+    for (i = 0; i < PROC_MAX; i++)
+        if (procs[i].state == PROC_LIVE || procs[i].state == PROC_ZOMBIE)
+            n++;
+    return n;
 }
 
 int process_pid_of(struct process *proc)

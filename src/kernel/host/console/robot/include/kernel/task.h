@@ -4,7 +4,7 @@
 #include "kernel/types.h"
 
 #define TASK_NAME_MAX 15
-#define TASK_MAX 10
+#define TASK_MAX 16
 
 enum task_state {
     TASK_UNUSED = 0,
@@ -69,6 +69,9 @@ struct process *task_process_of(struct task_struct *task);
 void task_set_space(struct task_struct *task, struct address_space *space);
 int task_pid_used(void);
 int task_pid_capacity(void);
+/* 任务槽是独立于 PID 的静态池：ZOMBIE 仍占槽，回收后立即归还。 */
+int task_slot_used(void);
+int task_slot_capacity(void);
 struct task_struct *task_current(void);
 
 /* 状态标签的唯一映射：渲染层不要再各写一份 switch。 */
