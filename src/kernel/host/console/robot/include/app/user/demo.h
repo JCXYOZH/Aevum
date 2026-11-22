@@ -33,6 +33,10 @@ u32 user_demo_wait_status(int lane);
 u32 user_demo_wait_ret(int lane);
 u32 user_demo_wait_magic(int lane);
 
+/* COW 证据：fork 前父写 PAPA，子写 CHLD；父 wait 后读回 PAPA 并写 COW 验收字。 */
+u32 user_demo_cow_readback(int lane);
+u32 user_demo_cow_ok(int lane);
+
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);
 u32 user_demo_heap_peek(int lane);

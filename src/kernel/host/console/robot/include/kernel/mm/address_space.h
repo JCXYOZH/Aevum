@@ -30,6 +30,16 @@ struct address_space_vma_info {
     u32 kind;
 };
 
+struct address_space_cow_info {
+    u32 live;       /* 所有活地址空间里仍处于 COW 的 PTE 数 */
+    u32 breaks;     /* 累计 COW 拆分次数 */
+    u32 forks;      /* 累计 COW fork 次数 */
+    u32 shared;     /* 累计在 fork 时共享、未立即复制的用户页数 */
+    u32 last_asid;  /* 最近一次拆分的地址空间 */
+    u32 last_old;   /* 拆分前共享物理页 */
+    u32 last_new;   /* 拆分后私有物理页 */
+};
+
 void address_space_boot(void);
 struct address_space *address_space_kernel(void);
 struct address_space *address_space_create_user(const u8 *code, u32 code_size);
@@ -56,6 +66,8 @@ int address_space_vma_count(const struct address_space *space);
 int address_space_vma_snapshot(const struct address_space *space, int slot,
                                struct address_space_vma_info *out);
 u32 address_space_user_pages(const struct address_space *space);
+u32 address_space_cow_pages(const struct address_space *space);
+void address_space_cow_snapshot(struct address_space_cow_info *out);
 u32 address_space_phys_total(void);
 u32 address_space_phys_used(void);
 

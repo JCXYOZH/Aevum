@@ -80,6 +80,8 @@ static void draw_process_row(int slot, int row)
     put_dec(50, row, p.asid, C_WHITE);
     vga_text(54, row, "PGS", C_GRAY);
     put_dec(58, row, p.user_pages, C_WHITE);
+    vga_text(59, row, "/", C_GRAY);
+    put_dec(60, row, p.cow_pages, p.cow_pages ? C_MAG : C_GRAY);
     vga_text(62, row, "BRK", C_GRAY);
     put_hex(66, row, p.brk, C_YELLOW);
     vga_text(75, row, p.comm, C_HDR);
@@ -167,15 +169,38 @@ static void draw_fault(int row)
     vga_text(2, row + 2, "C kernel probe and F guard write both exit 142 (128+SIGSEGV)", C_GREEN);
 }
 
+static void draw_cow(int row)
+{
+    struct address_space_cow_info ci;
+
+    address_space_cow_snapshot(&ci);
+    vga_text(2, row, "COW", C_GRAY);
+    vga_text(7, row, "forks", C_GRAY);
+    put_dec(13, row, ci.forks, C_WHITE);
+    vga_text(15, row, "shared", C_GRAY);
+    put_dec(22, row, ci.shared, C_CYAN);
+    vga_text(24, row, "live", C_GRAY);
+    put_dec(29, row, ci.live, ci.live ? C_MAG : C_GRAY);
+    vga_text(31, row, "breaks", C_GRAY);
+    put_dec(38, row, ci.breaks, C_WHITE);
+    vga_text(41, row, "last", C_GRAY);
+    put_dec(46, row, ci.last_asid, C_WHITE);
+    vga_text(49, row, "old", C_GRAY);
+    put_hex(54, row, ci.last_old, C_CYAN);
+    vga_text(62, row, "->", C_GRAY);
+    put_hex(64, row, ci.last_new, C_GREEN);
+}
+
 void user_render_frame(void)
 {
     int slot, row;
     u32 child, wait_pid, status, wait_ret, magic;
+    u32 readback, cow_ok;
 
     vga_clear(C_BG);
     vga_fill(0, 0, 79, 0, ' ', C_HDR);
-    vga_text(15, 0, "AEVUM / VMA + HEAP + PHYS PAGES", C_HDR);
-    vga_text(2, 2, "A/B HEAP | C #PF | D FORK+WAIT | F GUARD | VMA + PHYS POOL", C_CYAN);
+    vga_text(13, 0, "AEVUM / COW FORK + VMA + PHYS PAGES", C_HDR);
+    vga_text(2, 2, "A/B HEAP | C #PF | D COW FORK+WAIT | F GUARD | PGS/COW", C_CYAN);
 
     vga_text(2, 3, "PID", C_GRAY);
     vga_text(9, 3, "PP", C_GRAY);
@@ -184,6 +209,7 @@ void user_render_frame(void)
     vga_text(34, 3, "CR3", C_GRAY);
     vga_text(47, 3, "AS", C_GRAY);
     vga_text(54, 3, "PGS", C_GRAY);
+    vga_text(60, 3, "C", C_MAG);
     vga_text(62, 3, "BRK", C_GRAY);
     vga_text(75, 3, "COMM", C_GRAY);
 
@@ -193,7 +219,7 @@ void user_render_frame(void)
         draw_process_row(slot, row++);
     }
 
-    vga_text(2, 10, "ADDRESS SPACE: VMA / brk / copyin-copyout / PHYS POOL", C_CYAN);
+    vga_text(2, 10, "ADDRESS SPACE: COW / VMA / brk / copyin-copyout / PHYS", C_CYAN);
     draw_vma(11);
     draw_heap_guard();
 
@@ -202,6 +228,8 @@ void user_render_frame(void)
     status = user_demo_wait_status(USER_DEMO_FORK_LANE);
     wait_ret = user_demo_wait_ret(USER_DEMO_FORK_LANE);
     magic = user_demo_wait_magic(USER_DEMO_FORK_LANE);
+    readback = user_demo_cow_readback(USER_DEMO_FORK_LANE);
+    cow_ok = user_demo_cow_ok(USER_DEMO_FORK_LANE);
 
     vga_text(2, 14, "userD fork", C_GRAY);
     put_dec(12, 14, child, C_WHITE);
@@ -215,26 +243,31 @@ void user_render_frame(void)
         vga_text(56, 14, "WAIT OK 7", C_GREEN);
     else
         vga_text(56, 14, "WAIT ...", C_YELLOW);
+    if (cow_ok == 0x434F57 && readback == 0x50415041)
+        vga_text(67, 14, "COW OK", C_GREEN);
+    else
+        vga_text(67, 14, "COW ..", C_YELLOW);
 
-    vga_text(2, 15, "userF guard lane", C_GRAY);
-    put_dec(18, 15, (u32)user_demo_pid(USER_DEMO_GUARD_LANE), C_WHITE);
-    vga_text(25, 15, "writes 0x402000; expected exit 142", C_GRAY);
+    draw_cow(15);
 
-    draw_fault(16);
+    vga_text(2, 16, "userF guard lane", C_GRAY);
+    put_dec(18, 16, (u32)user_demo_pid(USER_DEMO_GUARD_LANE), C_WHITE);
+    vga_text(25, 16, "writes 0x402000; expected exit 142", C_GRAY);
 
-    vga_text(2, 19, "PHYS PAGES used/total", C_GRAY);
-    put_dec(25, 19, address_space_phys_used(), C_WHITE);
-    vga_text(28, 19, "/", C_GRAY);
-    put_dec(29, 19, address_space_phys_total(), C_CYAN);
-    vga_text(39, 19, "6 VMA + brk pages + fork copy", C_GRAY);
+    draw_fault(17);
 
-    vga_text(2, 20, "int 0x80 traps", C_GRAY);
-    put_dec(18, 20, syscall_count_total(), C_WHITE);
-    vga_text(33, 20, "last CS", C_GRAY);
-    put_hex(41, 20, syscall_last_cs(), C_CYAN);
+    vga_text(2, 20, "PHYS PAGES used/total", C_GRAY);
+    put_dec(25, 20, address_space_phys_used(), C_WHITE);
+    vga_text(28, 20, "/", C_GRAY);
+    put_dec(29, 20, address_space_phys_total(), C_CYAN);
+    vga_text(39, 20, "COW fork shares pages; write breaks private copy", C_GRAY);
 
-    vga_text(2, 21, "copyin/peek and copyout/poke walk VMA + PTE; no raw user deref.", C_GRAY);
-    vga_text(2, 22, "brk 405000->406000; heap 405800 poke/peek OK; brk 500000 rejected.", C_GRAY);
+    vga_text(2, 21, "int 0x80 traps", C_GRAY);
+    put_dec(18, 21, syscall_count_total(), C_WHITE);
+    vga_text(33, 21, "last CS", C_GRAY);
+    put_hex(41, 21, syscall_last_cs(), C_CYAN);
+
+    vga_text(2, 22, "copyin/peek + copyout/poke walk VMA + PTE; brk 500000 rejected.", C_GRAY);
     vga_text(2, 23, "guard 402000 has VMA but no PTE; F dies alone; C remains 142.", C_GRAY);
     vga_text(2, 24, "V: stop all user processes; second V starts a fresh AS/PID round.", C_YELLOW);
 }

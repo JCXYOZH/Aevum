@@ -428,6 +428,7 @@ int process_snapshot(int slot, struct process_info *out)
     out->data_phys = address_space_data_phys(p->space);
     out->brk = address_space_brk(p->space);
     out->user_pages = address_space_user_pages(p->space);
+    out->cow_pages = address_space_cow_pages(p->space);
     out->vma_count = address_space_vma_count(p->space);
 
     has_task = task_snapshot_pid(p->pid, &info);

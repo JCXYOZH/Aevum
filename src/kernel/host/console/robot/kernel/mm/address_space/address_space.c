@@ -4,6 +4,8 @@
 #define PAGE_PRESENT 0x1u
 #define PAGE_RW      0x2u
 #define PAGE_USER    0x4u
+/* PTE bit 9 是 x86 的软件可用位；COW 页同时清掉 RW，写入才会触发 #PF。 */
+#define PAGE_COW     0x200u
 #define USER_RW      (PAGE_PRESENT | PAGE_RW | PAGE_USER)
 #define USER_RO      (PAGE_PRESENT | PAGE_USER)
 #define PAGE_MASK    0xFFFFF000u
@@ -28,18 +30,26 @@ struct address_space {
     u32 pt;
     u32 brk;
     u32 user_pages;
+    u32 cow_pages;
     int vma_count;
     struct address_space_vma vmas[AEVUM_USER_VMA_MAX];
 };
 
 static struct address_space spaces[AEVUM_AS_MAX];
 static struct address_space kernel_space = {
-    1, 0, 0, AEVUM_KERNEL_PD, AEVUM_KERNEL_PT, 0, 0, 0, {{0, 0, 0, 0}}
+    1, 0, 0, AEVUM_KERNEL_PD, AEVUM_KERNEL_PT, 0, 0, 0, 0, {{0, 0, 0, 0}}
 };
 static struct address_space *active_space;
 static u32 next_id;
 static u32 phys_bitmap[PHYS_WORDS];
+static u16 phys_ref[PHYS_PAGES];
 static u32 phys_used_pages;
+static u32 cow_break_total;
+static u32 cow_fork_total;
+static u32 cow_shared_total;
+static u32 cow_last_asid;
+static u32 cow_last_old;
+static u32 cow_last_new;
 
 static void zero_page(u32 phys)
 {
@@ -75,6 +85,7 @@ static u32 phys_alloc_page(void)
         u32 bit = 1u << (i & 31u);
         if (!(phys_bitmap[word] & bit)) {
             phys_bitmap[word] |= bit;
+            phys_ref[i] = 1;
             phys_used_pages++;
             return AEVUM_PHYS_POOL_BASE + i * AEVUM_PAGE_SIZE;
         }
@@ -90,8 +101,37 @@ static void phys_free_page(u32 phys)
     i = (phys - AEVUM_PHYS_POOL_BASE) / AEVUM_PAGE_SIZE;
     if (phys_bitmap[i >> 5] & (1u << (i & 31u))) {
         phys_bitmap[i >> 5] &= ~(1u << (i & 31u));
+        phys_ref[i] = 0;
         if (phys_used_pages) phys_used_pages--;
     }
+}
+
+/* COW 共享只加引用；最后一个引用释放时才真正归还位图。 */
+static void phys_share_page(u32 phys)
+{
+    u32 i;
+    if (!phys || (phys & PAGE_OFFSET)) return;
+    if (phys < AEVUM_PHYS_POOL_BASE || phys >= AEVUM_PHYS_POOL_END) return;
+    i = (phys - AEVUM_PHYS_POOL_BASE) / AEVUM_PAGE_SIZE;
+    if (phys_bitmap[i >> 5] & (1u << (i & 31u))) {
+        if (phys_ref[i] < 0xFFFFu) phys_ref[i]++;
+    }
+}
+
+static void phys_put_page(u32 phys)
+{
+    u32 i;
+    if (!phys || (phys & PAGE_OFFSET)) return;
+    if (phys < AEVUM_PHYS_POOL_BASE || phys >= AEVUM_PHYS_POOL_END) return;
+    i = (phys - AEVUM_PHYS_POOL_BASE) / AEVUM_PAGE_SIZE;
+    if (!(phys_bitmap[i >> 5] & (1u << (i & 31u)))) return;
+    if (phys_ref[i] > 1) {
+        phys_ref[i]--;
+        return;
+    }
+    phys_bitmap[i >> 5] &= ~(1u << (i & 31u));
+    phys_ref[i] = 0;
+    if (phys_used_pages) phys_used_pages--;
 }
 
 static u32 pt_index(u32 va)
@@ -174,6 +214,42 @@ static int map_zero_page(struct address_space *space, u32 va, u32 flags)
     return 1;
 }
 
+/*
+ * COW 唯一拆分点：复制共享物理页、按 VMA 恢复写权限、释放旧引用。
+ * control 页对用户只读，但内核 set_stop 需要写，因此拆分后仍返回 RO 映射。
+ */
+static int cow_break_page(struct address_space *space, u32 va)
+{
+    u32 page_va = va & PAGE_MASK;
+    u32 index = pt_index(page_va);
+    u32 pte = ((u32 *)space->pt)[index];
+    u32 old_phys;
+    u32 new_phys;
+    u32 flags;
+    struct address_space_vma *vma;
+
+    if (!(pte & PAGE_PRESENT) || !(pte & PAGE_COW)) return 1;
+    old_phys = pte & PAGE_MASK;
+    vma = vma_find(space, page_va);
+    if (!vma || !(vma->flags & ADDRESS_SPACE_VMA_READ)) return 0;
+
+    new_phys = phys_alloc_page();
+    if (!new_phys) return 0;
+    copy_page(new_phys, old_phys);
+
+    flags = PAGE_PRESENT | PAGE_USER;
+    if (vma->flags & ADDRESS_SPACE_VMA_WRITE) flags |= PAGE_RW;
+    map_pte(space, page_va, new_phys, flags);
+    phys_put_page(old_phys);
+    if (space->cow_pages) space->cow_pages--;
+
+    cow_break_total++;
+    cow_last_asid = space->id;
+    cow_last_old = old_phys;
+    cow_last_new = new_phys;
+    return 1;
+}
+
 static void free_space_pages(u32 *pages, int count)
 {
     int i;
@@ -187,7 +263,14 @@ void address_space_boot(void)
     active_space = &kernel_space;
     next_id = 0;
     phys_used_pages = 0;
+    cow_break_total = 0;
+    cow_fork_total = 0;
+    cow_shared_total = 0;
+    cow_last_asid = 0;
+    cow_last_old = 0;
+    cow_last_new = 0;
     for (i = 0; i < PHYS_WORDS; i++) phys_bitmap[i] = 0;
+    for (i = 0; i < PHYS_PAGES; i++) phys_ref[i] = 0;
 }
 
 struct address_space *address_space_kernel(void)
@@ -227,6 +310,7 @@ struct address_space *address_space_create_user(const u8 *code, u32 code_size)
     space->pt = pages[1];
     space->brk = AEVUM_USER_HEAP_VA;
     space->user_pages = 4;
+    space->cow_pages = 0;
     space->vma_count = 0;
 
     zero_page(space->pd);
@@ -258,12 +342,12 @@ void address_space_release(struct address_space *space)
         for (i = 0; i < (int)PT_ENTRIES; i++) {
             u32 pte = ((u32 *)space->pt)[i];
             if ((pte & PAGE_PRESENT) && (pte & PAGE_USER))
-                phys_free_page(pte & PAGE_MASK);
+                phys_put_page(pte & PAGE_MASK);
             ((u32 *)space->pt)[i] = 0;
         }
     }
-    phys_free_page(space->pt);
-    phys_free_page(space->pd);
+    phys_put_page(space->pt);
+    phys_put_page(space->pd);
 
     space->used = 0;
     space->user = 0;
@@ -272,16 +356,18 @@ void address_space_release(struct address_space *space)
     space->pt = 0;
     space->brk = 0;
     space->user_pages = 0;
+    space->cow_pages = 0;
     space->vma_count = 0;
 }
 
 /*
- * fork 的地址空间：分配新 PD/PT，复制所有 present 用户页（code/data/stack/
- * control/已 brk 的 heap）。P2.1 仍是 eager copy，COW 留到 P2.2。
+ * fork 的地址空间：新 PD/PT，所有可写用户页（data/stack/heap，以及内核可写的
+ * control 页）改成 COW 共享；code 只读页直接共享。P2.2 不再复制任何用户页。
  */
 struct address_space *address_space_clone(const struct address_space *src)
 {
     struct address_space *space = 0;
+    struct address_space *parent = (struct address_space *)src;
     u32 *pd;
     int i;
 
@@ -301,6 +387,7 @@ struct address_space *address_space_clone(const struct address_space *src)
     space->pt = phys_alloc_page();
     space->brk = src->brk;
     space->user_pages = 0;
+    space->cow_pages = 0;
     space->vma_count = 0;
     if (!space->pd || !space->pt) {
         address_space_release(space);
@@ -316,15 +403,31 @@ struct address_space *address_space_clone(const struct address_space *src)
     for (i = 0; i < (int)PT_ENTRIES; i++) {
         u32 pte = ((const u32 *)src->pt)[i];
         u32 phys;
+        u32 va;
+        u32 flags;
+        u32 vma_kind = 0;
+        int share_writable;
+        struct address_space_vma *vma;
+
         if (!(pte & PAGE_PRESENT) || !(pte & PAGE_USER)) continue;
-        phys = phys_alloc_page();
-        if (!phys) {
-            address_space_release(space);
-            return 0;
+        phys = pte & PAGE_MASK;
+        va = AEVUM_USER_VA_BASE + (u32)i * AEVUM_PAGE_SIZE;
+        vma = vma_find(parent, va);
+        if (vma) vma_kind = vma->kind;
+        /* control 对用户只读，但内核会写停止字，也必须走 COW。 */
+        share_writable = (pte & PAGE_RW) != 0 ||
+                         vma_kind == ADDRESS_SPACE_VMA_CONTROL;
+
+        flags = pte & (PAGE_PRESENT | PAGE_USER);
+        if (share_writable) flags |= PAGE_COW;
+
+        phys_share_page(phys);
+        if (share_writable) {
+            if (!(pte & PAGE_COW)) parent->cow_pages++;
+            space->cow_pages++;
+            map_pte(parent, va, phys, flags);
         }
-        copy_page(phys, pte & PAGE_MASK);
-        map_pte(space, AEVUM_USER_VA_BASE + (u32)i * AEVUM_PAGE_SIZE,
-                phys, pte & (PAGE_PRESENT | PAGE_RW | PAGE_USER));
+        map_pte(space, va, phys, flags);
         space->user_pages++;
     }
 
@@ -333,6 +436,8 @@ struct address_space *address_space_clone(const struct address_space *src)
     space->vma_count = src->vma_count;
     if (space->vma_count > 0)
         space->vmas[space->vma_count - 1].end = space->brk;
+    cow_fork_total++;
+    cow_shared_total += space->user_pages;
     return space;
 }
 
@@ -360,7 +465,8 @@ int address_space_set_brk(struct address_space *space, u32 new_brk)
                 for (rb = old; rb < va; rb += AEVUM_PAGE_SIZE) {
                     u32 pte = ((u32 *)space->pt)[pt_index(rb)];
                     if ((pte & PAGE_PRESENT) && (pte & PAGE_USER)) {
-                        phys_free_page(pte & PAGE_MASK);
+                        if ((pte & PAGE_COW) && space->cow_pages) space->cow_pages--;
+                        phys_put_page(pte & PAGE_MASK);
                         unmap_pte(space, rb);
                         if (space->user_pages) space->user_pages--;
                     }
@@ -372,7 +478,8 @@ int address_space_set_brk(struct address_space *space, u32 new_brk)
         for (va = new_brk; va < old; va += AEVUM_PAGE_SIZE) {
             u32 pte = ((u32 *)space->pt)[pt_index(va)];
             if ((pte & PAGE_PRESENT) && (pte & PAGE_USER)) {
-                phys_free_page(pte & PAGE_MASK);
+                if ((pte & PAGE_COW) && space->cow_pages) space->cow_pages--;
+                phys_put_page(pte & PAGE_MASK);
                 unmap_pte(space, va);
                 if (space->user_pages) space->user_pages--;
             }
@@ -418,7 +525,12 @@ u32 address_space_phys_used(void)
     return phys_used_pages;
 }
 
-/* 只把 heap VMA 内、尚未 present 的页零填；guard 和 RO 页永不在这里修复。 */
+/*
+ * 只把两类用户缺页修好：
+ * 1) heap VMA 内、brk 以下尚未 present 的页，零填；
+ * 2) present + write 的 COW 页，复制后按 VMA 恢复权限。
+ * guard、RO 页和非写保护引起的 present 错误永不在这里修复。
+ */
 int address_space_handle_user_fault(struct address_space *space, u32 va, u32 err)
 {
     struct address_space_vma *vma;
@@ -427,11 +539,21 @@ int address_space_handle_user_fault(struct address_space *space, u32 va, u32 err
     u32 pte;
 
     if (!space || !space->used || !space->user) return 0;
-    if (err & PAGE_PRESENT) return 0;
     if (va < AEVUM_USER_VA_BASE || va >= AEVUM_USER_HEAP_MAX) return 0;
     page_va = va & PAGE_MASK;
     vma = vma_find(space, page_va);
-    if (!vma || vma->kind != ADDRESS_SPACE_VMA_HEAP) return 0;
+    if (!vma) return 0;
+
+    if (err & PAGE_PRESENT) {
+        if (!(err & PAGE_RW) || !(vma->flags & ADDRESS_SPACE_VMA_WRITE))
+            return 0;
+        index = pt_index(page_va);
+        pte = ((u32 *)space->pt)[index];
+        if (!(pte & PAGE_COW)) return 0;
+        return cow_break_page(space, page_va);
+    }
+
+    if (vma->kind != ADDRESS_SPACE_VMA_HEAP) return 0;
     if (page_va >= space->brk) return 0;
     index = pt_index(page_va);
     pte = ((u32 *)space->pt)[index];
@@ -457,8 +579,8 @@ int address_space_user_range_ok(const struct address_space *space, u32 va,
         u32 pte = ((const u32 *)space->pt)[i];
         if (!vma || !(vma->flags & ADDRESS_SPACE_VMA_READ)) return 0;
         if (!(pte & PAGE_PRESENT) || !(pte & PAGE_USER)) return 0;
-        if (write && (!(pte & PAGE_RW) ||
-                      !(vma->flags & ADDRESS_SPACE_VMA_WRITE))) return 0;
+        if (write && !(vma->flags & ADDRESS_SPACE_VMA_WRITE)) return 0;
+        if (write && !(pte & PAGE_RW) && !(pte & PAGE_COW)) return 0;
     }
     return 1;
 }
@@ -496,8 +618,12 @@ static int user_translate(struct address_space *space, u32 va, int write,
     }
     if (!(pte & PAGE_PRESENT) || !(pte & PAGE_USER)) return 0;
     if (!(vma->flags & ADDRESS_SPACE_VMA_READ)) return 0;
-    if (write && (!(pte & PAGE_RW) ||
-                  !(vma->flags & ADDRESS_SPACE_VMA_WRITE))) return 0;
+    if (write && !(vma->flags & ADDRESS_SPACE_VMA_WRITE)) return 0;
+    if (write && (pte & PAGE_COW)) {
+        if (!cow_break_page(space, va & PAGE_MASK)) return 0;
+        pte = ((u32 *)space->pt)[index];
+    }
+    if (write && !(pte & PAGE_RW)) return 0;
     phys = (pte & PAGE_MASK) + (va & PAGE_OFFSET);
     *phys_out = phys;
     return 1;
@@ -577,20 +703,42 @@ u32 address_space_counter(const struct address_space *space)
     return phys ? *(volatile u32 *)phys : 0;
 }
 
+u32 address_space_cow_pages(const struct address_space *space)
+{
+    return (space && space->used && space->user) ? space->cow_pages : 0;
+}
+
+void address_space_cow_snapshot(struct address_space_cow_info *out)
+{
+    int i;
+    if (!out) return;
+    out->live = 0;
+    for (i = 0; i < AEVUM_AS_MAX; i++) {
+        if (spaces[i].used && spaces[i].user)
+            out->live += spaces[i].cow_pages;
+    }
+    out->breaks = cow_break_total;
+    out->forks = cow_fork_total;
+    out->shared = cow_shared_total;
+    out->last_asid = cow_last_asid;
+    out->last_old = cow_last_old;
+    out->last_new = cow_last_new;
+}
+
 void address_space_set_stop(struct address_space *space, u32 stop)
 {
     u32 phys;
     if (!space || !space->user) return;
+    /* control 对用户只读；内核写停止字前必须先拆掉 COW 共享。 */
+    if (!cow_break_page(space, AEVUM_USER_CONTROL_VA)) return;
     phys = pt_phys(space, pt_index(AEVUM_USER_CONTROL_VA));
     if (phys) *(volatile u32 *)phys = stop;
 }
 
 void address_space_set_mode(struct address_space *space, u32 mode)
 {
-    u32 phys;
     if (!space || !space->user) return;
-    phys = pt_phys(space, pt_index(AEVUM_USER_DATA_VA));
-    if (phys) ((volatile u32 *)phys)[1] = mode;
+    (void)address_space_user_write32(space, AEVUM_USER_DATA_VA + 4u, mode);
 }
 
 int address_space_user_active(const struct address_space *space)

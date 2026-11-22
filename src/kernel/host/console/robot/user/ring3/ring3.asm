@@ -3,12 +3,15 @@
 ; 0x40100C child pid，0x401010 wait status，0x401014 wait 返回值，
 ; 0x401018 status 副本，0x40101C "OK" 魔数，0x401020 brk 返回值，
 ; 0x401024 heap peek，0x401028 heap poke，0x40102C guard poke，
-; 0x401030 heap_once，0x401034 越界 brk 返回值；0x404000 停止字。
+; 0x401030 heap_once，0x401034 越界 brk 返回值，
+; 0x401038 COW 魔数（父写 PAPA，子写 CHLD），0x40103C 父读回值，
+; 0x401040 COW 验收字；0x404000 停止字。
 ; 布局：code 0x400000，data 0x401000，guard 0x402000（不映射），
 ; stack 0x403000，control 0x404000，heap 0x405000 起。
 ; 模式 0：正常计数、brk 扩堆、用 peek/poke 读写 heap，再 poke guard 失败。
 ; 模式 1：计数到 20000 后写内核显存 0xB8000，由 #PF 只杀死这个进程。
-; 模式 2：fork 一个子进程，子进程 exit(7)，父进程 wait 并记录 status。
+; 模式 2：fork 后父子共享 COW 数据页；子写 CHLD 并 exit(7)，
+;         父 wait 后读回自己的 PAPA，证明写时复制隔离。
 ; 模式 3：直接写 guard 0x402000，由 #PF 只杀死这个进程。
 [bits 32]
 section .text
@@ -82,28 +85,47 @@ user_program_start:
     cmp dword [0x401008], 0
     jne .yield              ; fork/wait 只做一次，之后继续计数
 
+    ; fork 前先写父侧魔数；fork 后父子共享同一数据物理页，直到任一方写入。
+    mov dword [0x401038], 0x50415041   ; "PAPA"
     mov dword [0x401008], 1
     mov eax, 6              ; syscall: fork
     int 0x80
     test eax, eax
     jz .child
 
-    ; 父进程：保存 child pid，wait(child_pid, &status@0x401010)
-    mov [0x40100C], eax
+    ; 父进程：wait 前不写数据页，保留 COW 共享，等子进程先写 CHLD。
     mov ebx, eax
     mov ecx, 0x401010
     mov eax, 4              ; syscall: wait
     int 0x80
     mov [0x401014], eax
 
+    ; wait 的 status 写回会先把父数据页拆成私有页；再读回 fork 前的 PAPA。
     mov eax, [0x401010]
     mov [0x401018], eax
+    mov eax, [0x401038]
+    mov [0x40103C], eax
+    cmp eax, 0x50415041
+    jne .cow_bad
+    mov dword [0x401040], 0x434F57   ; "COW"
+    mov eax, [0x40100C]
+    cmp eax, 0
+    jne .cow_bad
+    mov eax, ebx             ; 保存 child pid（wait 返回前未写数据页）
+    mov [0x40100C], eax
+
+    mov eax, [0x401010]
     cmp eax, 7
     jne .yield
     mov dword [0x40101C], 0x4B4F   ; "OK"
     jmp .yield
 
+.cow_bad:
+    mov dword [0x401040], 0x424144   ; "BAD"
+    jmp .yield
+
 .child:
+    mov dword [0x401038], 0x43484C44   ; "CHLD"，触发子侧 COW 拆分
     mov eax, 3              ; syscall: exit
     mov ebx, 7
     int 0x80

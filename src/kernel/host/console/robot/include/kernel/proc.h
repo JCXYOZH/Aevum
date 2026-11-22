@@ -37,6 +37,7 @@ struct process_info {
     u32 data_phys;
     u32 brk;
     u32 user_pages;
+    u32 cow_pages;
     u32 vma_count;
     u32 switches;
     u32 cpu_ticks;
