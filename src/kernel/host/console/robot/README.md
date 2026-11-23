@@ -7,9 +7,11 @@
 > `src/kernel/host/bridge/serial_bridge.py` 转成 WebSocket。没有这段串口旁路，
 > 内核只写 `0xB8000`，桥接收不到画面。
 >
-> 现在同一 COM1 发完整关节状态帧
-> `A5 5A 03 13 + 19×i32 LE + CRC`，并接收 `J` + 3×int16 LE（0.001 rad）关节目标
-> 和 `R` 释放手动；手动模式按 PIT tick 保持 5 秒，作为桥接断开时的兜底。
+> 现在同一 COM1 发动态关节状态帧
+> `A5 5A 03 COUNT + COUNT×i32 LE + CRC`（`COUNT = 3n + 10`，n=3 时 19 字段，n=8 时 34 字段），
+> 并接收 `J` + u8 n + n×int16 LE（0.001 rad）关节目标、`B` + u8 n + n×4×i32 LE 身体描述
+> 和 `R` 释放手动；身体描述由宿主下发，默认仍是 3R（0.30/0.30/0.20 m）。
+> 手动模式按 PIT tick 保持 5 秒，作为桥接断开时的兜底。
 > Forge 可显示 q/dq/q_target、末端误差、可操作度、sigma、null share 和 limit margin。
 >
 > 构建（Windows 上可用 WSL2，或任意 Linux）：
@@ -19,12 +21,12 @@
 > ```
 >
 > `interface/desktop/main.js` 优先启动本目录的 `disk.img`；`kernel.bin` 上限
-> 66,560 字节（130 个扇区；`boot.asm` 分两段 LBA 读：128 扇区到 `0x80000`，2 扇区到 `0x90000`）。当前 clean 构建 66,248 字节，
-> 余量 312 字节；BSS 结束于 `0x9387C`，`AEVUM_KERNEL_END=0x94000`。串口快照放在 `0x30000`，
+> 98,304 字节（192 个扇区；`boot.asm` 分两段 LBA 读：128 扇区到 `0x80000`，64 扇区到 `0x90000`）。
+> 当前 clean 构建 67,432 字节，BSS 结束于 `0x945FC`。串口快照放在 `0x30000`，
 > 不占内核镜像窗口。模块归属、结构化错误和验收流程见 `CONSTRUCTION.md`，进程上下文完整化路线见 `PROCESS.md`。
 
 一个用 NASM + C 写的 32 位裸机内核：从软盘镜像启动，进入保护模式、建立自己的 GDT 和分页，
-然后运行 `control` / `render` / `idle` 三个常驻任务；按 `P` 可生成一个 `probe` 任务，按 `T` 可启动两个 CPU 密集型任务的抢占决斗，按 `F` 可打开 FPU/SSE 上下文实验，按 `C` 可切到全屏 CPU 时间统计。PIT 100Hz 时间片抢占、按优先级加权的 `vruntime` 选择和任务主动让出共同驱动轮转；按 `V` 可切到 COW fork/brk/guard/物理页池/同步信号与用户 handler 演示，按 `X` 可切到 console fd 0/1 页，按 `K` 触发内核态 `#PF` 受控探针，页内 `R` 恢复、`H` 停机；整个过程都在 VGA 文本模式下绘制三自由度机械臂和运行信息。
+然后运行 `control` / `render` / `idle` 三个常驻任务；按 `P` 可生成一个 `probe` 任务，按 `T` 可启动两个 CPU 密集型任务的抢占决斗，按 `F` 可打开 FPU/SSE 上下文实验，按 `C` 可切到全屏 CPU 时间统计。PIT 100Hz 时间片抢占、按优先级加权的 `vruntime` 选择和任务主动让出共同驱动轮转；按 `V` 可切到 COW fork/brk/guard/物理页池/同步信号与用户 handler 演示，按 `X` 可切到 console fd 0/1 页，按 `K` 触发内核态 `#PF` 受控探针，页内 `R` 恢复、`H` 停机；整个过程都在 VGA 文本模式下绘制可由宿主描述驱动的平面串联链（默认 3R）和运行信息。
 
 ---
 
@@ -205,7 +207,7 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `kernel/proc/fd/fd.c` | 每进程 8 槽 fd 表的唯一 owner；P5.2 增加 `proc_fd_snapshot()`，逐 fd 返回 `used/kind`，不把 pipe 对象指针交给 UI。 |
 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC 重映射、PIT 100Hz、EOI 的唯一写者。 |
 | `drivers/video/vga/text/vga.c` | VGA 影子显存与文本绘制。 |
-| `drivers/serial/uart/uart.c` | COM1 初始化、VGA 差量帧、`0x03` 完整状态帧、`J` / `R` / `F` 命令解析；命令字节只在空闲时识别，避免 `J` 载荷误触发。 |
+| `drivers/serial/uart/uart.c` | COM1 初始化、VGA 差量帧、动态 `0x03` 状态帧、`J` / `B` / `R` / `F` 命令状态机；命令字节只在空闲时识别，变长载荷里的命令字母不会被误判。 |
 | `drivers/input/keyboard/keyboard.c` | PS/2 扫描码读取。 |
 | `lib/fixed/`、`lib/math/`、`lib/format/` | 定点、三角、格式化。 |
 | `app/arm/kinematics/`、`control/`、`render/`、`app/` | 机械臂纯运动学、控制状态、渲染、任务装配。 |

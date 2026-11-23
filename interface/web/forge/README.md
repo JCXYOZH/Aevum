@@ -1,6 +1,6 @@
 # AEVUM FORGE
 
-机器人专用 3D 建模 / 控制台。第一台身体是 3R 平面机械臂；同时支持导入 glTF / GLB，把任意节点树变成可编辑 link/joint 树。内核接入后可按关节手动控制，并显示完整运动学状态。
+机器人专用 3D 建模 / 控制台。第一版内核支持由宿主描述驱动的 **2–8 关节平面串联链**，默认 3R；同时支持导入 glTF / GLB，把任意节点树变成可编辑 link/joint 树。内核接入后可按关节手动控制，并显示完整运动学状态。
 
 ## 跑起来
 
@@ -25,15 +25,15 @@ python -m http.server 8080
 
 - 左侧 `STRUCTURE / Outliner` 管 link/joint 树；搜索框过滤节点。
 - 右侧 `PROPERTIES / Inspector` 只显示当前选中对象的属性；`KERNEL STATUS` 只在接上内核后出现。
-- 顶部 `Import` / `Save` / `More` 是文档级动作；`Sine` 收在 More，避免常驻。
-- 导入模型若不是 3R 兼容链，显示 `KERNEL LOCAL ONLY`，仍可本地建模和 PD。
+- 顶部 `BODY` 预设可切 2R–8R 平面链；切换时页面把 `body descriptor`（关节数、杆长、限位、home）下发给内核，不需要重编译。`Import` / `Save` / `More` 是文档级动作；`Sine` 收在 More，避免常驻。
+- 导入模型若不是 2–8 关节平面链（单链 parent、Z 轴、单杆 ≤ 2 m、总 reach ≤ 16 m 之外），显示 `KERNEL LOCAL ONLY`，仍可本地建模和 PD。
 - 4K 下根字号、面板宽度、视口控件按视口宽度提升；默认按 2560–3840 的展示密度排。
 
 ## 建模与导入
 
 - 左侧 `STRUCTURE / Outliner` 显示当前 link/joint 树。每个节点可选中，右侧 Inspector 编辑关节轴、原点、目标角、限位、力矩、惯量和 PD 参数。
 - 顶部 `Import` 接受 `.glb`，或同时选择 `.gltf` 与它引用的 `.bin`。导入后自动生成 `aevum.body/1`：每个 glTF node 变成一个 link，父子节点自动生成 joint；轴优先读 `node.extras.jointAxis`，否则按节点平移主轴启发式推断。仓库自带 `samples/arm3.glb`，3 links / 36 triangles，可直接导入验证。
-- 导入模型只在本地建模 / 仿真；只有与内核几何一致的 3R 链（3 个 link、Z 轴、0.30/0.30/0.20 m、parent -1/0/1）才显示 `KERNEL COMPATIBLE` 并接收内核状态。其他模型显示 `KERNEL LOCAL ONLY`，不会被内核状态覆盖。
+- 导入模型按节点自动建 link/joint 树。只要形成 2–8 关节的平面串联链（Z 轴、单杆 ≤ 2 m、总 reach ≤ 16 m），就能把 body descriptor 下发给内核并接收状态；几何不再要求固定 0.30/0.30/0.20 m。其他模型显示 `KERNEL LOCAL ONLY`，不会被内核状态覆盖。
 - `Save` / API `exportJson()` 保存完整 `aevum.body/1`，包含三角网格；导入模型暂不导出 MuJoCo XML。
 
 ## 接真实内核（手动关节 + 完整状态）
@@ -42,10 +42,11 @@ python -m http.server 8080
 
 ```text
 QEMU COM1 (TCP 5555)
-  ├─ A5 5A 03 13 + 19×i32 LE + CRC     # q/dq/q_target/末端/运动学/模式
-  │    └─ serial_bridge.py → ws://127.0.0.1:8765 {type:"status", ...}
+  ├─ A5 5A 03 COUNT + COUNT×i32 LE + CRC   # COUNT = 3n+10；n=3→19，n=8→34
+  │    └─ serial_bridge.py → ws://127.0.0.1:8765 {type:"status", n, q, dq, qTarget, values}
   │         └─ Forge  KERNEL / MANUAL HOLD | AUTO
-  └─ 'J' + 3×int16 LE (0.001 rad)      # ← Forge {type:"joint", q}
+  ├─ 'B' + u8 n + n×4×i32 LE               # ← Forge {type:"body", body:{n,lengths,qMin,qMax,qHome}}
+  └─ 'J' + u8 n + n×int16 LE (0.001 rad)   # ← Forge {type:"joint", q}
 ```
 
 启动顺序（脚本和依赖说明见 [`scripts/kernel/README.md`](../../../scripts/kernel/README.md)）：
@@ -93,8 +94,8 @@ AEVUM_FORGE.connect();
 
 边界：
 
-- 内核臂几何是 `0.30 + 0.30 + 0.20 m`（约 0.80 m），Forge 原生 3R 默认文档约 1.58 m reach；q 可以共享，**末端笛卡尔目标不能直接共享**。
-- 只有 3R 兼容链接内核；导入的其他模型保持本地，状态帧被兼容性守卫丢弃。
+- 第一版只覆盖平面串联链：2–8 关节、单链 parent、Z 轴、单杆 ≤ 2 m、总 reach ≤ 16 m；3D 链、分支、移动底盘和夹爪仍是后续范围。
+- body descriptor 由页面在连接、换文档、改杆长/限位时下发；内核按收到的描述重置关节与 FK。默认 3R 是 `0.30/0.30/0.20 m`，Forge 原生 3R 文档约 1.58 m reach，因此连接后以内核收到的描述为准。
 - 手动模式是关节空间 PD，不替代内核原有自动正弦/雅可比控制；超时回 AUTO 由内核 PIT tick 判定。
 
 
@@ -121,11 +122,11 @@ forge/
    │  └─ dom.js                # DOM 查询 / 下载 / 文件读取
    ├─ app/
    │  ├─ workbench.js          # 视口 orbit/pan/zoom、ViewCube、面板折叠、快捷键
-   │  ├─ bridge-control.js     # WebSocket 生命周期 / 0x03 状态 / joint 命令
+   │  ├─ bridge-control.js     # WebSocket 生命周期 / 动态 0x03 状态 / body + joint 命令
    │  ├─ api-handlers.js       # api.js 背后的命令实现
    │  └─ frame-loop.js         # 帧循环：绘制 → 控制 → 遥测
    ├─ model/
-   │  ├─ body-document.js      # BodyDocument schema / 3R 默认身体 / 导入校验
+   │  ├─ body-document.js      # BodyDocument schema / 2–8R 预设与导入校验 / body descriptor
    │  ├─ gltf-loader.js        # GLB / glTF 2.0 → aevum.body/1
    │  └─ exporters.js          # JSON / MuJoCo XML / virtual-bus manifest
    ├─ control/
@@ -139,7 +140,7 @@ forge/
    │  │  └─ buffers.js         # VBO 上传 / 任意三角网格 / draw calls
    │  ├─ scene/
    │  │  ├─ camera.js          # 相机状态 + view-projection + 导入自动取景
-   │  │  ├─ arm-scene.js       # 原生 3R → 世界变换
+   │  │  ├─ arm-scene.js       # 原生平面链 → 世界变换
    │  │  ├─ body-scene.js      # 任意 link/joint 树 → 世界变换
    │  │  └─ joint-labels.js    # 关节标签投影
    │  └─ viewport/
@@ -210,17 +211,18 @@ const stop = AEVUM_FORGE.subscribe(function (msg) {
 kernel ↔ UART / virtual bus ↔ WebSocket bridge ↔ interface/web/forge
 ```
 
-P6 内核 UART 现在发两类帧，并接受三种输入：
+P6 内核 UART 现在发两类帧，并接受四种输入：
 
 - `A5 5A 01 COUNT [row col ch attr] * COUNT CRC`：VGA 单元差分；
-- `A5 5A 03 13 + 19×i32 LE + CRC`：完整状态，字段顺序是 q3 / dq3 / q_target3 / target.x,y / err_mm / w_manip / sigma_min / sigma_max / null_share / limit_margin / mode / null_on；
-- `J` + 3×int16 LE（0.001 rad）：页面下发关节目标；
+- `A5 5A 03 COUNT + COUNT×i32 LE + CRC`：动态状态，`COUNT = 3n + 10`；字段顺序是 q n / dq n / q_target n / target.x,y / err_mm / w_manip / sigma_min / sigma_max / null_share / limit_margin / mode / null_on；
+- `B` + u8 n + n×4×i32 LE（Q16.16）：body descriptor，顺序 length/min/max/home；
+- `J` + u8 n + n×int16 LE（0.001 rad）：页面下发关节目标；
 - `R`：释放手动保持，内核立即回 AUTO；
 - `F`：请求内核全量 VGA 刷新。
 
-桥接把 `0x03` 转成 `{type:"status", ...}` 广播，新客户端会收到最近一帧；页面消息 `{type:"joint", q}` 转成 `J`，`{type:"release"}` 转成 `R`。内核手动模式仍保留 PIT `MANUAL_TIMEOUT_TICKS=500`（100 Hz，5 秒）作为桥接断开时的兜底。
+桥接把 `0x03` 转成 `{type:"status", n, q, dq, qTarget, values}` 广播，新客户端会收到最近一帧；页面消息 `{type:"body", body}` 转成 `B`，`{type:"joint", q}` 转成 `J`，`{type:"release"}` 转成 `R`。内核手动模式仍保留 PIT `MANUAL_TIMEOUT_TICKS=500`（100 Hz，5 秒）作为桥接断开时的兜底。
 
-页面默认连接 `ws://127.0.0.1:8765`。导入的非 3R 模型会被 `kernelCompatibility()` 拦下，只做本地建模，不会污染 q。
+页面默认连接 `ws://127.0.0.1:8765`。非 2–8 关节平面链会被 `kernelCompatibility()` 拦下，只做本地建模，不会污染 q。
 
 ## 目录边界
 

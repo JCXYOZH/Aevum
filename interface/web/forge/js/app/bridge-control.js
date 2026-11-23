@@ -17,20 +17,44 @@
       return (Number(v) || 0) / Q16;
     }
 
+    function bodyPacket() {
+      const compat = F.model.kernelCompatibility(state.doc);
+      if (!compat.ok) return null;
+      const body = F.model.bodyDescriptor(state.doc);
+      return body ? { type: "body", body: body } : null;
+    }
+
+    function sendBody() {
+      const packet = bodyPacket();
+      if (!packet) return false;
+      state.sim.bodyPending = true;
+      state.sim.bodySentAt = performance.now();
+      return F.bridge.send(state.bridge, packet, true);
+    }
+
     function applyStatus(message) {
       const compat = F.model.kernelCompatibility(state.doc);
       if (!compat.ok) {
         if (!state.sim.kernelRejected) {
           state.sim.kernelRejected = true;
-          toast("当前导入模型不接内核：" + compat.reason + "；仅本地建模/仿真");
+          toast("当前模型不接内核：" + compat.reason + "；仅本地建模/仿真");
         }
         return;
       }
       state.sim.kernelRejected = false;
       const values = message.values || {};
-      const q = Array.isArray(message.q) && message.q.length === 3
-        ? message.q
-        : [q16(values.q0), q16(values.q1), q16(values.q2)];
+      const n = Number(message.n) || 0;
+      if (!n || !Array.isArray(message.q) || message.q.length !== n) return;
+      if (state.doc.segments.length !== n) {
+        const stale = !state.sim.bodyPending ||
+          performance.now() - (state.sim.bodySentAt || 0) > 1500;
+        if (stale) sendBody();
+        return;
+      }
+      state.sim.bodyPending = false;
+      const q = message.q;
+      const dq = Array.isArray(message.dq) ? message.dq : q.map(function () { return 0; });
+      const qt = Array.isArray(message.qTarget) ? message.qTarget : q.slice();
       const wasKernel = state.sim.kernel;
       const wasMode = state.sim.kernelStatus ? state.sim.kernelStatus.mode : -1;
       const mode = Number(values.mode) || 0;
@@ -44,18 +68,19 @@
       q.forEach(function (v, i) {
         if (state.doc.segments[i]) {
           state.doc.segments[i].q = v;
-          if (!state.sim.manual) state.doc.segments[i].target = q16(values["qt" + i]);
+          if (!state.sim.manual) state.doc.segments[i].target = qt[i];
           state.sim.q[i] = v;
-          state.sim.qd[i] = q16(values["dq" + i]);
+          state.sim.qd[i] = dq[i];
         }
       });
       state.sim.kernel = true;
       state.sim.running = false;
       state.sim.sine = false;
       state.sim.kernelStatus = {
-        q: [q16(values.q0), q16(values.q1), q16(values.q2)],
-        dq: [q16(values.dq0), q16(values.dq1), q16(values.dq2)],
-        qTarget: [q16(values.qt0), q16(values.qt1), q16(values.qt2)],
+        n: n,
+        q: q.slice(),
+        dq: dq.slice(),
+        qTarget: qt.slice(),
         target: [q16(values.tx), q16(values.ty)],
         errMm: q16(values.err_mm),
         wManip: q16(values.w_manip),
@@ -71,7 +96,7 @@
       if (state.sim.qHist.length > 360) state.sim.qHist.shift();
       if (!wasKernel) {
         setKernelPill("kernel");
-        toast("Kernel 完整状态已接入；MANUAL 可下发关节目标");
+        toast("Kernel 完整状态已接入；" + n + " 个关节 · MANUAL 可下发目标");
       }
       syncControls();
       if (!wasKernel || wasMode !== mode) {
@@ -87,7 +112,7 @@
         applyStatus(message);
         return;
       }
-      if (Array.isArray(message.q) && message.q.length === 3) {
+      if (Array.isArray(message.q) && message.q.length >= 2) {
         const wasKernel = state.sim.kernel;
         message.q.forEach(function (v, i) {
           if (state.doc.segments[i]) {
@@ -158,6 +183,7 @@
       state.sim.kernel = false;
       state.sim.manual = false;
       state.sim.manualSince = 0;
+      state.sim.bodyPending = false;
       state.sim.kernelStatus = null;
       state.sim.running = false;
       state.sim.sine = false;
@@ -174,7 +200,8 @@
           setKernelPill("bridge");
           syncControls();
           rerenderInspector();
-          toast("Bridge connected");
+          sendBody();
+          toast("Bridge connected · body descriptor sent");
         },
         onClose: resetLink,
         onError: function (e) {
@@ -199,6 +226,7 @@
       toggle: toggle,
       applyMessage: applyMessage,
       sendManual: sendManual,
+      sendBody: sendBody,
       setManual: setManual,
       pulseManual: pulseManual
     };

@@ -74,11 +74,12 @@
     }
 
     function drawKernelChart(w, h, fs) {
-      const colors = ["#5b9dff", "#d79a52", "#9b8ad6"];
+      const colors = ["#5b9dff", "#d79a52", "#9b8ad6", "#6fbf73", "#d16ab5", "#d95f5f", "#4fc3c8", "#b6a04f"];
       const data = state.sim.qHist;
-      if (data.length > 1) {
-        for (let j = 0; j < 3; j++) {
-          ctx.strokeStyle = colors[j];
+      const n = data.length ? data[data.length - 1].length : 0;
+      if (data.length > 1 && n) {
+        for (let j = 0; j < n; j++) {
+          ctx.strokeStyle = colors[j % colors.length];
           ctx.lineWidth = Math.max(1.2, 1.4 * (fs / 12));
           ctx.beginPath();
           data.forEach(function (q, i) {
@@ -93,12 +94,10 @@
       }
       ctx.fillStyle = "#66737e";
       ctx.fillText(state.sim.manual ? "KERNEL q / MANUAL HOLD · DEG" : "KERNEL q / AUTO · DEG", Math.round(10 * (fs / 12)), Math.round(8 * (fs / 12)));
-      ctx.fillStyle = "#5b9dff";
-      ctx.fillText("J1", Math.round(180 * (fs / 12)), Math.round(8 * (fs / 12)));
-      ctx.fillStyle = "#d79a52";
-      ctx.fillText("J2", Math.round(198 * (fs / 12)), Math.round(8 * (fs / 12)));
-      ctx.fillStyle = "#9b8ad6";
-      ctx.fillText("J3", Math.round(216 * (fs / 12)), Math.round(8 * (fs / 12)));
+      for (let j = 0; j < n; j++) {
+        ctx.fillStyle = colors[j % colors.length];
+        ctx.fillText("J" + (j + 1), Math.round((180 + j * 18) * (fs / 12)), Math.round(8 * (fs / 12)));
+      }
     }
 
     function update(now) {

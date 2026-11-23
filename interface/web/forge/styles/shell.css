@@ -13,6 +13,10 @@ header.appbar{
 .docbar span{display:block;font-size:.68rem;line-height:1.2;color:var(--dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .top-status{display:flex;align-items:center;gap:6px;margin-left:auto}
 .top-actions{display:flex;align-items:center;gap:6px}
+.body-picker{display:flex;align-items:center;gap:6px;height:var(--ctl-h,30px);padding:0 7px;border:1px solid var(--line-strong);border-radius:3px;background:#0e1216}
+.body-picker span{font-size:.62rem;letter-spacing:.12em;color:var(--faint);font-weight:700}
+.body-picker select{appearance:none;border:0;background:transparent;color:var(--text-2);font:600 .72rem/1 "Segoe UI",sans-serif;letter-spacing:.05em;outline:none;cursor:pointer;padding-right:2px}
+.body-picker select option{background:#151a1f;color:var(--text)}
 .menu-wrap{position:relative}
 .menu{
   position:absolute;right:0;top:calc(100% + 8px);min-width:210px;padding:6px;z-index:30;

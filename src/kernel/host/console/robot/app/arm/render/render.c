@@ -69,16 +69,6 @@ static int wy(i32 y)
     return r;
 }
 
-static void bar(int col, int row, int width, i32 frac, u8 attr)
-{
-    int n = (int)(((i64)frac * width) >> FXBITS);
-    int i;
-    if (n < 0) n = 0;
-    if (n > width) n = width;
-    for (i = 0; i < width; i++)
-        vga_cell(col + i, row, i < n ? (char)CH_FULL : (char)CH_LIGHT, attr);
-}
-
 static u8 task_pid_color(u32 pid)
 {
     if (pid == 1) return C_CYAN;
@@ -414,7 +404,7 @@ void arm_render_frame(const struct arm_status *s)
 
     vga_clear(C_DGRAY);
 
-    vga_text(1, 0, " 3-DOF Arm | PIT 100Hz | P/B/T/C/F/G/V/X/Y/K ", C_WHITE);
+    vga_text(1, 0, " N-DOF Planar Arm | PIT 100Hz | P/B/T/C/F/G/V/X/Y/K ", C_WHITE);
     p = 0;
     p += fmt_dec(buf, (u32)s->frame_no);
     buf[p] = 0;
@@ -443,94 +433,110 @@ void arm_render_frame(const struct arm_status *s)
     vga_cell(wx(s->target.x), wy(s->target.y), 'o', C_YELLOW);
 
     {
-        int c0 = wx(0), r0 = wy(0);
-        int c1 = wx(s->points.elbow.x), r1 = wy(s->points.elbow.y);
-        int c2 = wx(s->points.wrist.x), r2 = wy(s->points.wrist.y);
-        int c3 = wx(s->points.end.x), r3 = wy(s->points.end.y);
-        vga_line(c0, r0, c1, r1, (char)CH_FULL, C_CYAN);
-        vga_line(c1, r1, c2, r2, (char)CH_FULL, C_CYAN);
-        vga_line(c2, r2, c3, r3, (char)CH_FULL, C_MAG);
-        vga_cell(c1, r1, 'O', C_WHITE);
-        vga_cell(c2, r2, '*', C_WHITE);
-        vga_cell(c3, r3, '@', C_GREEN);
-        vga_cell(c0, r0, '#', C_WHITE);
+        int c0 = wx(s->points.p[0].x), r0 = wy(s->points.p[0].y);
+        int c1, r1;
+        for (i = 0; i < s->n; i++) {
+            c1 = wx(s->points.p[i + 1].x);
+            r1 = wy(s->points.p[i + 1].y);
+            vga_line(c0, r0, c1, r1, (char)CH_FULL,
+                     (i == s->n - 1) ? C_MAG : C_CYAN);
+            if (i < s->n - 1) vga_cell(c1, r1, 'O', C_WHITE);
+            c0 = c1;
+            r0 = r1;
+        }
+        vga_cell(wx(s->points.p[0].x), wy(s->points.p[0].y), '#', C_WHITE);
+        if (s->n > 0)
+            vga_cell(wx(s->points.p[s->n].x), wy(s->points.p[s->n].y), '@', C_GREEN);
     }
 
     {
         int X = 45;
+        int per = (s->n + 1) / 2;
+        int yy;
+        if (per < 1) per = 1;
         vga_text(X, 1, "ARM STATUS", C_CYAN);
         vga_text(X + 22, 1, s->null_on ? "nullsp ON " : "nullsp OFF",
                  s->null_on ? C_GREEN : C_RED);
         for (c = X; c < X + 32; c++) vga_cell(c, 2, (char)CH_H, C_GRAY);
 
-        vga_text(X, 3, "joint angles", C_GRAY);
-        for (i = 0; i < ARM_NLINK; i++) {
-            int rr = 4 + i;
+        for (i = 0; i < s->n; i++) {
+            int cx = X + (i / per) * 16;
+            int rr = 4 + (i % per);
             int L = 0, k;
-            vga_cell(X + 1, rr, 'q', C_GRAY);
-            vga_cell(X + 2, rr, (char)('1' + i), C_GRAY);
+            vga_cell(cx + 1, rr, 'q', C_GRAY);
+            vga_cell(cx + 2, rr, (char)('1' + i), C_GRAY);
             fmt_fx(buf, fx_deg(s->q[i]), 1);
             while (buf[L]) L++;
-            for (k = 0; k < 6 - L; k++) vga_cell(X + 5 + k, rr, ' ', C_GRAY);
-            vga_text(X + 11 - L, rr, buf, C_WHITE);
-            vga_cell(X + 12, rr, (char)CH_DEG, C_GRAY);
+            for (k = 0; k < 6 - L; k++) vga_cell(cx + 5 + k, rr, ' ', C_GRAY);
+            vga_text(cx + 11 - L, rr, buf, C_WHITE);
+            vga_cell(cx + 12, rr, (char)CH_DEG, C_GRAY);
         }
 
-        vga_text(X, 8, "manipulability w", C_GRAY);
+        yy = 9;
+        vga_text(X, yy, "manipulability", C_GRAY);
         fmt_fx(buf, s->w_manip, 4);
-        vga_text(X + 18, 8, buf, C_WHITE);
+        vga_text(X + 18, yy, buf, C_WHITE);
 
-        vga_text(X, 9, "weakest dir  smin", C_GRAY);
+        yy = 10;
+        vga_text(X, yy, "sigma min / max", C_GRAY);
         fmt_fx(buf, s->sigma_min, 4);
         if (s->sigma_min < 1311)      sc = C_RED;
         else if (s->sigma_min < 6554) sc = C_YELLOW;
         else                          sc = C_GREEN;
-        vga_text(X + 18, 9, buf, sc);
+        vga_text(X + 18, yy, buf, sc);
 
-        vga_text(X, 10, "lap worst smin", C_GRAY);
-        fmt_fx(buf, (s->lap_smin_min == 0x7FFFFFFF) ? s->sigma_min : s->lap_smin_min, 4);
-        {
-            i32 wmin = (s->lap_smin_min == 0x7FFFFFFF) ? s->sigma_min : s->lap_smin_min;
-            u8 wc = (wmin < 1966) ? C_RED : (wmin < 6554 ? C_YELLOW : C_GREEN);
-            vga_text(X + 18, 10, buf, wc);
-        }
-
-        bar(X, 11, 32, s->sigma_max > 0 ? fx_div(s->sigma_min, s->sigma_max) : 0, sc);
-
-        vga_text(X, 13, "speed  no damping", C_GRAY);
-        fmt_fx(buf, s->nodamp_speed, 2);
-        vga_text(X + 20, 13, buf, s->nodamp_speed > 196608 ? C_RED : C_YELLOW);
-        vga_text(X + 27, 13, "rad/s", C_GRAY);
-
-        vga_text(X, 14, "speed  damped", C_GRAY);
+        yy = 11;
+        vga_text(X, yy, "speed damped", C_GRAY);
         {
             i32 sp = 0;
-            for (i = 0; i < ARM_NLINK; i++) {
+            for (i = 0; i < s->n; i++) {
                 i32 a = s->dq[i] < 0 ? -s->dq[i] : s->dq[i];
                 if (a > sp) sp = a;
             }
             fmt_fx(buf, sp, 2);
             sp_max = (sp > 157286) ? C_RED : (sp > 78643 ? C_YELLOW : C_GREEN);
-            vga_text(X + 20, 14, buf, sp_max);
-            vga_text(X + 27, 14, "rad/s", C_GRAY);
-            bar(X, 15, 32, fx_div(sp, 196608), sp_max);
+            vga_text(X + 18, yy, buf, sp_max);
+            vga_text(X + 25, yy, "rad/s", C_GRAY);
         }
 
-        vga_text(X, 17, "lap peak no damp", C_GRAY);
-        fmt_fx(buf, s->lap_nodamp_max, 1);
-        vga_text(X + 20, 17, buf, s->lap_nodamp_max > 196608 ? C_RED : C_YELLOW);
-        vga_text(X + 27, 17, "rad/s", C_GRAY);
+        yy = 12;
+        vga_text(X, yy, "limit margin", C_GRAY);
+        fmt_fx(buf, s->limit_margin, 1);
+        vga_text(X + 18, yy, buf, s->limit_margin < 10 ? C_RED : C_GREEN);
+        vga_text(X + 22, yy, "deg", C_GRAY);
 
-        vga_text(X, 16, "lap peak damped", C_GRAY);
-        fmt_fx(buf, s->lap_speed_max, 2);
-        vga_text(X + 20, 16, buf, s->lap_speed_max > 157286 ? C_RED : C_GREEN);
-        vga_text(X + 27, 16, "rad/s", C_GRAY);
+        yy = 13;
+        vga_text(X, yy, "null share", C_GRAY);
+        fmt_fx(buf, s->null_share, 3);
+        vga_text(X + 18, yy, buf, C_WHITE);
+
+        yy = 14;
+        vga_text(X, yy, "target x / y", C_GRAY);
+        fmt_fx(buf, s->target.x, 3);
+        vga_text(X + 13, yy, buf, C_WHITE);
+        fmt_fx(buf, s->target.y, 3);
+        vga_text(X + 20, yy, buf, C_WHITE);
+
+        yy = 15;
+        vga_text(X, yy, "body joints", C_GRAY);
+        buf[fmt_dec(buf, (u32)s->n)] = 0;
+        vga_text(X + 18, yy, buf, C_WHITE);
+
+        yy = 16;
+        vga_text(X, yy, "mode", C_GRAY);
+        vga_text(X + 18, yy, s->mode ? "MANUAL HOLD" : "AUTO",
+                 s->mode ? C_YELLOW : C_GREEN);
+
+        yy = 17;
+        vga_text(X, yy, "frame", C_GRAY);
+        buf[fmt_dec(buf, (u32)s->frame_no)] = 0;
+        vga_text(X + 18, yy, buf, C_GRAY);
 
         task_panel();
     }
 
     task_timeline();
-    vga_text(2, 22, "tip@ elbowO wrist* targeto path. base#  sweep 0.30..0.81m", C_GRAY);
+    vga_text(2, 22, "tip@ jointsO targeto path. base#  descriptor: 2..8 planar links", C_GRAY);
     vga_text(2, 23, "tip", C_GRAY);
     fmt_fx(buf, s->err_mm, 3);
     vga_text(6, 23, buf, C_WHITE);
@@ -546,18 +552,18 @@ void arm_render_frame(const struct arm_status *s)
         i32 wmin = (s->lap_smin_min == 0x7FFFFFFF) ? s->sigma_min : s->lap_smin_min;
         i32 wmx = s->lap_speed_max;
         if (wmin < 1966)
-            vga_text(2, 24, ">>> smin collapsed: no-damping demand 5+ rad/s -- damping is what bounds it <<<", C_RED);
+            vga_text(2, 24, ">>> smin collapsed: damping bounds the demand <<<", C_RED);
         else if (wmx > 196608)
-            vga_text(2, 24, ">>> no-damping demand exceeds the 3.00 rad/s motor limit; damping contains it <<<", C_YELLOW);
+            vga_text(2, 24, ">>> demand exceeds 3.00 rad/s motor limit; damping contains it <<<", C_YELLOW);
         else if (wmx > 78643)
-            vga_text(2, 24, ">>> joint speed demand rises sharply as the arm reaches full extension <<<", C_YELLOW);
+            vga_text(2, 24, ">>> joint speed demand rises near full extension <<<", C_YELLOW);
         else
-            vga_text(2, 24, "OK: joint speed demand stays inside the 3.00 rad/s motor capability", C_GREEN);
+            vga_text(2, 24, "OK: joint speed demand inside 3.00 rad/s motor capability", C_GREEN);
     }
 }
 
 void arm_render_trace_push(const struct arm_status *s)
 {
-    trace[trace_i] = (u16)(wx(s->points.end.x) | (wy(s->points.end.y) << 8));
+    trace[trace_i] = (u16)(wx(s->points.p[s->n].x) | (wy(s->points.p[s->n].y) << 8));
     trace_i = (trace_i + 1) % TRACE_N;
 }

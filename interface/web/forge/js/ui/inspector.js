@@ -7,6 +7,13 @@
   function createInspector(opts) {
     const state = opts.state;
     const container = opts.container;
+    let bodyTimer = 0;
+
+    function bodyChanged() {
+      if (!opts.onBodyChange) return;
+      clearTimeout(bodyTimer);
+      bodyTimer = setTimeout(function () { opts.onBodyChange(); }, 180);
+    }
 
     function render() {
       if (state.selected.kind === "base") {
@@ -62,7 +69,7 @@
         + (state.bridge.online ? "CONNECTED" : "DISCONNECTED") + '</div>'
         + '<input id="bridgeUrl" type="text" value="' + state.bridge.url + '">'
         + '<button style="width:100%" id="btnBridge">' + (state.bridge.online ? "Disconnect" : "Connect") + '</button>'
-        + '<div class="note">QEMU / 板子里的内核通过这个桥接接入。只有与固定 3R 几何兼容的链会被接管。</div>'
+        + '<div class="note">QEMU / 板子里的内核通过这个桥接接入。平面串联链（2–8 关节）可把 body descriptor 下发给内核。</div>'
         + '</div></details>';
     }
 
@@ -143,11 +150,13 @@
         s.min = +v;
         s.q = M.clamp(s.q, s.min * M.D2R, s.max * M.D2R);
         state.sim.q[i] = s.q;
+        bodyChanged();
       });
       bind("inMax", function (v) {
         s.max = +v;
         s.q = M.clamp(s.q, s.min * M.D2R, s.max * M.D2R);
         state.sim.q[i] = s.q;
+        bodyChanged();
       });
       bind("inTq", function (v) { s.torque = Math.max(0, +v); });
       bind("inIn", function (v) { s.inertia = Math.max(0.001, +v); });
@@ -156,6 +165,7 @@
       bind("inLen", function (v) {
         s.length = Math.max(0.05, +v);
         if (opts.onTreeChange) opts.onTreeChange();
+        bodyChanged();
       });
       bind("inWid", function (v) { s.width = Math.max(0.01, +v); });
       bind("inDep", function (v) { s.depth = Math.max(0.01, +v); });
@@ -234,11 +244,13 @@
         s.min = +v;
         s.q = M.clamp(s.q, s.min * M.D2R, s.max * M.D2R);
         state.sim.q[i] = s.q;
+        bodyChanged();
       });
       bind("inMax", function (v) {
         s.max = +v;
         s.q = M.clamp(s.q, s.min * M.D2R, s.max * M.D2R);
         state.sim.q[i] = s.q;
+        bodyChanged();
       });
       bind("inTq", function (v) { s.torque = Math.max(0, +v); });
       bind("inIn", function (v) { s.inertia = Math.max(0.001, +v); });
@@ -290,7 +302,7 @@
       set("ksSigma", M.fmt(st.sigmaMin, 4) + " / " + M.fmt(st.sigmaMax, 4));
       set("ksNull", M.fmt(st.nullShare * 100, 1) + " %");
       set("ksMargin", M.fmt(st.limitMargin, 1) + "°");
-      const dq = Math.max(Math.abs(st.dq[0]), Math.abs(st.dq[1]), Math.abs(st.dq[2]));
+      const dq = st.dq && st.dq.length ? Math.max.apply(null, st.dq.map(function (v) { return Math.abs(v); })) : 0;
       set("ksDq", M.fmt(dq, 3) + " rad/s");
       set("ksXY", M.fmt(st.target[0], 3) + " / " + M.fmt(st.target[1], 3) + " m");
     }

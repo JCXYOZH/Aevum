@@ -92,27 +92,95 @@
   }
 
   /*
-   * 只有与内核固定 3R 几何一致的链才允许把 q 交给内核。
-   * 其他导入模型仍可本地建模、拖动关节，但不进入 KERNEL LINK。
+   * 第一版内核只接受平面串联链：2–8 个关节、单链 parent、Z 轴、总 reach ≤ 16 m。
+   * 几何不再要求固定 0.30/0.30/0.20；body descriptor 由页面在连接/换文档时下发。
    */
   function kernelCompatibility(doc) {
-    if (!isImported(doc)) return { ok: true, reason: "native 3R" };
-    if (doc.segments.length !== 3) return { ok: false, reason: "需要 3 个 segment" };
-    const parents = doc.segments.map(function (s) { return s.parent; });
-    if (parents[0] !== -1 || parents[1] !== 0 || parents[2] !== 1) {
-      return { ok: false, reason: "需要单链 parent 0/1/2" };
+    const segs = doc && Array.isArray(doc.segments) ? doc.segments : [];
+    if (segs.length < 2 || segs.length > 8) {
+      return { ok: false, reason: "需要 2–8 个 segment，当前 " + segs.length };
     }
-    const expected = [0.30, 0.30, 0.20];
-    for (let i = 0; i < 3; i++) {
-      const s = doc.segments[i];
-      if (!s.joint) return { ok: false, reason: "segment " + s.id + " 没有 joint" };
-      const axis = s.joint.axis;
-      if (Math.abs(axis[2]) < 0.95) return { ok: false, reason: "轴不是 Z" };
-      if (Math.abs(segmentLength(s) - expected[i]) > 0.03) {
-        return { ok: false, reason: "长度 " + segmentLength(s).toFixed(2) + " 与内核 " + expected[i].toFixed(2) + " 不符" };
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      const parent = Number.isInteger(s.parent) ? s.parent : (i === 0 ? -1 : i - 1);
+      if (i === 0 ? parent !== -1 : parent !== i - 1) {
+        return { ok: false, reason: "需要单链 parent -1/0/1…，segment " + s.id + " 是 " + parent };
+      }
+      if (isImported(doc)) {
+        if (!s.joint) return { ok: false, reason: "segment " + s.id + " 没有 joint" };
+        const axis = s.joint.axis || [0, 0, 1];
+        if (Math.abs(axis[2]) < 0.95) return { ok: false, reason: "segment " + s.id + " 的轴不是 Z" };
+      }
+      const len = segmentLength(s);
+      if (!(len > 0 && len <= 2.0)) {
+        return { ok: false, reason: "segment " + s.id + " 长度 " + len.toFixed(2) + " m 超出 0–2 m" };
       }
     }
-    return { ok: true, reason: "3R chain matches kernel geometry" };
+    const reach = segs.reduce(function (sum, s) { return sum + segmentLength(s); }, 0);
+    if (reach > 16.0) return { ok: false, reason: "总 reach " + reach.toFixed(2) + " m 超过 16 m" };
+    return { ok: true, reason: segs.length + "R planar chain · " + reach.toFixed(2) + " m reach" };
+  }
+
+  function bodyDescriptor(doc) {
+    const compat = kernelCompatibility(doc);
+    if (!compat.ok) return null;
+    const segs = doc.segments;
+    const rad = function (v) { return (Number(v) || 0) * Math.PI / 180; };
+    const clamp = function (v, lo, hi) { return Math.max(lo, Math.min(hi, v)); };
+    return {
+      n: segs.length,
+      lengths: segs.map(function (s) { return +segmentLength(s).toFixed(6); }),
+      qMin: segs.map(function (s) { return +clamp(rad(s.min), -3.2, 3.2).toFixed(6); }),
+      qMax: segs.map(function (s) { return +clamp(rad(s.max), -3.2, 3.2).toFixed(6); }),
+      qHome: segs.map(function (s) {
+        const lo = clamp(rad(s.min), -3.2, 3.2);
+        const hi = clamp(rad(s.max), -3.2, 3.2);
+        return +clamp(Number(s.q) || 0, lo, hi).toFixed(6);
+      })
+    };
+  }
+
+  /* 演示用平面链预设；几何由宿主下发，不是内核写死的。 */
+  function presetDoc(n) {
+    n = Math.max(2, Math.min(8, Math.round(Number(n) || 3)));
+    const names = ["SHOULDER", "ELBOW", "WRIST", "J4", "J5", "J6", "J7", "J8"];
+    const palette = [
+      [0.18, 0.62, 0.72], [0.22, 0.50, 0.70], [0.70, 0.45, 0.18],
+      [0.42, 0.66, 0.40], [0.62, 0.42, 0.68], [0.72, 0.36, 0.32],
+      [0.34, 0.58, 0.52], [0.58, 0.52, 0.26]
+    ];
+    const baseLengths = [0.62, 0.52, 0.24];
+    const segs = [];
+    for (let i = 0; i < n; i++) {
+      const length = i < baseLengths.length ? baseLengths[i] : 0.28;
+      const home = i === 0 ? 0.35 : (i % 2 ? -0.45 : 0.55);
+      segs.push({
+        id: "J" + (i + 1),
+        name: names[i],
+        q: home,
+        target: home,
+        min: -170,
+        max: 170,
+        torque: Math.max(3, 12 - i * 1.2),
+        inertia: Math.max(0.006, 0.035 - i * 0.004),
+        damping: 0.05,
+        kp: Math.max(20, 38 - i * 2),
+        kd: Math.max(4, 9 - i * 0.6),
+        length: length,
+        width: Math.max(0.065, 0.12 - i * 0.007),
+        depth: Math.max(0.075, 0.14 - i * 0.008),
+        mass: Math.max(0.2, 1.1 - i * 0.11),
+        color: palette[i % palette.length]
+      });
+    }
+    return {
+      format: "aevum.body/0",
+      name: "AEVUM " + n + "R PLANAR",
+      base: { w: 0.54, h: 0.24, d: 0.38, mass: 2.2, color: [0.15, 0.19, 0.23] },
+      segments: segs,
+      tool: { length: 0.20, width: 0.075, depth: 0.09, color: [0.82, 0.55, 0.22] },
+      control: { loop_hz: 100, dt: 0.01 }
+    };
   }
 
   F.model = F.model || {};
@@ -122,4 +190,6 @@
   F.model.isImported = isImported;
   F.model.segmentLength = segmentLength;
   F.model.kernelCompatibility = kernelCompatibility;
+  F.model.bodyDescriptor = bodyDescriptor;
+  F.model.presetDoc = presetDoc;
 })(window.AEVUM.FORGE);

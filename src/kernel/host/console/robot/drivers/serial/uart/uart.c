@@ -9,17 +9,18 @@
 #define FRAME_TYPE_DELTA 0x01
 #define FRAME_TYPE_STATUS 0x03
 #define FRAME_HDR        4
-#define FRAME_BUF        (FRAME_HDR + UART_FRAME_MAX_CELLS * 4 + 1)
-#define FRAME_STATUS_MAX 24
+#define FRAME_BUF        (FRAME_HDR + 34 * 4 + 1)
+#define FRAME_STATUS_MAX 34
 
 static u16 *const serial_snapshot = (u16 *)AEVUM_FRAME_SNAP;
 static u8 serial_frame[FRAME_BUF];
 static u32 serial_scan_count = 0;
 static volatile u32 serial_full_request = 0;
-static volatile u32 serial_release_request = 0;
-static u8 cmd_buf[6];
-static u32 cmd_len = 0;
-static int cmd_live = 0;
+static u8 cmd_mode;   /* 0 idle, 1 joint, 2 body */
+static u8 cmd_count;  /* joint count, 0 means waiting for the count byte */
+static u8 cmd_need;   /* payload bytes after count */
+static u8 cmd_len;
+static u8 cmd_buf[AEVUM_BODY_MAX_JOINTS * 16];
 
 void uart_init(void)
 {
@@ -44,48 +45,105 @@ void uart_write(const u8 *buf, u32 len)
     for (i = 0; i < len; i++) uart_putc(buf[i]);
 }
 
-int uart_poll_release_request(void)
+static void cmd_reset(void)
 {
-    int requested = (int)serial_release_request;
-    serial_release_request = 0;
-    return requested;
+    cmd_mode = 0;
+    cmd_count = 0;
+    cmd_need = 0;
+    cmd_len = 0;
+}
+
+static i32 cmd_i32(const u8 *p)
+{
+    u32 v = (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
+    return (i32)v;
+}
+
+static int cmd_finish(struct uart_input *out)
+{
+    int i;
+    if (cmd_mode == 2) {
+        out->n = (int)cmd_count;
+        out->body.n = (int)cmd_count;
+        for (i = 0; i < (int)cmd_count; i++) {
+            const u8 *p = cmd_buf + i * 16;
+            out->body.joints[i].length = cmd_i32(p + 0);
+            out->body.joints[i].q_min = cmd_i32(p + 4);
+            out->body.joints[i].q_max = cmd_i32(p + 8);
+            out->body.joints[i].q_home = cmd_i32(p + 12);
+        }
+        out->type = UART_CMD_BODY;
+        cmd_reset();
+        return 1;
+    }
+    if (cmd_mode == 1) {
+        out->n = (int)cmd_count;
+        for (i = 0; i < (int)cmd_count; i++) {
+            i32 raw = (i32)cmd_buf[i * 2] | ((i32)cmd_buf[i * 2 + 1] << 8);
+            if (raw & 0x8000) raw -= 0x10000;
+            /* 0.001 rad -> Q16.16 rad；拆 65 + 536/1000 避免 64 位除法。 */
+            out->q[i] = raw * 65 + (raw * 536) / 1000;
+        }
+        out->type = UART_CMD_JOINT;
+        cmd_reset();
+        return 1;
+    }
+    cmd_reset();
+    return 0;
 }
 
 /*
- * 宿主命令：J + 3 个 int16 little-endian，单位 0.001 rad。
- * 只在 control 任务里轮询；F 仍走同一入口，避免两个任务抢 COM1。
+ * 宿主命令：
+ *   J + u8 n + n * int16 LE      关节目标，单位 0.001 rad
+ *   B + u8 n + n * 4 * i32 LE    平面身体描述（length/min/max/home）
+ *   R                            释放手动
+ *   F                            请求全量 VGA
+ * 命令字节只在空闲时识别；J/B 的载荷可能恰好是 'F'/'R'/'J'，不能误判。
  */
-int uart_poll_joint_command(i32 q[3])
+int uart_poll_input(struct uart_input *out)
 {
     int got = 0;
+    if (!out) return 0;
+    out->type = UART_CMD_NONE;
+
     while (port_inb(UART_COM1 + 5) & 1) {
         u8 value = port_inb(UART_COM1);
-        /*
-         * 命令字节只在空闲时识别；J 的 6 个载荷字节可能恰好是 'F'/'R'/'J'，
-         * 若在载荷中途识别会被误当成新命令，导致目标帧丢失或意外释放。
-         */
-        if (!cmd_live) {
+
+        if (cmd_mode == 0) {
             if (value == 'F') {
                 serial_full_request = 1;
             } else if (value == 'R') {
-                serial_release_request = 1;
+                out->type = UART_CMD_RELEASE;
+                return 1;
             } else if (value == 'J') {
-                cmd_live = 1;
+                cmd_mode = 1;
+                cmd_count = 0;
+                cmd_need = 0;
+                cmd_len = 0;
+            } else if (value == 'B') {
+                cmd_mode = 2;
+                cmd_count = 0;
+                cmd_need = 0;
                 cmd_len = 0;
             }
             continue;
         }
-        cmd_buf[cmd_len++] = value;
-        if (cmd_len == 6) {
-            int i;
-            for (i = 0; i < 3; i++) {
-                i32 raw = (i32)cmd_buf[i * 2] | ((i32)cmd_buf[i * 2 + 1] << 8);
-                if (raw & 0x8000) raw -= 0x10000;
-                /* 0.001 rad -> Q16.16 rad；拆 65 + 536/1000 避免 64 位除法。 */
-                q[i] = raw * 65 + (raw * 536) / 1000;
+
+        if (cmd_count == 0) {
+            /* 第一个载荷字节是关节数。 */
+            if (value < AEVUM_BODY_MIN_JOINTS || value > AEVUM_BODY_MAX_JOINTS) {
+                cmd_reset();
+                continue;
             }
-            cmd_live = 0;
+            cmd_count = value;
+            cmd_need = (u8)(cmd_mode == 1 ? cmd_count * 2 : cmd_count * 16);
             cmd_len = 0;
+            continue;
+        }
+
+        cmd_buf[cmd_len++] = value;
+        if (cmd_len == cmd_need) {
+            if (cmd_finish(out)) return 1;
             got = 1;
         }
     }

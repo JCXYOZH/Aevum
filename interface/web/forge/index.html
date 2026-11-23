@@ -33,6 +33,19 @@
     <span class="pill warn" id="kernelPill">KERNEL OFFLINE</span>
   </div>
   <div class="top-actions">
+    <label class="body-picker" title="切换平面链预设；几何会作为 body descriptor 下发给内核">
+      <span>BODY</span>
+      <select id="bodyPreset" aria-label="平面链预设">
+        <option value="2">2R</option>
+        <option value="3" selected>3R</option>
+        <option value="4">4R</option>
+        <option value="5">5R</option>
+        <option value="6">6R</option>
+        <option value="7">7R</option>
+        <option value="8">8R</option>
+        <option value="custom" disabled>IMPORTED</option>
+      </select>
+    </label>
     <button type="button" class="btn subtle" id="btnImportTop">Import</button>
     <button type="button" class="btn subtle" id="btnSaveTop">Save</button>
     <div class="menu-wrap">

@@ -63,37 +63,42 @@ static const struct aevum_error app_state_template = {
 
 static void send_arm_status(const struct arm_status *st)
 {
-    i32 v[19];
-    int i;
+    i32 v[AEVUM_BODY_MAX_JOINTS * 3 + 10];
+    int i, n = st->n;
+    int base = n * 3;
 
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < n; i++) {
         v[i] = st->q[i];
-        v[3 + i] = st->dq[i];
-        v[6 + i] = st->q_target[i];
+        v[n + i] = st->dq[i];
+        v[2 * n + i] = st->q_target[i];
     }
-    v[9] = st->target.x;
-    v[10] = st->target.y;
-    v[11] = st->err_mm;
-    v[12] = st->w_manip;
-    v[13] = st->sigma_min;
-    v[14] = st->sigma_max;
-    v[15] = st->null_share;
-    v[16] = st->limit_margin;
-    v[17] = st->mode;
-    v[18] = st->null_on;
-    uart_status_frame(v, 19);
+    v[base + 0] = st->target.x;
+    v[base + 1] = st->target.y;
+    v[base + 2] = st->err_mm;
+    v[base + 3] = st->w_manip;
+    v[base + 4] = st->sigma_min;
+    v[base + 5] = st->sigma_max;
+    v[base + 6] = st->null_share;
+    v[base + 7] = st->limit_margin;
+    v[base + 8] = st->mode;
+    v[base + 9] = st->null_on;
+    uart_status_frame(v, (u32)(base + 10));
 }
 
 static void proc_control(void)
 {
-    i32 qcmd[3];
+    struct uart_input in;
     u32 next_tick = task_tick_total();
 
     for (;;) {
-        if (uart_poll_release_request())
-            arm_control_release_manual();
-        if (uart_poll_joint_command(qcmd))
-            arm_control_set_joint_targets(qcmd);
+        while (uart_poll_input(&in)) {
+            if (in.type == UART_CMD_RELEASE)
+                arm_control_release_manual();
+            else if (in.type == UART_CMD_BODY)
+                arm_control_set_body(&in.body);
+            else if (in.type == UART_CMD_JOINT)
+                arm_control_set_joint_targets(in.q, in.n);
+        }
         arm_control_step();
 
         /* 控制步按 PIT 100 Hz 走；不能再让调度器跑多快就积分多快。 */

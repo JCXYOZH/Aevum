@@ -57,16 +57,16 @@
     const reach = segs.reduce(function (sum, seg) { return sum + (Number(seg.length) || 0); }, 0) +
       (state.doc.tool ? Number(state.doc.tool.length) || 0 : 0);
     const tris = (state.doc.meta && state.doc.meta.triangleCount) || 0;
-    if (docName) docName.textContent = imported ? state.doc.name : "ARM3 / NATIVE";
+    if (docName) docName.textContent = imported ? state.doc.name : "ARM" + segs.length + " / NATIVE";
     if (docMeta) {
       docMeta.textContent = imported
         ? segs.length + " links · " + tris + " tris · " + reach.toFixed(2) + " m"
-        : "3 joints · " + reach.toFixed(2) + " m reach · 100 Hz";
+        : segs.length + " joints · " + reach.toFixed(2) + " m reach · 100 Hz";
     }
-    if (title) title.textContent = imported ? "IMPORTED / " + state.doc.name : "ARM3 / KINEMATIC BENCH";
+    if (title) title.textContent = imported ? "IMPORTED / " + state.doc.name : "ARM" + segs.length + " / KINEMATIC BENCH";
     if (sub) sub.textContent = imported
       ? "glTF 2.0 · " + segs.length + " links · " + tris + " tris · joint-space PD"
-      : "own renderer · 3R chain · 100 Hz control seam";
+      : "own renderer · " + segs.length + "R chain · 100 Hz control seam";
     const brandSub = document.querySelector(".brand small");
     if (brandSub) brandSub.textContent = "ROBOTICS WORKBENCH";
   }
@@ -75,12 +75,19 @@
     state.doc = F.model.validate(doc);
     state.selected = { kind: "joint", index: 0 };
     state.sim = F.control.createSim(state.doc);
+    state.sim.bodyPending = false;
     labels.ensure(state.doc);
     if (F.model.isImported(state.doc)) F.render.fitCamera(state.doc, state.cam, true);
     else {
       Object.assign(state.cam, F.render.createCamera());
       F.render.fitCamera(state.doc, state.cam, true);
     }
+    const preset = $("bodyPreset");
+    if (preset) {
+      preset.value = !F.model.isImported(state.doc) && state.doc.segments.length >= 2 && state.doc.segments.length <= 8
+        ? String(state.doc.segments.length) : "custom";
+    }
+    if (state.bridge.online && bridgeControl) bridgeControl.sendBody();
     tree.render();
     inspector.render();
     controls.sync();
@@ -184,6 +191,7 @@
     },
     onExportManifest: function () { F.model.exportManifest(state.doc, state.bridge, F.ui.toast.show); },
     onToggleBridge: bridgeControl.toggle,
+    onBodyChange: function () { if (state.bridge.online) bridgeControl.sendBody(); },
     onKernelTarget: bridgeControl.pulseManual
   });
 
@@ -266,6 +274,13 @@
     loadModelFiles(e.target.files);
     e.target.value = "";
   };
+  const bodyPreset = $("bodyPreset");
+  if (bodyPreset) {
+    bodyPreset.onchange = function () {
+      if (bodyPreset.value === "custom") return;
+      replaceDocument(F.model.presetDoc(Number(bodyPreset.value)), true);
+    };
+  }
   window.addEventListener("resize", function () { telemetry.resize(); });
 
   F.app.startFrameLoop({

@@ -26,28 +26,39 @@ FRAME_TYPE_STATE = 0x02
 FRAME_TYPE_STATUS = 0x03
 FRAME_HDR = 4
 MAX_CELLS = 32
+MAX_STATUS_FIELDS = 34
 STATE_VALS = 3
-STATUS_FIELDS = (
-    "q0", "q1", "q2",
-    "dq0", "dq1", "dq2",
-    "qt0", "qt1", "qt2",
-    "tx", "ty",
-    "err_mm", "w_manip", "sigma_min", "sigma_max",
-    "null_share", "limit_margin", "mode", "null_on",
-)
+BODY_MIN_JOINTS = 2
+BODY_MAX_JOINTS = 8
 Q16_ONE = 65536.0
-Q_LIMIT = 193986
-Q_SANE_LIMIT = 210000
 
 
-def status_is_sane(status):
+
+def status_fields(n):
+    return (
+        ["q%d" % i for i in range(n)]
+        + ["dq%d" % i for i in range(n)]
+        + ["qt%d" % i for i in range(n)]
+        + ["tx", "ty", "err_mm", "w_manip", "sigma_min", "sigma_max",
+           "null_share", "limit_margin", "mode", "null_on"]
+    )
+
+
+def status_joint_count(count):
+    if count < 16 or count > MAX_STATUS_FIELDS:
+        return 0
+    if (count - 10) % 3 != 0:
+        return 0
+    n = (count - 10) // 3
+    return n if BODY_MIN_JOINTS <= n <= BODY_MAX_JOINTS else 0
+
+
+def status_is_sane(status, n):
     """Reject a CRC collision that starts inside a VGA delta payload."""
-    for key in ("q0", "q1", "q2", "qt0", "qt1", "qt2"):
-        if abs(status[key]) > Q_SANE_LIMIT:
-            return False
-    for key in ("dq0", "dq1", "dq2"):
-        if abs(status[key]) > Q_SANE_LIMIT:
-            return False
+    for prefix in ("q", "qt", "dq"):
+        for i in range(n):
+            if abs(status[prefix + str(i)]) > 210000:
+                return False
     if status["mode"] not in (0, 1):
         return False
     if status["null_on"] not in (0, 1):
@@ -57,6 +68,49 @@ def status_is_sane(status):
     if status["limit_margin"] < 0 or status["limit_margin"] > 200 * Q16_ONE:
         return False
     return True
+
+
+def pack_body(body):
+    """WS body -> B + u8 n + n * 4 * i32 LE (length/min/max/home)."""
+    try:
+        n = int(body.get("n", 0))
+        if n < BODY_MIN_JOINTS or n > BODY_MAX_JOINTS:
+            return None
+        lengths = [float(v) for v in body.get("lengths", [])]
+        q_min = [float(v) for v in body.get("qMin", [])]
+        q_max = [float(v) for v in body.get("qMax", [])]
+        q_home = [float(v) for v in body.get("qHome", [])]
+        if len(lengths) != n or len(q_min) != n or len(q_max) != n or len(q_home) != n:
+            return None
+        vals = []
+        for i in range(n):
+            if not (0 < lengths[i] <= 2.0):
+                return None
+            if not (-3.2 <= q_min[i] < q_max[i] <= 3.2):
+                return None
+            if not (q_min[i] <= q_home[i] <= q_max[i]):
+                return None
+            vals.extend([
+                int(round(lengths[i] * Q16_ONE)),
+                int(round(q_min[i] * Q16_ONE)),
+                int(round(q_max[i] * Q16_ONE)),
+                int(round(q_home[i] * Q16_ONE)),
+            ])
+        return b"B" + bytes([n]) + struct.pack("<%di" % (4 * n), *vals)
+    except (TypeError, ValueError):
+        return None
+
+
+def pack_joint(q):
+    try:
+        n = len(q)
+        if n < BODY_MIN_JOINTS or n > BODY_MAX_JOINTS:
+            return None
+        raw_q = [int(round(float(v) * 1000.0)) for v in q]
+    except (TypeError, ValueError):
+        return None
+    raw_q = [max(-32768, min(32767, v)) for v in raw_q]
+    return b"J" + bytes([n]) + struct.pack("<%dh" % n, *raw_q)
 
 
 class FrameParser:
@@ -81,7 +135,7 @@ class FrameParser:
                 break
             ftype = self.buf[2]
             count = self.buf[3]
-            if count > MAX_CELLS:
+            if count > MAX_STATUS_FIELDS:
                 del self.buf[:1]
                 self.frames_bad += 1
                 continue
@@ -109,19 +163,24 @@ class FrameParser:
                 self.frames_ok += 1
                 continue
             if ftype == FRAME_TYPE_STATUS:
-                if count != len(STATUS_FIELDS):
+                n = status_joint_count(count)
+                if n == 0:
                     del self.buf[:1]
                     self.frames_bad += 1
                     continue
+                fields = status_fields(n)
                 vals = struct.unpack_from("<%di" % count, self.buf, FRAME_HDR)
-                status = dict(zip(STATUS_FIELDS, vals))
-                if not status_is_sane(status):
+                status = dict(zip(fields, vals))
+                if not status_is_sane(status, n):
                     del self.buf[:1]
                     self.frames_bad += 1
                     continue
                 out.append({
                     "type": "status",
-                    "q": [round(status["q%d" % i] / Q16_ONE, 6) for i in range(3)],
+                    "n": n,
+                    "q": [round(status["q%d" % i] / Q16_ONE, 6) for i in range(n)],
+                    "dq": [round(status["dq%d" % i] / Q16_ONE, 6) for i in range(n)],
+                    "qTarget": [round(status["qt%d" % i] / Q16_ONE, 6) for i in range(n)],
                     "values": status,
                 })
                 del self.buf[:total]
@@ -193,17 +252,18 @@ async def main():
                 except (TypeError, ValueError):
                     continue
                 if msg.get("type") in ("joint", "manual"):
-                    q = msg.get("q")
-                    if not isinstance(q, list) or len(q) != 3:
-                        continue
-                    try:
-                        raw_q = [int(round(float(v) * 1000.0)) for v in q]
-                    except (TypeError, ValueError):
-                        continue
-                    raw_q = [max(-32768, min(32767, v)) for v in raw_q]
-                    if link["writer"]:
+                    payload = pack_joint(msg.get("q"))
+                    if payload is not None and link["writer"]:
                         try:
-                            link["writer"].write(b"J" + struct.pack("<3h", *raw_q))
+                            link["writer"].write(payload)
+                            await link["writer"].drain()
+                        except Exception:
+                            pass
+                elif msg.get("type") == "body":
+                    payload = pack_body(msg.get("body") or {})
+                    if payload is not None and link["writer"]:
+                        try:
+                            link["writer"].write(payload)
                             await link["writer"].drain()
                         except Exception:
                             pass
