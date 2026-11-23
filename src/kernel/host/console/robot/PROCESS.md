@@ -4,7 +4,7 @@
 
 P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题；P4.1 加入内嵌 flat 镜像 `exec`，保留 PID/任务槽，替换用户 AS、入口、栈和信号状态；P4.2 给 `exec` 增加 `argv/envp` 解析、字符串迁移和 SysV 初始栈；P4.3 增加每进程 fd 表、匿名 pipe、`pipe/read/write/close`，并证明 exec 后 fd 表继续有效；P4.4 把 fd 0/1 接到 console 字符设备，验证键盘输入、VGA/COM1 输出、fork 继承和 close 边界。
 
-## 一、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3 现在的实现
+## 一、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3/P6.0 现在的实现
 
 | 能力 | 当前实现 | 位置 |
 | --- | --- | --- |
@@ -293,10 +293,15 @@ P5.3 不新增页面：`S`（`0x1F`）复用 P5.1 的池页外壳，`pool_demo_s
 - P5.1 已完成：16/12/12 任务/进程/AS 槽位，12 个 4KB 用户内核栈位图池，`Y` 页 9 个 LIVE 进程与两轮槽位/栈复用。
 - P5.2 已完成：`V` 页 4 页分页/滚动，进程树、ZOMBIE、waiters、VMA、信号、fd 全部可观察；clean `kernel.bin=64,872`，距 65,536 上限余 664 字节。
 - P5.3 已完成：`S` 复用池页执行 100 轮 fork/wait，首末 PID 均为 5，两轮 `PHYS 6/255`、`proc/AS/KSTK 1/12`；clean `kernel.bin=64,808`，余量 728B。
+- P6.0 已完成细节收口：`process_wait()` 对 `pid>0` 先校验直接子进程，非子进程或不存在立即返回 -1；`pid<=0` 等任意直接子进程。`proc_orphan_children()` 同时处理 LIVE 和 ZOMBIE 直接子进程，并记录最近一次 `from/to/children[]` 事件；V 页 TREE 增加 `ORPHAN` 两行，G 页 reparent 面板允许显示 4 个子进程并在超过 4 个时显示 `+N more`。clean `kernel.bin=64,488`，余量 1,048B。当前速度基线见 `PERFORMANCE.md`。
 
-## 十二、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3 边界与已知取舍
+## 十二、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3/P6.0 边界与已知取舍
 
-- `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；本轮给 yield 补了 vruntime 记账，并给 fork 子任务 `vruntime=0` 的起跑保证，避免父进程轮询时把子任务或其他 lane 饿死。P4.4 X 页为了保持交互帧率，父进程关闭 0/1 后不进入 `wait`，子进程完成后由页面 `out 14` / `EXIT 14` 判定。
+- `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；P6.0 只修了参数语义：`pid>0` 必须先是当前进程的直接子进程，否则立即返回 -1；`pid<=0` 等任意直接子进程。P4.4 X 页为了保持交互帧率，父进程关闭 0/1 后不进入 `wait`，子进程完成后由页面 `out 14` / `EXIT 14` 判定。
+- `proc_orphan_children()` 现在把 LIVE 和 ZOMBIE 的直接子进程都改成 `ppid=0`，并写一份全局最近事件；ZOMBIE 子进程仍由 `process_reap_orphans()` 回收。事件只是 V 页只读快照，不改变调度或回收顺序。
+- G 页 reparent 面板从“最多 3 个子进程”改为 4 个；`child_count > 4` 时在第 13 行显示 `+N more`，`children` 计数仍显示总数，列表只放前 4 个。
+- V 页 TREE 的 `ORPHAN` 行占第 20/21 行，树节点上限从第 21 行收到第 19 行；第 22 行仍是 TREE 统计，第 23/24 行仍是公共底栏。当前用户 demo 没有“父进程先退出、子进程继续存活”的 lane，所以 TREE 页默认显示 `ORPHAN none yet`；事件路径已由 `process_terminate_current()` / `process_exit_current()` 的真实退出路径调用，不是渲染层伪造。
+- 当前速度基线（QEMU TCG，非实时）：100 Hz PIT 是硬控制节拍上限；CPU 页 4.14 秒窗口内 `SWITCHES +129,890`（约 31.4k/s）、`PREEMPTIONS +384`（约 92.8/s），control/render/idle 仍是 50/38/12；监视器建立后 69 ms 的首帧采样已有完整机械臂画面。详见 `PERFORMANCE.md`。
 - P5.2 的 `V` 页固定 4 页，原第 5 页 `DEMO` 因 `kernel.bin` 达到 68,744B、超过 65,536B 上限被删除，旧证据压缩进 `ADDRESS` 页。P5.3 clean 构建为 64,808B、余量 728B；`--gc-sections` 已回收不可达代码，但新增页面或长文案前仍必须先算体积。
 - `V` 页的页面状态是单个静态实例（`page_mode/page_slot/page_first`），四页共享同一个选中槽；`process_slot_space()` / `process_slot_fd_info()` 是只读快照，没有 seqlock，单核下仍可能在 PIT 切换窗口看到半更新字段，已知取舍是“可观察面优先、不做事务化快照”。
 - `PgDn` 把选中槽带到槽 10/11 后，空槽详情只显示 `EMPTY` 和池统计；要回到有内容槽需 `Up` 或 `Home`，这是当前交互语义，不是滚动丢失。

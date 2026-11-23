@@ -12,6 +12,18 @@ struct proc_fd_info;
 #define PROC_MAX 12
 #define PROC_NAME_MAX 15
 
+/* 最近一次“父进程退出，直接子进程改挂 PID 0”的只读快照。 */
+#define PROC_ORPHAN_CHILDREN 4
+
+struct proc_orphan_event {
+    int valid;
+    u32 seq;
+    int from;
+    int to;
+    int child_count;
+    int children[PROC_ORPHAN_CHILDREN];
+};
+
 /* P3.2：同步异常先查每进程 handler；无 handler 才走 P3.1 的默认终止。 */
 #define PROC_NSIG    32
 #define PROC_SIG_DFL 0u
@@ -120,8 +132,13 @@ int process_sigreturn_current(struct irq_frame *frame);
 /* 当前进程已执行 handler 的次数；异常记录在投递时取一次快照，避免 PID 复用后失真。 */
 u32 process_sig_handled_current(void);
 
-/* wait 子进程：P1 用 task_yield() 轮询，找到 ZOMBIE 后写 user status 并回收。 */
+/* wait 子进程：P1 用 task_yield() 轮询，找到 ZOMBIE 后写 user status 并回收。
+ * pid>0 只等指定直接子进程，不是当前进程的子进程立即返回 -1；
+ * pid<=0 等任意直接子进程。 */
 int process_wait(int pid, u32 user_status);
+
+/* 最近一次 orphan/reparent 事件；没有发生过返回 0。 */
+int process_last_orphan(struct proc_orphan_event *out);
 
 int process_getpid_current(void);
 int process_getppid_current(void);

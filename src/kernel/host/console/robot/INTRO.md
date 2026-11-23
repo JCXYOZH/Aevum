@@ -99,7 +99,7 @@ make clean && make all
 make run
 ```
 
-`kernel.bin` 上限 65,536 字节（`boot.asm` 一次 LBA 读 128 个扇区到 `0x80000`）；当前 clean 构建 64,808 字节，BSS 结束于 `0x9395C`，镜像余量 728 字节；BSS 尾部 `0x90000..0x9395C` 由 loader 清零。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
+`kernel.bin` 上限 65,536 字节（`boot.asm` 一次 LBA 读 128 个扇区到 `0x80000`）；当前 P6.0 clean 构建 64,488 字节，BSS 结束于 `0x9387C`，镜像余量 1,048 字节；BSS 尾部 `0x90000..0x9387C` 由 loader 清零。桌面固定读取 `disk.img`，`make all` 会同时生成 `os.img` 和 `disk.img`。
 
 无界面验收：
 

@@ -25,9 +25,14 @@
 - `data/tinyshakespeare_3000.txt`：3000 行公开语料。
 - `scripts/build-linux.sh`：Linux 云端编译入口（train / gen / gen_cpu）。
 - `docs/memoria/`、`docs/architecture/memoria.md`、`docs/guides/development.md`：Memoria 与开发入口文档。
+- `src/kernel/host/console/robot/PERFORMANCE.md`：P6.0 QEMU 速度基线，记录 100 Hz PIT、约 31.4k 次/秒调度切换和 50/38/12 CPU 账；明确标注 TCG 非实时、不能外推硬件。
+- 内核用户进程 orphan/reparent 事件：`process_last_orphan()` 导出最近一次 `from/to/children[]` 快照，V 页 TREE 第 20/21 行显示。
 
 ### Changed
 
+- 内核 `process_wait()` 的 `pid` 语义收口：`pid > 0` 必须是当前进程的直接子进程，否则立即返回 -1；`pid <= 0` 等任意直接子进程，`waitpid(0)` 不再误等 PID 0。
+- 内核 G 页 reparent 面板从最多 3 个子进程扩到 4 个，`reaper` 下移；超过 4 个显示 `+N more`。
+- 内核 V 页 TREE 节点上限收到第 19 行，为第 20/21 行 orphan 事件让位；第 22 行统计和第 23/24 行公共底栏不变。
 - 治理窗口改为只读：`/api/governance/status|proposals|forks|requirements` 和 `/api/community/stats` 返回角色与统计；投票、提案、分叉写操作统一 403。角色文化卡片不再放在治理窗口，改到 3D 桌面「总览」的纯文字介绍里。
 - 3D 桌面取消了独立的「操作手册」启动项和按钮式卡片；桌面操作与十级社区角色文化并进「总览」页，只保留文字，不再新增第二个入口。
 - MrHua 首页主舞台去掉写死的 `opacity:0`，并让 `boot.js` 先直接装载 `app-shell`，避免页面只剩灵体、启动项和窗口不出现。
@@ -43,6 +48,7 @@
 ### Fixed
 
 - `hello_torch.obj` 从仓库根目录移除。
+- `src/kernel/host/console/robot` 构建中间产物 `kernel.elf`、`os.img`、`build-baseline/` 加入 `.gitignore`，本地构建目录清理出仓库。
 - `.gitignore` 增加 `node_modules/`、`dist-app/`、`build/`、`*.exe`、权重与日志，避免构建产物进入开源仓库。
 
 ### Notes

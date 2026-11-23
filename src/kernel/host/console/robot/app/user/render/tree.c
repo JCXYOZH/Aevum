@@ -49,7 +49,7 @@ static void draw_node(int pid, int depth, int *rowp)
     int selected = 0;
     struct process_info sel;
 
-    if (slot < 0 || tree_visited[slot] || row > 21) return;
+    if (slot < 0 || tree_visited[slot] || row > 19) return;
     if (!process_snapshot(slot, &p)) return;
     tree_visited[slot] = 1;
     (*rowp)++;
@@ -86,6 +86,48 @@ static void draw_node(int pid, int depth, int *rowp)
             if (!process_snapshot(i, &child) || child.ppid != p.pid) continue;
             draw_node(child.pid, depth + 1, rowp);
         }
+    }
+}
+
+static void draw_orphan_event(void)
+{
+    struct proc_orphan_event e;
+    int i, col;
+
+    if (!process_last_orphan(&e)) {
+        vga_text(2, 20, "ORPHAN none yet", C_GRAY);
+        return;
+    }
+
+    vga_text(2, 20, "ORPHAN", C_GRAY);
+    vga_text(9, 20, "from", C_GRAY);
+    col = 14;
+    col += ud_put_dec(col, 20, (u32)e.from, C_MAG);
+    vga_text(col, 20, " to", C_GRAY);
+    col += 3;
+    col += ud_put_dec(col, 20, (u32)e.to, C_GREEN);
+    vga_text(col, 20, " children", C_GRAY);
+    col += 9;
+    col += ud_put_dec(col, 20, (u32)e.child_count, C_WHITE);
+
+    vga_text(2, 21, "kids", C_GRAY);
+    col = 7;
+    for (i = 0; i < e.child_count && i < PROC_ORPHAN_CHILDREN; i++) {
+        if (i) {
+            vga_cell(col, 21, ',', C_GRAY);
+            col++;
+            vga_cell(col, 21, ' ', C_GRAY);
+            col++;
+        }
+        col += ud_put_dec(col, 21, (u32)e.children[i], C_WHITE);
+    }
+    if (e.child_count > PROC_ORPHAN_CHILDREN) {
+        vga_text(col, 21, " +", C_YELLOW);
+        col += 2;
+        col += ud_put_dec(col, 21,
+                          (u32)(e.child_count - PROC_ORPHAN_CHILDREN),
+                          C_YELLOW);
+        vga_text(col, 21, " more", C_YELLOW);
     }
 }
 
@@ -140,4 +182,5 @@ void ur_render_tree(void)
     vga_text(43, 22, "dead", C_GRAY);
     ud_put_dec(48, 22, (u32)dead, C_GRAY);
     vga_text(51, 22, "W=ZOMBIE kids", C_GRAY);
+    draw_orphan_event();
 }

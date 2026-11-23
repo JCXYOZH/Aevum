@@ -177,7 +177,7 @@ static void draw_event(void)
 
     vga_text(50, 4, "LAST REPARENT", C_HDR);
     if (flash > 0)
-        vga_fill(50, 5, 79, 12, ' ', C_FLASH);
+        vga_fill(50, 5, 79, 13, ' ', C_FLASH);
 
     if (!family_last_event(&event)) {
         vga_text(50, 6, "no orphan event yet", C_GRAY);
@@ -200,7 +200,7 @@ static void draw_event(void)
     vga_text(59, 7, buf, attr);
 
     row = 8;
-    for (i = 0; i < event.child_count && i < AEVUM_FAMILY_EVENT_CHILDREN && row < 11; i++) {
+    for (i = 0; i < event.child_count && i < AEVUM_FAMILY_EVENT_CHILDREN && row < 12; i++) {
         const char *name = "?";
         if (task_snapshot_pid(event.children[i], &info)) name = info.comm;
         vga_text(50, row, "  ", attr);
@@ -213,11 +213,20 @@ static void draw_event(void)
         row++;
     }
 
-    vga_text(50, 11, "reaper ", attr);
+    if (event.child_count > AEVUM_FAMILY_EVENT_CHILDREN) {
+        p = 0;
+        p += fmt_dec(buf, (u32)(event.child_count - AEVUM_FAMILY_EVENT_CHILDREN));
+        buf[p] = 0;
+        vga_text(50, 13, "  +", attr);
+        vga_text(53, 13, buf, attr);
+        vga_text(53 + p, 13, " more", attr);
+    }
+
+    vga_text(50, 12, "reaper ", attr);
     p = 0;
     p += fmt_dec(buf, (u32)event.to);
     buf[p] = 0;
-    vga_text(57, 11, buf, attr);
+    vga_text(57, 12, buf, attr);
 }
 
 void tree_render_frame(void)

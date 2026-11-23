@@ -1,6 +1,6 @@
 # 进度
 
-> 更新于 2026-11-17。仓库第一个提交是 2026-11-05，首版展示页进度口径是 2026-11-08；这份文件只写能核对的状态，计划写在 [ROADMAP.md](ROADMAP.md)。
+> 更新于 2026-11-23。仓库第一个提交是 2026-11-05，首版展示页进度口径是 2026-11-08；这份文件只写能核对的状态，计划写在 [ROADMAP.md](ROADMAP.md)。
 
 ## 一句话
 
@@ -60,6 +60,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - FastAPI + Uvicorn 身份接口、主账号 / 子用户隔离、本机验证码登录接入；历史内容目录尚未按用户彻底分区。
 - 访客入口接入：服务端签发 `mrhua_visitor` Cookie，访客可用 AI 对话（每日 30 条），聊天历史按 `data_scope` 落到独立目录；WAN presence 只传播不透明作用域，不传播服务器路径。
 - `/api/model` 对非本机请求只返回模型元信息；`/api/model/generate` 只在本机开放，避免公网拿到路径和模型入口。
+- 内核 P6.0 完成细节收口：`process_wait()` 的 `pid>0` 先校验直接子进程，非子进程/不存在立即 -1；`pid<=0` 等任意直接子进程。父进程退出时记录最近一次 orphan/reparent 事件，V 页 TREE 第 20/21 行显示，G 页 reparent 面板支持 4 个子进程和 `+N more`。clean `kernel.bin=64,488` 字节，余量 1,048 字节；速度基线见 `src/kernel/host/console/robot/PERFORMANCE.md`。
 
 ## 缺口（按优先级）
 

@@ -14,7 +14,7 @@
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
 | 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime`/`fpu_state` | `task_boot/task_create/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_pid_of/task_snapshot_pid/task_preempt_total/task_cpu_total` |
 | 进程家族 | `kernel/task/family/family.c` | `family[]`、`reaper`、最近一次重挂事件；只写 `ppid` 关系 | `family_boot/set_reaper/add/exit/snapshot/last_event` |
-| 用户 PCB | `kernel/proc/process.c` | PCB 槽、PID/PPID、LIVE/ZOMBIE/DEAD、wait status、fork/exec/reap；P5.2 增加按槽取 AS/fd 的只读接口 | `process_snapshot/process_slot_space/process_slot_fd_info` |
+| 用户 PCB | `kernel/proc/process.c` | PCB 槽、PID/PPID、LIVE/ZOMBIE/DEAD、wait status、fork/exec/reap；P6.0 的 `wait` 先校验直接子进程，并记录最近一次 orphan/reparent 事件 | `process_snapshot/process_slot_space/process_slot_fd_info/process_last_orphan` |
 | 地址空间 | `kernel/mm/address_space/address_space.c` | 用户 PD/PT、用户页、CR3 切换与地址空间槽 | `address_space_boot/kernel/create_user/switch/release/cr3/id/set_mode/...` |
 | 页错误 | `arch/x86/cpu/fault/page_fault.c` | IDT 14 门、CR2/ERR/EIP 记录、用户 #PF 修复/终止、内核态 panic 页、受控探针 | `page_fault_init/last/count/clear/probe` |
 | 同步异常 | `arch/x86/cpu/exception/exception.c` | IDT 0/3/6/13 门、用户 `#DE/#BP/#UD/#GP` 现场、信号映射、默认终止、CPL0 诊断停机 | `exception_init/clear/last/count/vector_count/..._name` |
@@ -31,7 +31,7 @@
 | 用户演示 | `app/user/demo/demo.c` | A/B/C/D/F 的创建、停止、地址空间和 PID；D 的子进程由 fork 产生；D lane 在 wait 前 yield 262144 次，留出可观察 ZOMBIE 窗口 | `user_demo_start/stop/alive/error/pid/space/...` |
 | V 页导航 | `app/user/page/page.c` | 页面模式、选中 PCB 槽、10 行窗口；扫描码解释的唯一 owner | `user_page_reset/key/mode/selected_slot/first_slot/name` |
 | V 页渲染 | `app/user/render/render.c` + `draw.c` | 公共标题/页签/slot 状态/底栏/页面分派；`draw.c` 统一十进制/十六进制、进程/VMA/fd 状态名与颜色 | `user_render_frame` |
-| V 页子页 | `app/user/render/slots.c` / `tree.c` / `address.c` / `fd.c` | 每页只读 PCB/AS/fd/信号快照并画自己的行布局 | `ur_render_*` |
+| V 页子页 | `app/user/render/slots.c` / `tree.c` / `address.c` / `fd.c` | 每页只读 PCB/AS/fd/信号快照并画自己的行布局；P6.0 的 TREE 页只读 `process_last_orphan()` | `ur_render_*` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
 | 中断/定时 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC、PIT 100Hz、IRQ0 EOI | `interrupt_init/interrupt_set_user_gate/interrupt_eoi` |
 | VGA | `drivers/video/vga/text/vga.c` | 影子显存 `0x20000`、`0xB8000` 刷新 | `vga_*` |
@@ -242,13 +242,24 @@ P5.3 在 P5.1 的 `Y` 池页外壳上增加 `S` 模式，不新增页面、不�
 - 页面复用现有池统计，不额外调用 `process_live_count/process_slot_used/address_space_slot_used/kernel_stack_used`：`round 100/100 first 5 -> 5 live 1 state STRESS OK`，`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`。`state STRESS OK` 只在魔数写入后出现；任何一轮 wait 返回 PID/status 不符或 PID 未复用，轮次停在 `<100`、不写魔数，页面显示 `RUN`。
 - 构建预算：`Makefile` 的 C 目标增加 `-ffunction-sections -fdata-sections`，链接增加 `--gc-sections`，按 `ENTRY(start)` 保留可达函数/数据。该裁剪回收约 1.3KB 不可达代码，使 P5.3 仍为 64,808 字节。
 
+### 3.10 P6.0 细节收口
+
+P6.0 不新增页面、不合并两套树，只修已有进程/家族树的语义和显示边界：
+
+- `process_wait(pid, status)`：`pid > 0` 时先用 `proc_is_direct_child()` 检查 `LIVE|ZOMBIE` 直接子进程；不是子进程或已经不存在立即返回 -1。`pid <= 0` 等待任意直接子进程。扫描条件从 `pid >= 0` 改为 `pid > 0`，因此 `waitpid(0)` 不会再误等 PID 0。
+- `proc_orphan_children()`：父进程退出或异常终止时，同时把 `LIVE` 和 `ZOMBIE` 的直接子进程 `ppid` 改成 0；`process_reap_orphans()` 仍负责回收无活父的 ZOMBIE。每次有子进程被改挂，写 `last_orphan`：`valid/seq/from/to/child_count/children[4]`；`process_last_orphan()` 只读导出。
+- V 页 TREE：`tree.c` 的节点上限从 row 21 收到 row 19，row 20/21 画 `ORPHAN from N to 0 children N` 与 `kids pid,pid +N more`；row 22 保留 TREE 统计，row 23/24 保留公共底栏。
+- G 页：`draw_event()` 的子进程行从 3 行扩到 4 行（row 8..11），`reaper` 下移到 row 12；`child_count > AEVUM_FAMILY_EVENT_CHILDREN` 时在 row 13 显示 `+N more`，总数仍显示原 `child_count`。
+- 当前速度基线另见 `PERFORMANCE.md`：100 Hz PIT，4.14 秒窗口 `SWITCHES +129,890`、`PREEMPTIONS +384`，control/render/idle 50/38/12；clean `kernel.bin=64,488`，余量 1,048B。
+
+
 ## 四、内存与构建预算
 
 | 地址 | 用途 |
 | --- | --- |
 | `0x80000` | 内核镜像起点 |
-| `0x80000..0x90000` | boot 一次 LBA 读取的 128 扇区（64KB）窗口；当前 clean `kernel.bin` 64,808 字节 |
-| `0x8FD40..0x9395C` | `.bss`，由 loader 的 `rep stosb` 清零；尾部 `0x90000..0x9395C` 高于加载窗口 |
+| `0x80000..0x90000` | boot 一次 LBA 读取的 128 扇区（64KB）窗口；当前 clean `kernel.bin` 64,488 字节 |
+| `0x8FC00..0x9387C` | 当前 clean 构建的 BSS；`__bss_start=0x8FC00`、`__bss_end=0x9387C`，仍低于 `AEVUM_KERNEL_END=0x94000` |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
 | `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -273,7 +284,7 @@ P5.3 在 P5.1 的 `Y` 池页外壳上增加 `S` 模式，不新增页面、不�
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 用一次 LBA 读 128 个扇区到 `0x80000`，所以 `kernel.bin` 必须不超过 65,536 字节。
-当前 clean 构建 64,808 字节，BSS 结束于 `0x9395C`；镜像余量 728 字节。BSS 尾部 `0x90000..0x9395C` 不在加载窗口内，loader 按链接符号清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
+当前 P6.0 clean 构建 64,488 字节，BSS 结束于 `0x9387C`；镜像余量 1,048 字节。BSS 尾部 `0x90000..0x9387C` 不在加载窗口内，loader 按链接符号清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时同步 `kernel.ld` 与 `config/memory.h` 的 `AEVUM_KERNEL_END`，并确认 BSS 不越过内核主线程栈底 `0xC000`。`AEVUM_TASK_STACK_MIN=0x8000`，
 `AEVUM_TASK_STACK_MAX=0x20C000`，`AEVUM_KSTACK_COUNT=12`，`AEVUM_TASK_STACK_SIZE=0x1000`，`AEVUM_AS_MAX=12`，`PROC_MAX=12`，`TASK_MAX=16`，`AEVUM_PHYS_POOL_BASE=0x100000`，`AEVUM_PHYS_POOL_END=0x1FF000`。
@@ -290,7 +301,7 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 通过标准：
 
-- `kernel.bin` 不超过 65,536 字节，链接无 undefined symbol；P5.3 clean 构建 64,808 字节。
+- `kernel.bin` 不超过 65,536 字节，链接无 undefined symbol；P6.0 clean 构建 64,488 字节。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
 - 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C/F/G/V/K`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
@@ -313,6 +324,9 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - P5.2 clean 构建 `kernel.bin=64,872`、`boot.bin=512`、`disk.img=1,474,560` 字节；SHA256 分别为 kernel `48b046eb...`、boot `d9a70ce2...`、disk `97379832...`。增量构建与 `make clean && make all` 的 kernel 哈希一致，证明截图对应的是 clean 产物。
 - P5.3 clean 构建 `kernel.bin=64,808`、`boot.bin=512`、`disk.img=1,474,560` 字节；SHA256 分别为 kernel `a39a6bd5...`、boot `d9a70ce2...`、disk `b1490110...`。`__bss_end=0x9395C`，`AEVUM_KERNEL_END=0x94000`；两轮 QEMU 压测截图与文本均来自该 clean 产物。
 - 按 `S`（扫描码 `0x1F`）进入 `AEVUM / P5.3 FORK/WAIT STRESS`：第一轮 `round 100/100 first 5 -> 5 live 1 state STRESS OK`，`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`；按 `S` 停止回主画面，再按 `S` 第二轮仍为 `round 100/100`、首末 PID `5 -> 5`、`PHYS 6/255`、`proc/AS/KSTK 1/12`，ASID 从 1 变为 102。两轮都完成 100 次 `wait` 且 PID 复用，证明子进程回收后 PID/AS/内核栈/物理页不泄漏。
+- P6.0 clean 构建 `kernel.bin=64,488`、`boot.bin=512`、`disk.img=1,474,560` 字节；SHA256 分别为 kernel `48b25c3f...`、boot `d9a70ce2...`、disk `bbcc9235...`。`__bss_end=0x9387C`，`AEVUM_KERNEL_END=0x94000`。
+- G 页按 `G` 进入后约 3 秒抓屏，`LAST REPARENT` 显示 `parent 4 / exited / children 2 / famA ->3 / famB ->3 / reaper 3`；树中 `famA`/`famB` 已挂到 `idle` 下面，说明 4 行显示与 reaper 下移没有破坏现有两子进程场景。
+- V 页 `2 TREE` 抓屏显示 `roots 5 used 6/12 live 3 zomb 1 dead 2`，底部 `ORPHAN none yet` 不覆盖 TREE 统计和第 23/24 行公共底栏；当前 demo 没有父进程先退出留子的 lane，所以只验证了空事件布局，事件写入路径由 `process_exit_current/process_terminate_current` 的真实退出分支调用。
 
 
 - 在机械臂主画面按 `K`（扫描码 `0x25`）：页面切到 `AEVUM / KERNEL PAGE FAULT`，显示 `task 2 render`、`CS=0x0008 / CPL 0`、`EIP=0x000837C1`、`CR2=0x00400000`、`ERR=0x00000002`、`CR3=0x00010000`、`P=0 W/R=1 U/S=0 RSVD=0 I/D=0`、`fault count 1`、`recoveries 0` 和 `kernel image 0x00080000..0x0008F400`；按 `R` 后回到机械臂，q 值继续变化。先跑完整 V 后按 `K`，累计 `fault count 6`：V 页自身 3 次、V 停止路径额外 2 次、K 探针 1 次；这个 count 不是单次 probe 次数。按 `H` 才停机。

@@ -76,6 +76,10 @@ struct process {
 
 static struct process procs[PROC_MAX];
 
+/* 最近一次 orphan/reparent 事件；V 页只读，不参与调度决策。 */
+static struct proc_orphan_event last_orphan;
+static u32 orphan_seq;
+
 static void proc_reset_signals(struct process *p)
 {
     int i;
@@ -119,6 +123,17 @@ static void proc_zero(struct process *p)
     proc_reset_signals(p);
 }
 
+static void proc_zero_orphan(struct proc_orphan_event *e)
+{
+    int i;
+    e->valid = 0;
+    e->seq = 0;
+    e->from = 0;
+    e->to = 0;
+    e->child_count = 0;
+    for (i = 0; i < PROC_ORPHAN_CHILDREN; i++) e->children[i] = 0;
+}
+
 void process_boot(void)
 {
     int i;
@@ -126,6 +141,8 @@ void process_boot(void)
         proc_zero(&procs[i]);
         procs[i].pid = -1;
     }
+    proc_zero_orphan(&last_orphan);
+    orphan_seq = 0;
     kernel_stack_reset();
 }
 
@@ -353,10 +370,34 @@ static void proc_notify_parent(struct process *self)
 
 static void proc_orphan_children(struct process *self)
 {
+    struct proc_orphan_event event;
     int i;
-    for (i = 0; i < PROC_MAX; i++)
-        if (procs[i].state == PROC_LIVE && procs[i].ppid == self->pid)
+
+    if (!self) return;
+    proc_zero_orphan(&event);
+    event.from = self->pid;
+    event.to = 0;
+    for (i = 0; i < PROC_MAX; i++) {
+        if ((procs[i].state == PROC_LIVE || procs[i].state == PROC_ZOMBIE) &&
+            procs[i].ppid == self->pid) {
             procs[i].ppid = 0;
+            if (event.child_count < PROC_ORPHAN_CHILDREN)
+                event.children[event.child_count] = procs[i].pid;
+            event.child_count++;
+        }
+    }
+    if (event.child_count) {
+        event.valid = 1;
+        event.seq = ++orphan_seq;
+        last_orphan = event;
+    }
+}
+
+int process_last_orphan(struct proc_orphan_event *out)
+{
+    if (!out) return 0;
+    *out = last_orphan;
+    return out->valid;
 }
 
 /* 连续 fork/wait 时优先复用刚退出的直接子 PID，保住无关 lane 的墓碑。 */
@@ -799,6 +840,18 @@ static int proc_has_children(const struct process *self)
     return 0;
 }
 
+/* pid>0 只接受自己的直接子进程；ZOMBIE 也算，尚未被 wait 消费。 */
+static int proc_is_direct_child(const struct process *self, int pid)
+{
+    int i;
+    if (!self || pid <= 0) return 0;
+    for (i = 0; i < PROC_MAX; i++)
+        if ((procs[i].state == PROC_LIVE || procs[i].state == PROC_ZOMBIE) &&
+            procs[i].ppid == self->pid && procs[i].pid == pid)
+            return 1;
+    return 0;
+}
+
 int process_wait(int pid, u32 user_status)
 {
     struct process *self;
@@ -807,6 +860,7 @@ int process_wait(int pid, u32 user_status)
     if (!task_current() || !task_process_current()) return -1;
     self = task_process_current();
     if (!address_space_user_range_ok(self->space, user_status, 4, 1)) return -1;
+    if (pid > 0 && !proc_is_direct_child(self, pid)) return -1;
     if (!proc_has_children(self)) return -1;
 
     for (;;) {
@@ -814,7 +868,7 @@ int process_wait(int pid, u32 user_status)
             struct process *child = &procs[i];
             if (child->state != PROC_ZOMBIE) continue;
             if (child->ppid != self->pid) continue;
-            if (pid >= 0 && child->pid != pid) continue;
+            if (pid > 0 && child->pid != pid) continue;
 
             if (address_space_copyout(self->space, user_status,
                                       &child->exit_code, 4) != 0)
@@ -842,14 +896,7 @@ int process_wait(int pid, u32 user_status)
         }
 
         /* 指定 PID 已经不存在：不要永久等一个永远不会退出的子进程。 */
-        if (pid > 0 && !proc_find_active(pid)) {
-            int found = 0;
-            for (i = 0; i < PROC_MAX; i++)
-                if (procs[i].state == PROC_ZOMBIE && procs[i].pid == pid &&
-                    procs[i].ppid == self->pid)
-                    found = 1;
-            if (!found) return -1;
-        }
+        if (pid > 0 && !proc_is_direct_child(self, pid)) return -1;
         if (task_yield()) return -1;
     }
 }
@@ -902,6 +949,7 @@ void process_cleanup(void)
     for (i = 0; i < PROC_MAX; i++)
         if (procs[i].state == PROC_DEAD)
             proc_zero(&procs[i]);
+    last_orphan.valid = 0;
 }
 
 void process_reap_orphans(void)

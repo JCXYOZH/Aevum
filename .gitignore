@@ -12,6 +12,9 @@ __pycache__/
 
 # Build outputs and local tooling
 build/
+src/kernel/host/console/robot/kernel.elf
+src/kernel/host/console/robot/os.img
+src/kernel/host/console/robot/build-baseline/
 interface/desktop/node_modules/
 interface/desktop/dist-app/
 interface/desktop/dist/
