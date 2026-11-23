@@ -719,9 +719,19 @@ int task_release_process_threads(struct process *proc)
     int n = 0;
 
     if (!proc) return -1;
+    /*
+     * 整组先确认、后释放：线程组里只要还有一个槽没到
+     * TASK_ZOMBIE（或就是 current_task 本身），立即整体放弃，
+     * 不进入释放循环——否则先放的槽已清空、后面的槽放不掉，
+     * 会留下半释放的线程组。
+     */
     for (i = 0; i < TASK_MAX; i++) {
         if (tasks[i].state == TASK_UNUSED || tasks[i].proc != proc) continue;
         if (&tasks[i] == current_task) return -1;
+        if (tasks[i].state != TASK_ZOMBIE) return -1;
+    }
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state == TASK_UNUSED || tasks[i].proc != proc) continue;
         kernel_stack_free(tasks[i].stack_top);
         pid_free(tasks[i].pid);
         task_zero(&tasks[i]);

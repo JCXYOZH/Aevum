@@ -503,10 +503,15 @@ static struct process *proc_alloc_slot(int pid)
 /* 回收一个 ZOMBIE：线程任务槽、线程内核栈、地址空间、TGID 一次释放。 */
 static void process_reap(struct process *p)
 {
-    if (!p || (p->state != PROC_ZOMBIE && p->state != PROC_LIVE)) return;
+    if (!p || p->state != PROC_ZOMBIE) return;
     if (task_process_current() == p) return;
+    /*
+     * 线程组里仍有非 ZOMBIE 任务在跑时不能回收：此时释放地址空间
+     * 等于拆正在跑的台。留墓碑，等下一轮 reaper 再试。
+     */
+    if (task_process_live_threads(p) != 0) return;
+    if (task_release_process_threads(p) != 0) return;
     proc_fd_table_close_all(&p->fds);
-    (void)task_release_process_threads(p);
     if (p->space) address_space_release(p->space);
     task_pid_release(p->pid);
     p->space = 0;
