@@ -9,4 +9,12 @@ void arm_app_start(void);
 const char *arm_app_spawn_probe(void);
 const char *arm_app_start_duel(void);
 
+/* P8 动态内核线程自测结果，只读。 */
+u32 arm_app_kthread_tid(void);
+u32 arm_app_kthread_status(void);
+u32 arm_app_kthread_ok(void);
+u32 arm_app_kthread_steps(void);
+u32 arm_app_kthread_stack_before(void);
+u32 arm_app_kthread_stack_after(void);
+
 #endif

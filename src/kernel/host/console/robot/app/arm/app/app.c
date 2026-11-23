@@ -15,6 +15,8 @@
 #include "kernel/mm/address_space.h"
 #include "kernel/task.h"
 #include "kernel/task/family.h"
+#include "kernel/task/stack.h"
+#include "kernel/kthread.h"
 #include "kernel/error.h"
 #include "arch/x86/page_fault.h"
 #include "drivers/video/vga.h"
@@ -53,6 +55,15 @@ static volatile int idle_pid;
 static volatile u32 idle_block_req;
 static volatile u32 idle_blocked;
 
+/* P8 动态内核线程自测：control 启动时创建 kping，再 join 收尸。 */
+static int kthread_demo_started;
+static u32 kthread_demo_tid;
+static u32 kthread_demo_status;
+static u32 kthread_demo_ok;
+static u32 kthread_demo_steps;
+static u32 kthread_demo_stack_before;
+static u32 kthread_demo_stack_after;
+
 static const struct aevum_error app_dep_template = {
     "arm_app", "task_create", "dependency", "arm app task assembly failed", 0
 };
@@ -85,10 +96,57 @@ static void send_arm_status(const struct arm_status *st)
     uart_status_frame(v, (u32)(base + 10));
 }
 
+static void kthread_demo_entry(void *arg)
+{
+    volatile u32 *steps = (volatile u32 *)arg;
+    int i;
+
+    for (i = 0; i < 192; i++) {
+        (*steps)++;
+        if (task_yield()) kthread_exit(1u);
+    }
+    kthread_exit(5u);
+}
+
+static void kthread_demo_run_once(void)
+{
+    struct kthread_stats stats;
+    u32 status = 0;
+    int tid;
+
+    if (kthread_demo_started) return;
+    kthread_demo_started = 1;
+
+    kthread_demo_stack_before = (u32)kernel_stack_used();
+    tid = kthread_create("kping", kthread_demo_entry,
+                         (void *)&kthread_demo_steps, 0);
+    if (tid < 0) {
+        kthread_demo_ok = 0;
+        return;
+    }
+    kthread_demo_tid = (u32)tid;
+
+    if (kthread_join(tid, &status) != 0) {
+        kthread_demo_ok = 0;
+        return;
+    }
+    kthread_demo_status = status;
+    kthread_demo_stack_after = (u32)kernel_stack_used();
+    kthread_stats(&stats);
+    kthread_demo_ok = (status == 5u &&
+                       kthread_demo_stack_after == kthread_demo_stack_before &&
+                       stats.join_blocks > 0 && stats.reaped == 1) ? 1u : 0u;
+}
+
 static void proc_control(void)
 {
     struct uart_input in;
     u32 next_tick = task_tick_total();
+
+    /* 先跑一次动态 kthread 自测；control 会在 join 上真正 BLOCKED。 */
+    kthread_demo_run_once();
+    /* 自测会阻塞若干 tick，重置控制节拍基准，避免启动时补跑一串控制步。 */
+    next_tick = task_tick_total();
 
     for (;;) {
         while (uart_poll_input(&in)) {
@@ -623,3 +681,10 @@ void arm_app_start(void)
 
     task_start(p_control);
 }
+
+u32 arm_app_kthread_tid(void) { return kthread_demo_tid; }
+u32 arm_app_kthread_status(void) { return kthread_demo_status; }
+u32 arm_app_kthread_ok(void) { return kthread_demo_ok; }
+u32 arm_app_kthread_steps(void) { return kthread_demo_steps; }
+u32 arm_app_kthread_stack_before(void) { return kthread_demo_stack_before; }
+u32 arm_app_kthread_stack_after(void) { return kthread_demo_stack_after; }

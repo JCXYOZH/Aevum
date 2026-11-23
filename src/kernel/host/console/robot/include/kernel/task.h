@@ -32,6 +32,7 @@ struct task_info {
     u32 cpu_ticks;
     u32 exit_code;  /* 线程退出码，thread_join 读取 */
     int detached;   /* 1 表示已 detach，线程退出后自动回收 */
+    int kthread;    /* 1 表示 P8 动态内核线程，必须由 kthread_join 回收 */
 };
 
 /* 任务模块是 task_struct 字段的唯一写者；调用方只拿不透明句柄。
@@ -40,6 +41,20 @@ void task_boot(void);
 const char *task_create(int priority, const char *name,
                         void (*entry)(void), u32 stack_top,
                         struct task_struct **out);
+
+/*
+ * P8 动态内核线程：入口带一个内核参数，任务带 kthread 标记。
+ * 栈顶必须来自 kernel_stack_alloc()；退出后只能由 task_reap_kthread() 回收。
+ */
+const char *task_create_kernel_arg(int priority, const char *name,
+                                   void (*entry)(void *), void *arg,
+                                   u32 stack_top, struct task_struct **out);
+int task_current_is_kthread(void);
+/* 只供 kthread_join 使用：标记当前任务正在等哪个动态内核线程。 */
+void task_set_kthread_wait(int tid);
+/* 调度器在 kthread 真正转 ZOMBIE 后调用：唤醒 kthread_join 等待者。 */
+void task_wake_kthread_waiters(int tid);
+int task_reap_kthread(int tid);
 
 /* 用户任务：进程表先保留 PID，任务模块只负责把该 PID 变成可调度的 ring3 任务。 */
 const char *task_create_user_with_pid(int priority, const char *name, u32 user_eip,

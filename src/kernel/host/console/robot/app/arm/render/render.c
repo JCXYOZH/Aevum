@@ -1,4 +1,5 @@
 #include "app/arm/render.h"
+#include "app/arm/app.h"
 #include "drivers/video/vga.h"
 #include "kernel/task.h"
 #include "config/memory.h"
@@ -537,6 +538,21 @@ void arm_render_frame(const struct arm_status *s)
 
     task_timeline();
     vga_text(2, 22, "tip@ jointsO targeto path. base#  descriptor: 2..8 planar links", C_GRAY);
+    {
+        /* P8：动态 kthread 的持久证据；运行期 kping 还会出现在 TASK SCHED。 */
+        vga_text(66, 22, "kthr", C_GRAY);
+        p = 0;
+        p += fmt_dec(buf, arm_app_kthread_tid());
+        buf[p] = 0;
+        vga_text(71, 22, buf, C_WHITE);
+        p = 0;
+        p += fmt_dec(buf, arm_app_kthread_status());
+        buf[p] = 0;
+        vga_text(74, 22, "s", C_GRAY);
+        vga_text(75, 22, buf, C_WHITE);
+        vga_text(78, 22, arm_app_kthread_ok() ? "OK" : "..",
+                 arm_app_kthread_ok() ? C_GREEN : C_RED);
+    }
     vga_text(2, 23, "tip", C_GRAY);
     fmt_fx(buf, s->err_mm, 3);
     vga_text(6, 23, buf, C_WHITE);

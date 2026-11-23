@@ -20,6 +20,7 @@ struct context {
 };
 
 static void task_fill_info(struct task_struct *task, struct task_info *out);
+static void task_kernel_arg_entry(void);
 
 struct task_struct {
     int  pid;       /* TID：调度实体 ID */
@@ -33,6 +34,10 @@ struct task_struct {
     u32  cpu_ticks;
     u32  exit_code;
     int  detached;  /* 1：线程退出后由调度器自动回收，不等待 join */
+    int  kthread;   /* 1：P8 动态内核线程，ZOMBIE 必须等 kthread_join */
+    int  kthread_wait_tid; /* >0：当前任务正阻塞等待该 TID 的 kthread */
+    u32  kernel_entry;     /* kthread 入口函数指针 */
+    u32  kernel_arg;       /* kthread 入口参数 */
     u64  vruntime;
     u32  fpu_state;
     int  user;
@@ -117,6 +122,10 @@ static void task_zero(struct task_struct *task)
     task->cpu_ticks = 0;
     task->exit_code = 0;
     task->detached = 0;
+    task->kthread = 0;
+    task->kthread_wait_tid = 0;
+    task->kernel_entry = 0;
+    task->kernel_arg = 0;
     task->vruntime = 0;
     task->fpu_state = 0;
     task->user = 0;
@@ -151,7 +160,9 @@ void task_boot(void)
 static const char *task_create_common(int priority, const char *name, u32 entry,
                               u32 stack_top, struct address_space *space,
                               int user, u32 user_stack, struct process *proc,
-                              int pid_hint, struct task_struct **out)
+                              int pid_hint, void (*kernel_entry)(void *),
+                              void *kernel_arg, int kthread,
+                              struct task_struct **out)
 {
     struct task_struct *task;
     u32 *sp;
@@ -170,6 +181,7 @@ static const char *task_create_common(int priority, const char *name, u32 entry,
         return "stack";
     if (user && !proc) return "user/proc";
     if (!user && proc) return "user/proc";
+    if (kthread && (!kernel_entry || user || proc)) return "kthread";
 
     stack_base = stack_top - AEVUM_TASK_STACK_SIZE;
     if (stack_base < AEVUM_TASK_STACK_MIN) return "stack";
@@ -215,6 +227,9 @@ static const char *task_create_common(int priority, const char *name, u32 entry,
     task->space = space;
     task->proc = proc;
     task->exit_code = 0;
+    task->kthread = kthread;
+    task->kernel_entry = (u32)kernel_entry;
+    task->kernel_arg = (u32)kernel_arg;
     for (i = 0; i < TASK_NAME_MAX && name[i]; i++) task->comm[i] = name[i];
     task->comm[i] = 0;
 
@@ -263,7 +278,31 @@ const char *task_create(int priority, const char *name,
                 void (*entry)(void), u32 stack_top, struct task_struct **out)
 {
     return task_create_common(priority, name, (u32)entry, stack_top,
-                              address_space_kernel(), 0, 0, 0, 0, out);
+                              address_space_kernel(), 0, 0, 0, 0, 0, 0, 0, out);
+}
+
+const char *task_create_kernel_arg(int priority, const char *name,
+                                   void (*entry)(void *), void *arg,
+                                   u32 stack_top, struct task_struct **out)
+{
+    if (!entry) return "entry";
+    return task_create_common(priority, name, (u32)task_kernel_arg_entry,
+                              stack_top, address_space_kernel(), 0, 0, 0, 0,
+                              entry, arg, 1, out);
+}
+
+/*
+ * 内核任务初始帧没有参数寄存器语义，入口统一走这个 trampoline：
+ * task_struct 里保存 fn/arg，真正进入 ring0 后才解引用并调用。
+ */
+static void task_kernel_arg_entry(void)
+{
+    void (*fn)(void *) = (void (*)(void *))current_task->kernel_entry;
+    void *arg = (void *)current_task->kernel_arg;
+
+    fn(arg);
+    task_set_current_exit_code(0);
+    task_exit();
 }
 
 const char *task_create_user_with_pid(int priority, const char *name, u32 user_eip,
@@ -273,7 +312,7 @@ const char *task_create_user_with_pid(int priority, const char *name, u32 user_e
 {
     if (!space || !proc || pid <= 0) return "space/proc/pid";
     return task_create_common(priority, name, user_eip, kernel_stack_top,
-                              space, 1, user_stack_top, proc, pid, out);
+                              space, 1, user_stack_top, proc, pid, 0, 0, 0, out);
 }
 
 const char *task_create_thread_user(int tid, const char *name,
@@ -288,7 +327,7 @@ const char *task_create_thread_user(int tid, const char *name,
 
     if (!space || !proc || tid <= 0) return "space/proc/tid";
     rc = task_create_common(1, name, user_eip, kernel_stack_top, space,
-                            1, user_stack_top, proc, tid, out);
+                            1, user_stack_top, proc, tid, 0, 0, 0, out);
     if (rc) return rc;
 
     task = *out;
@@ -335,7 +374,7 @@ const char *task_fork_user(int pid, const char *name, struct irq_frame *frame,
 
     if (!frame || !space || !proc || pid <= 0) return "frame/space/proc/pid";
     rc = task_create_common(1, name, frame->eip, kernel_stack_top, space,
-                            1, frame->user_esp, proc, pid, out);
+                            1, frame->user_esp, proc, pid, 0, 0, 0, out);
     if (rc) return rc;
     task = *out;
     /* fork 子任务必须有机会先跑一次：父进程随后进入 wait，
@@ -484,12 +523,61 @@ static void task_reap(void)
 {
     int i;
     for (i = 0; i < TASK_MAX; i++) {
-        if (tasks[i].state == TASK_ZOMBIE && !tasks[i].proc) {
+        if (tasks[i].state == TASK_ZOMBIE && !tasks[i].proc &&
+            !tasks[i].kthread) {
             pid_free(tasks[i].pid);
             if (tasks[i].user) address_space_release(tasks[i].space);
             task_zero(&tasks[i]);
         }
     }
+}
+
+int task_current_is_kthread(void)
+{
+    return current_task && current_task->kthread;
+}
+
+void task_set_kthread_wait(int tid)
+{
+    if (current_task) current_task->kthread_wait_tid = tid;
+}
+
+/* kthread 已经真正 ZOMBIE：只唤醒明确在等这个 TID 的 joiner。 */
+void task_wake_kthread_waiters(int tid)
+{
+    int i;
+
+    if (tid <= 0) return;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state == TASK_BLOCKED &&
+            tasks[i].kthread_wait_tid == tid) {
+            tasks[i].kthread_wait_tid = 0;
+            tasks[i].state = TASK_READY;
+        }
+    }
+}
+
+/*
+ * kthread_join 专用回收：先释放动态栈，再归还 PID 和任务槽。
+ * 与静态内核任务不同，kthread 不能走 task_reap() 的即时回收，
+ * 否则 joiner 永远看不到 ZOMBIE。
+ */
+int task_reap_kthread(int tid)
+{
+    int i;
+
+    if (tid <= 0) return -1;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].pid == tid && tasks[i].kthread &&
+            tasks[i].state == TASK_ZOMBIE) {
+            if (&tasks[i] == current_task) return -1;
+            kernel_stack_free(tasks[i].stack_top);
+            pid_free(tasks[i].pid);
+            task_zero(&tasks[i]);
+            return 0;
+        }
+    }
+    return -1;
 }
 
 /* 用户 ZOMBIE 由 process_wait/reaper 调用；这里只清任务槽，不释放 PID/AS。 */
@@ -717,6 +805,11 @@ u32 task_schedule_irq(struct irq_frame *frame)
          */
         fpu_save((void *)prev->fpu_state);
         /*
+         * P8：动态内核线程已经真正 ZOMBIE，只在此时唤醒等它的 joiner。
+         * 与 P7.5 相同，提前唤醒会让等待者重查后再次睡死。
+         */
+        if (prev->kthread) task_wake_kthread_waiters(prev->pid);
+        /*
          * P7.5：任务已经真的变成 ZOMBIE，此时才唤醒 join 等待者。
          * 不能在 process_thread_exit_current() 里提前唤醒：目标可能还是
          * RUNNING，等待者会重查后再次阻塞，形成 lost wake。
@@ -906,6 +999,7 @@ static void task_fill_info(struct task_struct *task, struct task_info *out)
     out->cpu_ticks = task->cpu_ticks;
     out->exit_code = task->exit_code;
     out->detached = task->detached;
+    out->kthread = task->kthread;
 }
 
 int task_snapshot(int slot, struct task_info *out)

@@ -22,6 +22,7 @@ SRCS = \
 	kernel/error/error.c \
 	kernel/task/task.c \
 	kernel/task/stack/stack.c \
+	kernel/task/kthread/kthread.c \
 	kernel/task/family/family.c \
 	kernel/proc/process.c \
 	kernel/proc/fd/fd.c \
