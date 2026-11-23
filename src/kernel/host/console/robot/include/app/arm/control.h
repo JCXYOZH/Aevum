@@ -35,6 +35,7 @@ void arm_control_step(void);
 void arm_control_toggle_nullspace(void);
 /* Host command: joint targets in Q16.16 radians; enters manual mode. */
 void arm_control_set_joint_targets(const i32 q[ARM_NLINK]);
+void arm_control_release_manual(void);
 void arm_control_status(struct arm_status *out);
 
 #endif

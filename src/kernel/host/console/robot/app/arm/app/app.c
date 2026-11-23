@@ -87,15 +87,23 @@ static void send_arm_status(const struct arm_status *st)
 static void proc_control(void)
 {
     i32 qcmd[3];
+    u32 next_tick = task_tick_total();
 
     for (;;) {
+        if (uart_poll_release_request())
+            arm_control_release_manual();
         if (uart_poll_joint_command(qcmd))
             arm_control_set_joint_targets(qcmd);
         arm_control_step();
-        if (task_yield()) {
-            struct aevum_error e = app_state_template;
-            e.field = "task_yield(control)";
-            aevum_fail(&e);
+
+        /* 控制步按 PIT 100 Hz 走；不能再让调度器跑多快就积分多快。 */
+        next_tick++;
+        while ((i32)(task_tick_total() - next_tick) < 0) {
+            if (task_yield()) {
+                struct aevum_error e = app_state_template;
+                e.field = "task_yield(control)";
+                aevum_fail(&e);
+            }
         }
     }
 }
@@ -405,7 +413,7 @@ static void proc_render(void)
         if (idle_blocked)
             vga_text(2, 2, "BLOCKED: idle waiting task_wake()", 0x09);
         vga_flush();
-        if ((frames & 7) == 0) {
+        if ((frames & 3) == 0) {
             uart_scan();
             send_arm_status(&status);
         }

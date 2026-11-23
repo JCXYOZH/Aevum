@@ -35,6 +35,12 @@
       const wasMode = state.sim.kernelStatus ? state.sim.kernelStatus.mode : -1;
       const mode = Number(values.mode) || 0;
 
+      /* 内核已经回 AUTO，但本地还停在 MANUAL：超过一个状态周期就跟随内核。 */
+      if (mode === 0 && state.sim.manual &&
+          performance.now() - (state.sim.manualSince || 0) > 1500) {
+        state.sim.manual = false;
+      }
+
       q.forEach(function (v, i) {
         if (state.doc.segments[i]) {
           state.doc.segments[i].q = v;
@@ -118,14 +124,22 @@
       });
     }
 
+    function sendRelease() {
+      return F.bridge.send(state.bridge, { type: "release" }, true);
+    }
+
     function setManual(on) {
       if (!state.sim.kernel) return;
       state.sim.manual = !!on;
+      state.sim.manualSince = performance.now();
       if (state.sim.manual) {
+        /* 从 AUTO 进入手动时先锁当前 q，避免跳到上一条 q_target。 */
+        state.doc.segments.forEach(function (s) { s.target = s.q; });
         sendManual();
-        toast("MANUAL 保持已开启；内核 5 秒无命令会回 AUTO");
+        toast("MANUAL 保持已开启；释放后立即回 AUTO，桥接断开时 5 秒兜底");
       } else {
-        toast("MANUAL 已释放；内核将在 5 秒内回 AUTO");
+        sendRelease();
+        toast("MANUAL 已释放；内核立即回 AUTO");
       }
       syncControls();
       rerenderInspector();
@@ -134,6 +148,7 @@
     function pulseManual() {
       if (!state.sim.kernel) return;
       state.sim.manual = true;
+      state.sim.manualSince = performance.now();
       sendManual();
       syncControls();
     }
@@ -142,6 +157,7 @@
       setKernelPill(false);
       state.sim.kernel = false;
       state.sim.manual = false;
+      state.sim.manualSince = 0;
       state.sim.kernelStatus = null;
       state.sim.running = false;
       state.sim.sine = false;

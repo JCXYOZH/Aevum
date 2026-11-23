@@ -7,10 +7,8 @@
 #define FRAME_SYNC0      0xA5
 #define FRAME_SYNC1      0x5A
 #define FRAME_TYPE_DELTA 0x01
-#define FRAME_TYPE_STATE 0x02
 #define FRAME_TYPE_STATUS 0x03
 #define FRAME_HDR        4
-#define FRAME_STATE_VALS 3
 #define FRAME_BUF        (FRAME_HDR + UART_FRAME_MAX_CELLS * 4 + 1)
 #define FRAME_STATUS_MAX 24
 
@@ -18,6 +16,7 @@ static u16 *const serial_snapshot = (u16 *)AEVUM_FRAME_SNAP;
 static u8 serial_frame[FRAME_BUF];
 static u32 serial_scan_count = 0;
 static volatile u32 serial_full_request = 0;
+static volatile u32 serial_release_request = 0;
 static u8 cmd_buf[6];
 static u32 cmd_len = 0;
 static int cmd_live = 0;
@@ -45,16 +44,10 @@ void uart_write(const u8 *buf, u32 len)
     for (i = 0; i < len; i++) uart_putc(buf[i]);
 }
 
-int uart_poll_full_request(void)
+int uart_poll_release_request(void)
 {
-    int requested = 0;
-    while (port_inb(UART_COM1 + 5) & 1) {
-        u8 value = port_inb(UART_COM1);
-        if (value == 'F') {
-            serial_full_request = 1;
-            requested = 1;
-        }
-    }
+    int requested = (int)serial_release_request;
+    serial_release_request = 0;
     return requested;
 }
 
@@ -67,18 +60,21 @@ int uart_poll_joint_command(i32 q[3])
     int got = 0;
     while (port_inb(UART_COM1 + 5) & 1) {
         u8 value = port_inb(UART_COM1);
-        if (value == 'F') {
-            serial_full_request = 1;
-            cmd_live = 0;
-            cmd_len = 0;
+        /*
+         * 命令字节只在空闲时识别；J 的 6 个载荷字节可能恰好是 'F'/'R'/'J'，
+         * 若在载荷中途识别会被误当成新命令，导致目标帧丢失或意外释放。
+         */
+        if (!cmd_live) {
+            if (value == 'F') {
+                serial_full_request = 1;
+            } else if (value == 'R') {
+                serial_release_request = 1;
+            } else if (value == 'J') {
+                cmd_live = 1;
+                cmd_len = 0;
+            }
             continue;
         }
-        if (value == 'J') {
-            cmd_live = 1;
-            cmd_len = 0;
-            continue;
-        }
-        if (!cmd_live) continue;
         cmd_buf[cmd_len++] = value;
         if (cmd_len == 6) {
             int i;
@@ -146,33 +142,6 @@ void uart_scan(void)
     }
     uart_send_frame(count);
     serial_scan_count++;
-}
-
-/*
- * 只读状态帧：A5 5A 02 03 + q0..q2 (i32 LE, Q16.16 rad) + XOR CRC。
- * 与 VGA 差量帧共用 COM1，但类型字节不同；宿主桥只读，不写回内核。
- */
-void uart_state_frame(const i32 q[3])
-{
-    u32 i;
-    u32 total = FRAME_HDR + FRAME_STATE_VALS * 4;
-    u8 crc = 0;
-
-    serial_frame[0] = FRAME_SYNC0;
-    serial_frame[1] = FRAME_SYNC1;
-    serial_frame[2] = FRAME_TYPE_STATE;
-    serial_frame[3] = FRAME_STATE_VALS;
-    for (i = 0; i < FRAME_STATE_VALS; i++) {
-        u32 v = (u32)q[i];
-        u32 p = FRAME_HDR + i * 4;
-        serial_frame[p + 0] = (u8)(v & 0xFF);
-        serial_frame[p + 1] = (u8)((v >> 8) & 0xFF);
-        serial_frame[p + 2] = (u8)((v >> 16) & 0xFF);
-        serial_frame[p + 3] = (u8)((v >> 24) & 0xFF);
-    }
-    for (i = 0; i < total; i++) crc ^= serial_frame[i];
-    serial_frame[total] = crc;
-    uart_write(serial_frame, total + 1);
 }
 
 /*

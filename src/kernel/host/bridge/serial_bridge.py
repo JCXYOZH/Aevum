@@ -4,6 +4,7 @@ AEVUM serial bridge: reads TCP-framed serial from QEMU, forwards to WebSocket.
 Delta frame: A5 5A 01 COUNT [row col ch attr] * COUNT CRC
 Status frame: A5 5A 03 19 + 19 * i32 LE + CRC
 Joint command to kernel: b"J" + 3 * i16 LE (0.001 rad)
+Release manual: b"R"
 """
 import asyncio
 import json
@@ -203,6 +204,13 @@ async def main():
                     if link["writer"]:
                         try:
                             link["writer"].write(b"J" + struct.pack("<3h", *raw_q))
+                            await link["writer"].drain()
+                        except Exception:
+                            pass
+                elif msg.get("type") == "release":
+                    if link["writer"]:
+                        try:
+                            link["writer"].write(b"R")
                             await link["writer"].drain()
                         except Exception:
                             pass

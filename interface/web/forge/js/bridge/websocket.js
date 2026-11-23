@@ -50,10 +50,10 @@
     }
   }
 
-  function send(bridge, packet) {
+  function send(bridge, packet, force) {
     if (!bridge.online || !bridge.ws || bridge.ws.readyState !== 1) return false;
     const now = performance.now();
-    if (now - bridge.lastSend <= 100) return false;
+    if (!force && now - bridge.lastSend <= 100) return false;
     bridge.lastSend = now;
     try {
       bridge.ws.send(JSON.stringify(packet));

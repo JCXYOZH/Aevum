@@ -8,9 +8,9 @@
 > 内核只写 `0xB8000`，桥接收不到画面。
 >
 > 现在同一 COM1 发完整关节状态帧
-> `A5 5A 03 13 + 19×i32 LE + CRC`，并接收 `J` + 3×int16 LE（0.001 rad）关节目标；
-> 手动模式按 PIT tick 保持 5 秒，无新命令自动回 AUTO。Forge 可显示 q/dq/q_target、
-> 末端误差、可操作度、sigma、null share 和 limit margin。
+> `A5 5A 03 13 + 19×i32 LE + CRC`，并接收 `J` + 3×int16 LE（0.001 rad）关节目标
+> 和 `R` 释放手动；手动模式按 PIT tick 保持 5 秒，作为桥接断开时的兜底。
+> Forge 可显示 q/dq/q_target、末端误差、可操作度、sigma、null share 和 limit margin。
 >
 > 构建（Windows 上可用 WSL2，或任意 Linux）：
 >
@@ -205,7 +205,7 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `kernel/proc/fd/fd.c` | 每进程 8 槽 fd 表的唯一 owner；P5.2 增加 `proc_fd_snapshot()`，逐 fd 返回 `used/kind`，不把 pipe 对象指针交给 UI。 |
 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC 重映射、PIT 100Hz、EOI 的唯一写者。 |
 | `drivers/video/vga/text/vga.c` | VGA 影子显存与文本绘制。 |
-| `drivers/serial/uart/uart.c` | COM1 初始化、VGA 差量帧、`0x02` 只读 q 帧、`0x03` 完整状态帧、`J` / `F` 命令解析。 |
+| `drivers/serial/uart/uart.c` | COM1 初始化、VGA 差量帧、`0x03` 完整状态帧、`J` / `R` / `F` 命令解析；命令字节只在空闲时识别，避免 `J` 载荷误触发。 |
 | `drivers/input/keyboard/keyboard.c` | PS/2 扫描码读取。 |
 | `lib/fixed/`、`lib/math/`、`lib/format/` | 定点、三角、格式化。 |
 | `app/arm/kinematics/`、`control/`、`render/`、`app/` | 机械臂纯运动学、控制状态、渲染、任务装配。 |

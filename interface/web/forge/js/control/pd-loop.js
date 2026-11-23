@@ -12,6 +12,7 @@
       sine: false,
       kernel: false,
       manual: false,
+      manualSince: 0,
       kernelStatus: null,
       kernelRejected: false,
       time: 0,

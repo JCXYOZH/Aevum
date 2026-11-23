@@ -88,7 +88,8 @@ AEVUM_FORGE.connect();
 - `RUN` 按钮变成 `MANUAL` / `MANUAL ON`；`Sine` 和 `Reset` 禁用，本地 100 Hz PD 暂停；
 - Inspector 的 `KERNEL STATUS / 0x03` 显示 MODE、末端误差、可操作度、sigma min/max、null-space share、limit margin、max |dq|、target X/Y；
 - 底部曲线切换成内核 q 轨迹；拖动 target 或调用 `setTargets()` 会下发 `J` 并进入手动保持；
-- 手动保持靠页面每帧重发 `joint`（桥接 100 ms 节流）；停止下发后内核 5 秒无命令自动回 AUTO。
+- 手动保持由页面按桥接 100 ms 节流重发 `joint`；关掉 MANUAL 或调用 `setManual(false)` 会立即下发 `R`，内核马上回 AUTO；桥接断开或命令丢失时，内核 5 秒无命令兜底。
+- 内核 AUTO 时状态帧的 `q_target` 跟随当前 q，手动入口不会跳到上一次手动目标；状态帧按渲染帧节流发送，避免串口被状态帧占满。
 
 边界：
 
@@ -179,7 +180,7 @@ window.AEVUM_FORGE
 | `importModel(name, buffer)` | 解析 `.glb` 或 `.gltf` ArrayBuffer，替换为 `aevum.body/1`，返回 segments / triangles / kernel 兼容性 |
 | `setTarget(index, degrees)` | 设置单个关节目标角；kernel 下自动进入手动并下发 |
 | `setTargets(degrees[])` | 批量设置目标角；kernel 下自动进入手动并下发 |
-| `setManual(on)` | kernel 下开 / 关手动保持；关闭后 5 秒无命令内核回 AUTO |
+| `setManual(on)` | kernel 下开 / 关手动保持；关闭时下发 `R`，内核立即回 AUTO，5 秒超时仅作兜底 |
 | `run()` / `pause()` | 本地启动 / 暂停 100 Hz PD；kernel 下等价于开 / 关手动保持 |
 | `reset()` | 回到目标姿态（仅本地；kernel 抛错） |
 | `sine(on)` | 开 / 关正弦激励；开时自动启动（仅本地；kernel 抛错） |
@@ -209,15 +210,15 @@ const stop = AEVUM_FORGE.subscribe(function (msg) {
 kernel ↔ UART / virtual bus ↔ WebSocket bridge ↔ interface/web/forge
 ```
 
-P6 内核 UART 现在发三种帧，并接受两种输入：
+P6 内核 UART 现在发两类帧，并接受三种输入：
 
 - `A5 5A 01 COUNT [row col ch attr] * COUNT CRC`：VGA 单元差分；
-- `A5 5A 02 03 q0 q1 q2 CRC`：旧只读 q 帧，保留兼容；
 - `A5 5A 03 13 + 19×i32 LE + CRC`：完整状态，字段顺序是 q3 / dq3 / q_target3 / target.x,y / err_mm / w_manip / sigma_min / sigma_max / null_share / limit_margin / mode / null_on；
 - `J` + 3×int16 LE（0.001 rad）：页面下发关节目标；
+- `R`：释放手动保持，内核立即回 AUTO；
 - `F`：请求内核全量 VGA 刷新。
 
-桥接把 `0x03` 转成 `{type:"status", ...}` 广播，新客户端会收到最近一帧；页面消息 `{type:"joint", q}` 转成 `J` 写回内核。内核手动模式用 PIT tick 计时，`MANUAL_TIMEOUT_TICKS=500`（100 Hz，5 秒）无新命令回 AUTO。
+桥接把 `0x03` 转成 `{type:"status", ...}` 广播，新客户端会收到最近一帧；页面消息 `{type:"joint", q}` 转成 `J`，`{type:"release"}` 转成 `R`。内核手动模式仍保留 PIT `MANUAL_TIMEOUT_TICKS=500`（100 Hz，5 秒）作为桥接断开时的兜底。
 
 页面默认连接 `ws://127.0.0.1:8765`。导入的非 3R 模型会被 `kernelCompatibility()` 拦下，只做本地建模，不会污染 q。
 

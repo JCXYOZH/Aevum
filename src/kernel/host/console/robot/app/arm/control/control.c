@@ -7,7 +7,7 @@
 #define KP          393216
 #define LAM2        419
 #define K_NULL      16384
-#define DT          1092
+#define DT          655
 #define Q_LIMIT     193986
 #define STEPS_PER_SIN 200
 #define TGT_SPEED   18529
@@ -102,6 +102,17 @@ void arm_control_set_joint_targets(const i32 q_in[ARM_NLINK])
     mode = 1;
     manual_deadline = task_tick_total() + MANUAL_TIMEOUT_TICKS;
     manual_ticks = (int)MANUAL_TIMEOUT_TICKS;
+}
+
+void arm_control_release_manual(void)
+{
+    int i;
+    mode = 0;
+    manual_ticks = 0;
+    target_velocity.x = 0;
+    target_velocity.y = 0;
+    for (i = 0; i < ARM_NLINK; i++)
+        q_target[i] = q[i];
 }
 
 void arm_control_status(struct arm_status *out)
@@ -308,6 +319,7 @@ void arm_control_step(void)
         q[i] += fx_mul(dq[i], DT);
         lim = fx_deg(Q_LIMIT - (q[i] < 0 ? -q[i] : q[i]));
         if (lim < limit_margin) limit_margin = lim;
+        q_target[i] = q[i];
     }
 
     {
@@ -322,8 +334,8 @@ void arm_control_step(void)
         target.x = 34734 + fx_mul(17433, s);
         target.y = 9830 + fx_mul(1311, fx_sin(phase * 2059));
 
-        target_velocity.x = (i32)((i64)(target.x - target_prev.x) * 60);
-        target_velocity.y = (i32)((i64)(target.y - target_prev.y) * 60);
+        target_velocity.x = (i32)((i64)(target.x - target_prev.x) * 100);
+        target_velocity.y = (i32)((i64)(target.y - target_prev.y) * 100);
 
         phase++;
         if (phase >= STEPS_PER_SIN) {
