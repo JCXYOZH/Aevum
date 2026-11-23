@@ -51,7 +51,7 @@ void ur_render_address(void)
     u32 himg0 = 0, harg0 = 0, henp0 = 0;
     u32 himg1 = 0, harg1 = 0, henp1 = 0;
     int r0 = -1, r1 = -1;
-    u32 wait_magic, cow_ok, sig_ok, exec_ok, pipe_ok;
+    u32 wait_magic, cow_ok, sig_ok, exec_ok, pipe_ok, spawn_ok;
     u32 brk, poke, peek, guard, bad;
 
     if (!process_snapshot(slot, &p)) {
@@ -211,6 +211,7 @@ void ur_render_address(void)
     sig_ok = user_demo_sig_ok(USER_DEMO_FORK_LANE);
     exec_ok = user_demo_exec_ok(USER_DEMO_FORK_LANE);
     pipe_ok = user_demo_pipe_ok(USER_DEMO_FORK_LANE);
+    spawn_ok = user_demo_spawn_ok(USER_DEMO_FORK_LANE);
     brk = user_demo_brk(0);
     poke = user_demo_heap_poke(0);
     peek = user_demo_heap_peek(0);
@@ -233,6 +234,9 @@ void ur_render_address(void)
     vga_text(42, 21, "pipe", C_GRAY);
     vga_text(47, 21, pipe_ok == 0x45505049u ? "OK" : "..",
              pipe_ok == 0x45505049u ? C_GREEN : C_YELLOW);
+    vga_text(51, 21, "spawn", C_GRAY);
+    vga_text(57, 21, spawn_ok == 0x5350574Eu ? "OK" : "..",
+             spawn_ok == 0x5350574Eu ? C_GREEN : C_YELLOW);
 
     vga_text(2, 22, "A brk", C_GRAY);
     ud_put_hex(8, 22, brk, C_YELLOW);

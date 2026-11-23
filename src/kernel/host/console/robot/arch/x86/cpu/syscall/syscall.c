@@ -118,6 +118,16 @@ u32 syscall_dispatch(struct irq_frame *frame)
                              ? 0u
                              : (u32)-1;
             break;
+        case 18:
+            {
+                struct process *child = 0;
+                if ((frame->cs & 3u) == 3u) {
+                    child = process_spawn_current(1, "spawn", (int)frame->ebx,
+                                                  frame->ecx, frame->edx);
+                }
+                frame->eax = child ? (u32)process_pid_of(child) : (u32)-1;
+            }
+            break;
         default:
             frame->eax = (u32)-1;
             break;

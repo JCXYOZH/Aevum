@@ -58,6 +58,12 @@ u32 user_demo_pipe_write_fd(int lane);
 u32 user_demo_pipe_read_ret(int lane);
 u32 user_demo_pipe_ok(int lane);
 
+/* P7.0：D 直接 spawn image 1，不经过 fork；子进程 exit(10)，父 wait 后写 SPWN。 */
+u32 user_demo_spawn_child(int lane);
+u32 user_demo_spawn_status(int lane);
+u32 user_demo_spawn_wait_ret(int lane);
+u32 user_demo_spawn_ok(int lane);
+
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);
 u32 user_demo_heap_peek(int lane);

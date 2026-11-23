@@ -181,7 +181,7 @@ P1 建立用户 PCB 与 `fork/exit/wait/reap` 闭环；P2.1 把地址空间从�
 地址空间和用户进程：
 
 - 内核空间固定使用 `0x10000` 页目录，`0..4MB` 恒等映射保持 supervisor-only；VGA BIOS 影子 ROM `0xC0000..0xFFFFF` 不放进页池。
-- 用户物理页池 `0x100000..0x1FEFFF` 共 255 页，位图分配，每页一个引用计数；避开内核 `0x80000..0x94000`、VGA/BIOS 和 `0x200000` 起的任务栈。
+- 用户物理页池 `0x100000..0x1FEFFF` 共 255 页，位图分配，每页一个引用计数；避开内核 `0x80000..0x95000`、VGA/BIOS 和 `0x200000` 起的任务栈。
 - 每个用户空间有独立 PD/PT；用户 VA 固定为 code `0x400000`（RX）、data `0x401000`（RW）、guard `0x402000`（VMA 无 PTE）、stack `0x403000`（RW，栈顶 `0x404000`）、control `0x404000`（R）、heap `0x405000..0x410000`（RW）。`fork` 只分配新 PD/PT，可写用户页共享为 COW，control 页因内核要写停止字也走 COW。
 - 6 个 VMA 是 `code/data/guard/stack/control/heap`；`address_space_user_range_ok()` 按 VMA 权限 + PTE present/user/RW 双重校验，`handle_user_fault()` 只对 heap VMA 内、brk 以下的缺页零填并 `iret` 重试，guard/RO/非法地址一律返回 0。
 - 用户内核栈来自 `AEVUM_KSTACK_BASE=0x200000` 起的 12 个 4KB 槽位图池：槽 0 顶 `0x201000`，槽 11 顶 `0x20C000`；创建/fork 时 `kernel_stack_alloc()` 取槽，失败路径和 reap 时 `kernel_stack_free()` 归还并整槽清零。每槽底部 512 字节仍是 FXSAVE 区，实际可用 3.5KB。
@@ -258,8 +258,9 @@ P6.0 不新增页面、不合并两套树，只修已有进程/家族树的语�
 | 地址 | 用途 |
 | --- | --- |
 | `0x80000` | 内核镜像起点 |
-| `0x80000..0x90000` | boot 一次 LBA 读取的 128 扇区（64KB）窗口；当前 clean `kernel.bin` 64,488 字节 |
-| `0x8FC00..0x9387C` | 当前 clean 构建的 BSS；`__bss_start=0x8FC00`、`__bss_end=0x9387C`，仍低于 `AEVUM_KERNEL_END=0x94000` |
+| `0x80000..0x90000` | boot 第一段 LBA 读取：128 扇区（64KB）窗口 |
+| `0x90000..0x98000` | boot 第二段 LBA 读取：64 扇区（32KB）窗口；当前 `kernel.bin` 68,264 字节，结束于 `0x90AA8` |
+| `0x90AC0..0x9493C` | 当前构建的 BSS；`__bss_start=0x90AC0`、`__bss_end=0x9493C`，低于 `AEVUM_KERNEL_END=0x95000` |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
 | `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |

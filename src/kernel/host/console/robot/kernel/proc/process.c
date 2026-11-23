@@ -734,6 +734,97 @@ static int proc_exec_build_stack(struct address_space *space,
 }
 
 /*
+ * P7.0：直接创建新进程，不复制父地址空间，也不要求父先 fork。
+ * 参数仍从父 AS 解析；子进程拿到新的 AS、内核栈、PCB 和独立用户栈。
+ * 这是 fork+exec 之外的另一条创建路径，后续设备/资源句柄也从这里接入。
+ */
+struct process *process_spawn_current(int priority, const char *name,
+                                      int image_id, u32 argv, u32 envp)
+{
+    struct process *parent;
+    struct process *p;
+    struct task_struct *task;
+    struct address_space *space;
+    struct proc_exec_args args;
+    const u8 *code;
+    u32 code_size;
+    u32 new_esp;
+    u32 stack_top;
+    int pid;
+    const char *rc;
+
+    if (!task_current() || !task_process_current()) return 0;
+    parent = task_process_current();
+    if (parent->state != PROC_LIVE || !parent->space) return 0;
+    if (!name) name = "spawn";
+
+    code = proc_exec_image(image_id, &code_size);
+    if (!code || !code_size) return 0;
+    if (proc_exec_parse(parent->space, argv, envp, &args) != 0) return 0;
+
+    pid = task_pid_reserve();
+    if (!pid) return 0;
+    p = proc_alloc_slot(pid);
+    if (!p) {
+        task_pid_release(pid);
+        return 0;
+    }
+    stack_top = kernel_stack_alloc();
+    if (!stack_top) {
+        proc_zero(p);
+        task_pid_release(pid);
+        return 0;
+    }
+    space = address_space_create_user(code, code_size);
+    if (!space) {
+        kernel_stack_free(stack_top);
+        proc_zero(p);
+        task_pid_release(pid);
+        return 0;
+    }
+    if (proc_exec_build_stack(space, &args, &new_esp) != 0) {
+        address_space_release(space);
+        kernel_stack_free(stack_top);
+        proc_zero(p);
+        task_pid_release(pid);
+        return 0;
+    }
+
+    p->state = PROC_LIVE;
+    p->ppid = parent->pid;
+    p->stack_top = stack_top;
+    p->space = space;
+    p->task = 0;
+    p->exit_code = 0;
+    p->image_id = (u32)image_id;
+    p->exec_argc = args.argc;
+    p->exec_envc = args.envc;
+    proc_copy_name(p, name);
+
+    /* spawn 继承父进程的句柄表；fd 引用由 fd 模块负责加减。 */
+    if (proc_fd_table_copy(&p->fds, &parent->fds) != 0) {
+        address_space_release(space);
+        kernel_stack_free(stack_top);
+        proc_zero(p);
+        task_pid_release(pid);
+        return 0;
+    }
+
+    rc = task_create_user_with_pid(priority, name, AEVUM_USER_CODE_VA,
+                                   stack_top, space, new_esp, p, pid, &task);
+    if (rc) {
+        proc_fd_table_close_all(&p->fds);
+        address_space_release(space);
+        kernel_stack_free(stack_top);
+        proc_zero(p);
+        task_pid_release(pid);
+        return 0;
+    }
+    p->task = task;
+    return p;
+}
+
+/*
  * P4.2 exec：PID/PPID/任务槽保持不变，旧 AS 中的 argv/envp 先复制到新栈，
  * 再切 CR3、释放旧 AS。解析、AS 分配或栈构造失败时旧 AS/frame 都不动。
  */

@@ -229,6 +229,30 @@ u32 user_demo_pipe_ok(int lane)
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x7Cu);
 }
 
+u32 user_demo_spawn_child(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x144u);
+}
+
+u32 user_demo_spawn_status(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x148u);
+}
+
+u32 user_demo_spawn_wait_ret(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x14Cu);
+}
+
+u32 user_demo_spawn_ok(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x150u);
+}
+
 u32 user_demo_brk(int lane)
 {
     if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;

@@ -95,6 +95,14 @@ struct process *process_create_user(int priority, const char *name,
 struct process *process_fork(struct irq_frame *frame);
 
 /*
+ * P7.0：从当前 ring3 进程直接创建一个新进程，不复制父地址空间。
+ * argv/envp 仍指向父 AS 的用户指针；内核先解析参数，再为子进程建独立 AS、
+ * 内嵌镜像栈和 PCB。成功返回子 process，失败返回 0；子进程 eax=0。
+ */
+struct process *process_spawn_current(int priority, const char *name,
+                                      int image_id, u32 argv, u32 envp);
+
+/*
  * P4.2 exec：保留当前 PID/PPID/任务槽，新建 AS 并切换到内嵌用户镜像。
  * argv/envp 是旧 AS 中的用户指针；内核在释放旧 AS 前解析并复制字符串，
  * 按 argc/argv[]/NULL/envp[]/NULL/字符串区 写入新用户栈。

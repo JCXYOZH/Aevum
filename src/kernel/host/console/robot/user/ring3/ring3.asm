@@ -19,6 +19,8 @@
 ; 0x401120 console 输入缓冲，0x401130 console 输出构造缓冲；
 ; 0x4010C0 pool 子进程数量，0x4010C4 "POOL" 魔数，0x4010C8 pool 只执行一次标记，
 ; 0x4010D0 P5.2 fork/wait 前的 yield 计数，让子进程 ZOMBIE 可被 V 页观察；
+; 0x401140 spawn 只执行一次，0x401144 spawn 子 PID，0x401148 spawn wait status，
+; 0x40114C spawn wait 返回值，0x401150 spawn 验收字；
 ; 0x401100..0x40111F pool 8 个子进程 pid；
 ; stress 复用 0x4010C0 round、0x4010C4 "POOL" 完成魔数、0x4010C8 只执行一次，
 ; 0x401100 first PID、0x401104 last PID、0x401108 wait status；
@@ -203,7 +205,7 @@ user_program_start:
     ; 新镜像向写端写 PIPE 后 exit(12)，父 wait 后读回并关闭两端。
 .pipe_round:
     cmp dword [0x40108C], 0
-    jne .yield
+    jne .spawn_round
     mov dword [0x40108C], 1
     mov eax, 14             ; syscall: pipe(&read_fd)
     mov ebx, 0x40106C
@@ -253,6 +255,34 @@ user_program_start:
     test eax, eax
     jnz .pipe_bad
     mov dword [0x40107C], 0x45505049
+
+; P7.0：不经过 fork，直接从当前进程 spawn 一个新进程。
+; 参数数组仍复用只读 code 页里的 exec_argv/exec_envp；子进程拿到独立 AS，
+; 运行 image 1，校验 alpha/beta 与 MODE=p42/LEVEL=2 后 exit(10)。
+.spawn_round:
+    cmp dword [0x401140], 0
+    jne .yield
+    mov dword [0x401140], 1
+    mov eax, 18             ; syscall: spawn(1, argv, envp)
+    mov ebx, 1
+    mov ecx, exec_argv - user_program_start + 0x400000
+    mov edx, exec_envp - user_program_start + 0x400000
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    je .spawn_bad
+    mov [0x401144], eax
+    mov ebx, eax
+    mov ecx, 0x401148
+    mov eax, 4              ; syscall: wait
+    int 0x80
+    mov [0x40114C], eax
+    cmp dword [0x401148], 10
+    jne .spawn_bad
+    mov dword [0x401150], 0x5350574E ; "SPWN"
+    jmp .yield
+
+.spawn_bad:
+    mov dword [0x401150], 0x424144   ; "BAD"
     jmp .yield
 
 .pipe_bad:
