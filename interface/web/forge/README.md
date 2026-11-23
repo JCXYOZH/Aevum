@@ -48,25 +48,33 @@ QEMU COM1 (TCP 5555)
   └─ 'J' + 3×int16 LE (0.001 rad)      # ← Forge {type:"joint", q}
 ```
 
-启动顺序：
+启动顺序（脚本和依赖说明见 [`scripts/kernel/README.md`](../../../scripts/kernel/README.md)）：
 
-1. 构建内核（WSL）：
-
-```bash
-wsl -d kali-linux -- bash -lc "cd /mnt/d/Aevum/src/kernel/host/console/robot && make clean && make all"
-```
-
-2. 启动 QEMU；本地启动脚本不入库（`build/` 是排除目录）。用你自己的 QEMU 启动方式，串口必须是 TCP：
-
-```text
--serial tcp:127.0.0.1:5555,server,nowait
-```
-
-3. 启动桥接：
+1. 构建内核。Windows 用 WSL 的默认发行版，或通过 `-Distro` / `AEVUM_WSL_DISTRO` 指定：
 
 ```powershell
-D:\venv\Scripts\python.exe D:\Aevum\src\kernel\host\bridge\serial_bridge.py
+.\scripts\kernel\build-kernel.ps1
 ```
+
+Linux / WSL 内：
+
+```bash
+./scripts/kernel/build-kernel.sh
+```
+
+2. 启动 QEMU。脚本从仓库根目录定位 `disk.img`，并固定使用 TCP 串口：
+
+```powershell
+.\scripts\kernel\run-qemu.ps1
+```
+
+3. 启动 WebSocket 桥接：
+
+```powershell
+.\scripts\kernel\run-bridge.ps1
+```
+
+Linux / WSL 对应使用 `./scripts/kernel/run-qemu.sh` 和 `./scripts/kernel/run-bridge.sh`。QEMU 或 Python 不在 `PATH` 时，用 `AEVUM_QEMU` / `AEVUM_PYTHON` 覆盖；不需要把本机路径写进文档。
 
 4. 打开 `interface/web/forge/index.html`，用公开 API 连接：
 
