@@ -50,6 +50,7 @@
 - 前端聊天对 429 额度耗尽返回可读提示，不再只显示 `HTTP 429`。
 - `README.md` 代码位置表改为当前真实结构；本地开发命令改到 `scripts/desktop.ps1`。
 - `README.md` 内核截图改为当前 AEVUM FORGE 工作台：结构树、QEMU 内核窗口、3D 视口与 Inspector 同屏；旧的机械臂主画面不再引用，图片资源改为 `docs/assets/readme/kernel/forge-arm-workspace.png`。
+- `README.md` 内核验收截图区改为“一图一段说明”，只有成对验收图并排，避免图片表格出现只有文字的空白格。
 - `PROGRESS.md` 状态与新目录对齐；安装包与 Linux 产物单独标为未验收。
 - `apps/desktop/README.md` 改掉 portable-only 与“必须本机 Python”的旧说法。
 - 展示页与看板配色统一回纸黄系；看板保留深色终端块。

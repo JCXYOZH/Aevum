@@ -218,7 +218,7 @@ P5.3 已在本地提交为 `115a31f`。这一阶段把「反复 fork/wait 100 �
 
 #### 截图
 
-当前机械臂工作台：
+**当前机械臂工作台**
 
 ![AEVUM FORGE 机械臂工作台](docs/assets/readme/kernel/forge-arm-workspace.png)
 
@@ -226,73 +226,91 @@ P5.3 已在本地提交为 `115a31f`。这一阶段把「反复 fork/wait 100 �
 
 > Current AEVUM FORGE workbench: structure tree, QEMU kernel window, 3D viewport and Inspector. The kernel reports `q1 67.9°`, `q2 -76.8°`, `q3 -56.5°`; the 3D viewport turns the same joint angles into a visible arm and shows target/actual angle, gains, torque and `TRACKING ERROR 4.78 mm` on the same screen. `TASK SCHED P3/31`, `nullsp ON` and `kthr 4 s5 OK` show scheduling, null-space projection and the dynamic kthread running while the arm is live.
 
-启动、异常与恢复：
+**启动、异常与恢复**
 
 | COW + signal frame + handler + 物理池 | 内核态 `#PF` 受控探针 |
 | --- | --- |
 | ![COW、signal frame 与物理池](docs/assets/readme/kernel/kernel-ring3-sigframe.png) | ![内核态 #PF 受控探针](docs/assets/readme/kernel/kernel-kernel-pf.png) |
 
-按 `R` 恢复后的主画面：
+**按 `R` 恢复后的主画面**
 
 ![恢复后的主画面](docs/assets/readme/kernel/kernel-recover-main.png)
 
-P4 与 P5 观测页：
+**P4 与 P5 观测页**
 
 | P4.2 exec argv/env 验收（PID 8 不变、arg 2/env 2） | P4.3 pipe / fd 继承验收（exec 后写端仍有效、`PIPE OK`） |
 | --- | --- |
 | ![P4.2 exec argv/env 验收](docs/assets/readme/kernel/kernel-p42-exec.png) | ![P4.3 pipe 验收](docs/assets/readme/kernel/kernel-p43-pipe.png) |
-| P4.4 console fd 0/1 验收（`CON:a` / `FD01 OK`） | 父关 0/1 后子进程继承端点，`CLOSE OK` |
-| ![P4.4 console 验收](docs/assets/readme/kernel/kernel-p44-console.png) | `pid 4 child 5 out 14 EXIT 14`；`close0 0 close1 0 r0 -1 w1 -1`；`out 14 uart 14` |
-| P5.1 槽池与动态内核栈（9 个 LIVE 用户进程） | 12 槽表与 `POOL OK` |
-| ![P5.1 槽池验收](docs/assets/readme/kernel/kernel-p51-pool.png) | `task 12/16 proc 9/12 AS 9/12 kstack 9/12`；PID 4..12；KSTACK TOP `0x201000..0x209000` |
-| P5.2 SLOTS 页（ZOMBIE PID 8，窗口 1-10/12） | P5.2 TREE 页（真实 PPID，`CH 1 W 1`） |
-| ![P5.2 SLOTS](docs/assets/readme/kernel/kernel-p52-slots.png) | ![P5.2 TREE](docs/assets/readme/kernel/kernel-p52-tree.png) |
-| P5.2 ADDRESS 页（6 条 VMA + PTE R/W） | P5.2 FD/SIG 页（fd0/1、SIGFPE、#PF） |
-| ![P5.2 ADDRESS](docs/assets/readme/kernel/kernel-p52-address.png) | ![P5.2 FD/SIG](docs/assets/readme/kernel/kernel-p52-fd.png) |
-| P5.2 滚动窗口（`PgDn` 后 3-12/12，选中 ZOMBIE） | 四页共享选中槽；空槽显示 `EMPTY` 与池统计 |
-| ![P5.2 滚动窗口](docs/assets/readme/kernel/kernel-p52-scroll.png) | `SLOT 2..11` 全部出现；`TASK ZOMB ... AS CR3 0011A000` |
 
-P5.3 压测：
+**P4.4 console fd 0/1 验收**
+
+![P4.4 console 验收](docs/assets/readme/kernel/kernel-p44-console.png)
+
+`CON:a` / `FD01 OK`；`pid 4 child 5 out 14 EXIT 14`；`close0 0 close1 0 r0 -1 w1 -1`；`out 14 uart 14`。父进程关闭自身 0/1 后，子进程仍持有继承端点。
+
+**P5.1 槽池与动态内核栈**
+
+![P5.1 槽池验收](docs/assets/readme/kernel/kernel-p51-pool.png)
+
+`task 12/16 proc 9/12 AS 9/12 kstack 9/12`；`live 9`、`root 4`、`children 8/8`、`POOL OK`；PID 4..12 对应 KSTACK TOP `0x201000..0x209000`。
+
+**P5.2 四页观测面**
+
+| SLOTS 页（ZOMBIE PID 8，窗口 1-10/12） | TREE 页（真实 PPID，`CH 1 W 1`） |
+| --- | --- |
+| ![P5.2 SLOTS](docs/assets/readme/kernel/kernel-p52-slots.png) | ![P5.2 TREE](docs/assets/readme/kernel/kernel-p52-tree.png) |
+
+| ADDRESS 页（6 条 VMA + PTE R/W） | FD/SIG 页（fd0/1、SIGFPE、#PF） |
+| --- | --- |
+| ![P5.2 ADDRESS](docs/assets/readme/kernel/kernel-p52-address.png) | ![P5.2 FD/SIG](docs/assets/readme/kernel/kernel-p52-fd.png) |
+
+**P5.2 滚动窗口**
+
+![P5.2 滚动窗口](docs/assets/readme/kernel/kernel-p52-scroll.png)
+
+`PgDn` 后窗口 `3-12/12`，选中 ZOMBIE；四页共享选中槽，`SLOT 2..11` 全部出现，`TASK ZOMB ... AS CR3 0011A000`；空槽显示 `EMPTY` 与池统计。
+
+**P5.3 压测**
 
 | P5.3 第一轮 100 轮 fork/wait（PID 5 -> 5，PHYS 6/255） | P5.3 第二轮（ASID 102，PID/页/栈仍回到基线） |
 | --- | --- |
 | ![P5.3 第一轮压测](docs/assets/readme/kernel/kernel-p53-run1.png) | ![P5.3 第二轮压测](docs/assets/readme/kernel/kernel-p53-run2.png) |
 
-P7.1 最小线程组：
+**P7.1 最小线程组**
 
-| V 页 ADDRESS：`THREAD tid 6 join 0 shared 1 THRD` | `TEST ... spawn OK thr OK`，`THR 1 TID 7` |
-| --- | --- |
-| ![P7.1 线程组验收](docs/assets/readme/kernel/kernel-p71-thread.png) | worker 写共享计数器后 `thread_exit`，主线程 `thread_join` 回收；PID 7、主线程 TID 7、worker TID 6 |
+![P7.1 线程组验收](docs/assets/readme/kernel/kernel-p71-thread.png)
 
-P7.2 线程 detach：
+V 页 ADDRESS 显示 `THREAD tid 6 join 0 shared 1 THRD`，底部是 `TEST ... spawn OK thr OK`、`THR 1 TID 7`；worker 写共享计数器后 `thread_exit`，主线程 `thread_join` 回收；PID 7、主线程 TID 7、worker TID 6。
 
-| V 页 ADDRESS：`THREAD tid 6 join 0 shared 1 THRD det OK` | `TEST ... thr OK det OK`，`THR 1 TID 7` |
-| --- | --- |
-| ![P7.2 detach 验收](docs/assets/readme/kernel/kernel-p72-thread.png) | 第二个 worker 自 `thread_detach`，主线程 join 返回 `-1`；退出任务槽/内核栈延后回收 |
+**P7.2 线程 detach**
 
-P7.3 主线程先退与参数矩阵：
+![P7.2 detach 验收](docs/assets/readme/kernel/kernel-p72-thread.png)
 
-| V 页 ADDRESS：`THREAD ... det OK main OK arg OK` | `TEST ... thr OK det OK`，`THR 1 TID 7` |
-| --- | --- |
-| ![P7.3 主线程先退验收](docs/assets/readme/kernel/kernel-p73-thread.png) | 子进程主线程先 `thread_exit(0)`，worker join 主线程后继续运行并以 `exit(7)` 结束；父 `wait` 得到 7；非法 join/detach 参数全部返回 `-1` |
+V 页 ADDRESS 显示 `THREAD tid 6 join 0 shared 1 THRD det OK`，底部是 `TEST ... thr OK det OK`、`THR 1 TID 7`；第二个 worker 自 `thread_detach`，主线程 join 返回 `-1`；退出任务槽和内核栈由调度器延后回收。
 
-P7.4 主线程不 join、最后线程触发整组回收：
+**P7.3 主线程先退与参数矩阵**
 
-| V 页 ADDRESS：`THREAD ... main OK arg OK grp OK` | `TEST ... thr OK det OK`，`THR 1 TID 7` |
-| --- | --- |
-| ![P7.4 线程组回收验收](docs/assets/readme/kernel/kernel-p74-thread-group.png) | 子进程主线程创建 A/B 两个 worker 后不 join、以 ZOMBIE 留在组内；A 退出 5，B join A 后作为最后线程退出 7；父 `wait` 得到 7，`process_reap()` 释放整组 |
+![P7.3 主线程先退验收](docs/assets/readme/kernel/kernel-p73-thread.png)
 
-P7.5 阻塞 wait/join 与 lost wake 防护：
+V 页 ADDRESS 显示 `THREAD ... det OK main OK arg OK`；子进程主线程先 `thread_exit(0)`，worker join 主线程后继续运行并以 `exit(7)` 结束，父 `wait` 得到 7；非法 join/detach 参数全部返回 `-1`。
 
-| V 页 ADDRESS：`TEST ... det OK blk OK`，`blk 7 /1` | `THREAD ... grp OK`，`THR 1 TID 7` |
-| --- | --- |
-| ![P7.5 阻塞等待验收](docs/assets/readme/kernel/kernel-p75-block-wake.png) | 父在子进程仍 LIVE 时 `wait` 进入 BLOCKED；子主线程 `thread_join` 先于 worker 退出阻塞；worker 退出 4、子写 `BLK5` 后退出 9，父被唤醒得到 status 9 并写 `WBLK`；`blk OK` 同时要求 wait/join 的阻塞与唤醒计数非零 |
+**P7.4 主线程不 join、最后线程触发整组回收**
 
-P8 动态内核线程：
+![P7.4 线程组回收验收](docs/assets/readme/kernel/kernel-p74-thread-group.png)
 
-| 主页面：`kthr 4 s5 OK` | `TASK SCHED P3/31`，运行时 kping 已回收 |
-| --- | --- |
-| ![P8 动态内核线程验收](docs/assets/readme/kernel/kernel-p8-kthread.png) | control 启动时创建 `kping`；它拿到 TID 4 和栈池槽，yield 192 次后退出 5；control 在 `kthread_join` 上阻塞，被唤醒后取回 status 5；join 释放动态栈、TID 和任务槽，页面右侧 PID 计数回到 3/31 |
+V 页 ADDRESS 显示 `THREAD ... main OK arg OK grp OK`；子进程主线程创建 A/B 两个 worker 后不 join、以 ZOMBIE 留在组内；A 退出 5，B join A 后作为最后线程退出 7，父 `wait` 得到 7，`process_reap()` 释放整组。
+
+**P7.5 阻塞 wait/join 与 lost wake 防护**
+
+![P7.5 阻塞等待验收](docs/assets/readme/kernel/kernel-p75-block-wake.png)
+
+V 页 ADDRESS 显示 `TEST ... det OK blk OK`、`blk 7 /1`；父在子进程仍 LIVE 时 `wait` 进入 BLOCKED；子主线程 `thread_join` 先于 worker 退出而阻塞；worker 退出 4、子写 `BLK5` 后退出 9，父被唤醒得到 status 9 并写 `WBLK`；`blk OK` 同时要求 wait/join 的阻塞与唤醒计数非零。
+
+**P8 动态内核线程**
+
+![P8 动态内核线程验收](docs/assets/readme/kernel/kernel-p8-kthread.png)
+
+主页面显示 `kthr 4 s5 OK`、`TASK SCHED P3/31`；control 启动时创建 `kping`，它拿到 TID 4 和栈池槽，yield 192 次后退出 5；control 在 `kthread_join` 上阻塞，被唤醒后取回 status 5；join 释放动态栈、TID 和任务槽，页面右侧 PID 计数回到 3/31。
 
 #### 构建与运行
 
