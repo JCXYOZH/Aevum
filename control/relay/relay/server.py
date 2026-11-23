@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import json
+import hmac
 import logging
 import math
 import os
@@ -101,11 +102,17 @@ class RelayApp:
             self.memory.add_message(self.room, "system", ROOM_NOTICE)
             logger.info("交流房间已开 id=%s（内容只在内存）", self.room)
 
-    # 认证：设置了 token 才校验，空 token 等于“只监听本机”的开发模式
+    # 认证：设置了 token 才校验，空 token 等于“只监听本机”的开发模式。
+    # 令牌是长期秘密，用常数时间比较；== 的逐字节短路会把前缀信息
+    # 泄露给测量响应时长的攻击者。str 版 compare_digest 要求两侧均为
+    # 纯 ASCII，否则抛 TypeError；统一 encode 成 bytes 再比较。
     def authorized(self, header_token: str, bearer: str) -> bool:
         if not self.token:
             return True
-        return header_token == self.token or bearer == self.token
+        expected = self.token.encode("utf-8")
+        ok_header = hmac.compare_digest(header_token.encode("utf-8"), expected)
+        ok_bearer = hmac.compare_digest(bearer.encode("utf-8"), expected)
+        return ok_header or ok_bearer
 
     def heartbeat(self, client: str) -> int:
         """客户端进房/保活。只记 client 与时间，不记任何人做过什么。"""
