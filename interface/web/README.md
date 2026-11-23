@@ -4,7 +4,7 @@
 
 ## Forge 机械臂建模台
 
-`forge/` 是独立的机器人专用 3D 建模与控制台入口，第一台身体是 3R 平面机械臂。页面是单文件 `forge/index.html`，不依赖 React、Three.js 或构建工具；3D 视口、矩阵、相机、关节标签和拾取都使用页面自己的 WebGL 代码。它做 BodyDocument 参数编辑、100 Hz PD 控制、正弦测试、误差曲线，以及 JSON / MuJoCo XML / `aevum.virtual_bus/0` manifest 导出。
+`forge/` 是独立的机器人专用 3D 建模与控制台入口，第一台身体是 3R 平面机械臂。入口 `forge/index.html` 只做装配，公开 API 在 `forge/api.js`，启动在 `forge/app.js`；样式和实现分别拆在 `forge/styles/` 与 `forge/js/{core,model,control,render,ui,bridge}/`，不依赖 React、Three.js 或构建工具。3D 视口、矩阵、相机、关节标签和绘制顺序都使用页面自己的 WebGL 代码。它做 BodyDocument 参数编辑、100 Hz PD 控制、正弦测试、误差曲线，以及 JSON / MuJoCo XML / `aevum.virtual_bus/0` manifest 导出。
 
 Forge 只做呈现和本地控制可视化，不 `import` 内核；内核仍由 QEMU / Renode / 真实板加载。右上角 `KERNEL OFFLINE` 是真实状态，WebSocket 接缝默认是 `ws://127.0.0.1:8765`。详细边界见 [forge/README.md](forge/README.md)。
 

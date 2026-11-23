@@ -1,0 +1,14 @@
+.stage{position:relative;min-height:0;min-width:0;overflow:hidden;background:#080b0e}
+#gl{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.joint-label{
+  position:absolute;transform:translate(-50%,-50%);border:1px solid #5b6e76;background:#0b1115cc;
+  color:#cfe9ed;font:700 9px/1 "Segoe UI",sans-serif;letter-spacing:.08em;padding:4px 5px;
+  white-space:nowrap;backdrop-filter:blur(3px)
+}
+.joint-label.sel{border-color:var(--amber);color:#ffd89b;background:#241a0ed9}
+.hud{position:absolute;left:16px;top:16px;pointer-events:none}
+.hud .big{font:700 14px/1.2 "Segoe UI",sans-serif;letter-spacing:.14em;color:#fff}
+.hud .sub{font:500 10px/1.4 "Segoe UI",sans-serif;color:var(--dim);margin-top:4px}
+.hint{position:absolute;left:16px;bottom:14px;font:500 10px/1.4 "Segoe UI",sans-serif;color:#78909a;pointer-events:none}
+.hint span{color:#c3d4d9}

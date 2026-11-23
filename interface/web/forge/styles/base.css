@@ -1,0 +1,11 @@
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;overflow:hidden}
+body{display:flex;flex-direction:column}
+button{
+  border:1px solid var(--line);background:#121a20;color:var(--text);padding:8px 12px;
+  font:600 11px/1 "Segoe UI",sans-serif;letter-spacing:.1em;cursor:pointer;border-radius:2px
+}
+button:hover{border-color:var(--cyan);color:#fff}
+button.primary{border-color:#2a7780;background:#0e2b30;color:#c9f7fa}
+button.amber{border-color:#6b4b24;background:#241a0e;color:#ffd79b}
+button.ghost{background:transparent}

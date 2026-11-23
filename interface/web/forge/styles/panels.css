@@ -1,0 +1,36 @@
+.tree-item{
+  border:1px solid transparent;border-left:2px solid #26343d;padding:9px 9px 9px 12px;margin:0 0 6px;
+  cursor:pointer;background:#0e1419
+}
+.tree-item:hover{border-color:#2d4650}
+.tree-item.active{border-left-color:var(--amber);background:#17180e}
+.tree-item .k{font:700 11px/1.2 "Segoe UI",sans-serif;letter-spacing:.1em;color:#fff}
+.tree-item .v{font:500 10px/1.35 "Segoe UI",sans-serif;color:var(--dim);margin-top:4px}
+.tree-item .tag{float:right;font:600 9px/1 "Segoe UI",sans-serif;color:var(--cyan);border:1px solid #24545c;padding:3px 4px;margin-top:-2px}
+.purpose{margin-top:18px;border-top:1px solid var(--line);padding-top:14px;color:var(--dim);font:500 11px/1.55 "Segoe UI",sans-serif}
+.purpose b{color:var(--cyan);display:block;letter-spacing:.08em;font-size:10px;margin-bottom:5px}
+.right .head{display:flex;justify-content:space-between;align-items:center;padding:16px 16px 12px;border-bottom:1px solid var(--line)}
+.right .head b{font:700 10px/1 "Segoe UI",sans-serif;letter-spacing:.16em;color:var(--dim)}
+#selId{font:600 10px/1 "Segoe UI",sans-serif;letter-spacing:.08em;color:var(--cyan)}
+#inspector{padding:14px 16px 24px}
+.group{margin-bottom:18px}
+.group .gtitle{font:700 9px/1 "Segoe UI",sans-serif;letter-spacing:.15em;color:var(--dim);margin-bottom:8px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:8px 0;font:500 11px/1.3 "Segoe UI",sans-serif;color:#a9bbc2}
+.row output{color:#fff;font:600 11px/1.2 "Consolas",monospace}
+input[type=range]{width:100%;accent-color:var(--cyan);height:16px}
+input[type=number],input[type=text]{
+  width:86px;background:#0a0f13;border:1px solid var(--line);color:#fff;padding:6px 7px;
+  font:600 11px/1.2 "Consolas",monospace;outline:none
+}
+input[type=text]{width:100%}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.field label{display:block;font:500 9px/1.2 "Segoe UI",sans-serif;color:var(--dim);letter-spacing:.08em;margin-bottom:4px}
+.field input{width:100%}
+.note{color:#80939b;font:500 10px/1.5 "Segoe UI",sans-serif;border-left:2px solid #2c4850;padding-left:9px;margin-top:8px}
+.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+.actions button{flex:1;min-width:92px}
+.bridge{background:#0d151a;border:1px solid var(--line);padding:10px;margin-top:8px}
+.bridge .status{font:600 10px/1.2 "Segoe UI",sans-serif;color:var(--dim);letter-spacing:.08em}
+.bridge .status.on{color:var(--green)}
+.bridge input{margin:8px 0;width:100%}
+.bridge .note{margin-top:8px;font-size:9px}
