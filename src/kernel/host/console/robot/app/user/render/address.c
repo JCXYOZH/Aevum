@@ -51,7 +51,7 @@ void ur_render_address(void)
     u32 himg0 = 0, harg0 = 0, henp0 = 0;
     u32 himg1 = 0, harg1 = 0, henp1 = 0;
     int r0 = -1, r1 = -1;
-    u32 wait_magic, cow_ok, sig_ok, exec_ok, pipe_ok, spawn_ok;
+    u32 wait_magic, cow_ok, sig_ok, exec_ok, pipe_ok, spawn_ok, thread_ok;
     u32 brk, poke, peek, guard, bad;
 
     if (!process_snapshot(slot, &p)) {
@@ -141,6 +141,11 @@ void ur_render_address(void)
     ud_put_dec(21, 15, p.exec_argc, p.exec_argc ? C_CYAN : C_GRAY);
     vga_text(24, 15, "envc", C_GRAY);
     ud_put_dec(29, 15, p.exec_envc, p.exec_envc ? C_CYAN : C_GRAY);
+    vga_text(34, 15, "THR", C_GRAY);
+    ud_put_dec(38, 15, (u32)p.thread_count,
+               p.thread_count > 1 ? C_MAG : C_WHITE);
+    vga_text(41, 15, "TID", C_GRAY);
+    ud_put_dec(45, 15, (u32)p.tid, p.tid ? C_CYAN : C_GRAY);
 
     r0 = process_reaped_exec(p.pid, 0, &hpid0, &himg0, &harg0, &henp0);
     r1 = process_reaped_exec(p.pid, 1, &hpid1, &himg1, &harg1, &henp1);
@@ -199,12 +204,17 @@ void ur_render_address(void)
     }
 
     vga_text(2, 19, "PTE R/W probes VMA start; GUARD has VMA without PTE", C_CYAN);
-    vga_text(2, 20, "USER PAGE walk", C_GRAY);
-    vga_text(18, 20, "AS owner", C_GRAY);
-    vga_text(28, 20, space ? "YES" : "NO", space ? C_GREEN : C_MAG);
-    vga_text(33, 20, "slot", C_GRAY);
-    ud_put_dec(38, 20, (u32)slot, C_WHITE);
-    vga_text(41, 20, "kstack shared; AS per process", C_GRAY);
+    vga_text(2, 20, "THREAD", C_GRAY);
+    vga_text(9, 20, "tid", C_GRAY);
+    ud_put_dec(13, 20, user_demo_thread_tid(USER_DEMO_FORK_LANE), C_CYAN);
+    vga_text(17, 20, "join", C_GRAY);
+    ud_put_dec(22, 20, user_demo_thread_join_ret(USER_DEMO_FORK_LANE), C_WHITE);
+    vga_text(26, 20, "shared", C_GRAY);
+    ud_put_dec(33, 20, user_demo_thread_shared(USER_DEMO_FORK_LANE), C_WHITE);
+    vga_text(40, 20, "ok", C_GRAY);
+    vga_text(43, 20,
+             user_demo_thread_ok(USER_DEMO_FORK_LANE) == 0x54485244u ? "THRD" : "BAD",
+             user_demo_thread_ok(USER_DEMO_FORK_LANE) == 0x54485244u ? C_GREEN : C_MAG);
 
     wait_magic = user_demo_wait_magic(USER_DEMO_FORK_LANE);
     cow_ok = user_demo_cow_ok(USER_DEMO_FORK_LANE);
@@ -212,6 +222,7 @@ void ur_render_address(void)
     exec_ok = user_demo_exec_ok(USER_DEMO_FORK_LANE);
     pipe_ok = user_demo_pipe_ok(USER_DEMO_FORK_LANE);
     spawn_ok = user_demo_spawn_ok(USER_DEMO_FORK_LANE);
+    thread_ok = user_demo_thread_ok(USER_DEMO_FORK_LANE);
     brk = user_demo_brk(0);
     poke = user_demo_heap_poke(0);
     peek = user_demo_heap_peek(0);
@@ -237,6 +248,9 @@ void ur_render_address(void)
     vga_text(51, 21, "spawn", C_GRAY);
     vga_text(57, 21, spawn_ok == 0x5350574Eu ? "OK" : "..",
              spawn_ok == 0x5350574Eu ? C_GREEN : C_YELLOW);
+    vga_text(60, 21, "thr", C_GRAY);
+    vga_text(64, 21, thread_ok == 0x54485244u ? "OK" : "..",
+             thread_ok == 0x54485244u ? C_GREEN : C_YELLOW);
 
     vga_text(2, 22, "A brk", C_GRAY);
     ud_put_hex(8, 22, brk, C_YELLOW);

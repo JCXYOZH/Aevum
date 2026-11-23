@@ -444,16 +444,15 @@ static struct process *proc_alloc_slot(int pid)
     return slot;
 }
 
-/* 回收一个 ZOMBIE：任务槽、地址空间、PID、内核栈一次释放；保留墓碑用于 V 页。 */
+/* 回收一个 ZOMBIE：线程任务槽、线程内核栈、地址空间、TGID 一次释放。 */
 static void process_reap(struct process *p)
 {
     if (!p || (p->state != PROC_ZOMBIE && p->state != PROC_LIVE)) return;
-    if (p->task == task_current()) return;
+    if (task_process_current() == p) return;
     proc_fd_table_close_all(&p->fds);
-    task_release_slot(p->pid);
+    (void)task_release_process_threads(p);
     if (p->space) address_space_release(p->space);
     task_pid_release(p->pid);
-    kernel_stack_free(p->stack_top);
     p->task = 0;
     p->space = 0;
     p->stack_top = 0;
@@ -825,6 +824,50 @@ struct process *process_spawn_current(int priority, const char *name,
 }
 
 /*
+ * P7.1：clone 的受控线程子集。线程不分配 process 槽，不复制 AS/fd；
+ * 只申请 TID 和内核栈，然后和当前进程共用地址空间。
+ */
+int process_clone_thread_current(int priority, const char *name,
+                                 u32 entry, u32 user_stack, u32 flags, u32 arg)
+{
+    struct process *self;
+    struct task_struct *task;
+    u32 stack_top;
+    int tid;
+    const char *rc;
+
+    if (!task_current() || !task_process_current()) return -1;
+    self = task_process_current();
+    (void)priority;
+    if (self->state != PROC_LIVE || !self->space) return -1;
+    if ((flags & ~PROC_CLONE_THREAD_FLAGS) != 0) return -1;
+    if ((flags & PROC_CLONE_THREAD_FLAGS) != PROC_CLONE_THREAD_FLAGS)
+        return -1;
+    if (!entry || user_stack < 4u) return -1;
+    if (!address_space_user_range_ok(self->space, entry, 1, 0)) return -1;
+    if (!address_space_user_range_ok(self->space, user_stack - 4u, 4, 1))
+        return -1;
+
+    tid = task_pid_reserve();
+    if (!tid) return -1;
+    stack_top = kernel_stack_alloc();
+    if (!stack_top) {
+        task_pid_release(tid);
+        return -1;
+    }
+
+    if (!name) name = "userT";
+    rc = task_create_thread_user(tid, name, self, self->space, entry, stack_top,
+                                 user_stack, arg, &task);
+    if (rc) {
+        kernel_stack_free(stack_top);
+        task_pid_release(tid);
+        return -1;
+    }
+    return tid;
+}
+
+/*
  * P4.2 exec：PID/PPID/任务槽保持不变，旧 AS 中的 argv/envp 先复制到新栈，
  * 再切 CR3、释放旧 AS。解析、AS 分配或栈构造失败时旧 AS/frame 都不动。
  */
@@ -843,6 +886,8 @@ int process_exec_current(struct irq_frame *frame, int image_id, u32 argv, u32 en
     if (!task_current() || !task_process_current()) return -1;
     self = task_process_current();
     if (self->state != PROC_LIVE || !self->space) return -1;
+    /* P7.1 尚未实现多线程 exec：先拒绝，避免其他线程继续指向旧 AS。 */
+    if (task_process_live_threads(self) > 1) return -1;
 
     code = proc_exec_image(image_id, &code_size);
     if (!code || !code_size) return -1;
@@ -891,6 +936,7 @@ int process_exit_current(u32 code)
     if (!task_current() || !task_process_current()) return -1;
     self = task_process_current();
     if (self->state != PROC_LIVE) return -1;
+    task_terminate_threads(self, task_current_pid());
     proc_fd_table_close_all(&self->fds);
     self->state = PROC_ZOMBIE;
     self->term_sig = 0;
@@ -902,6 +948,51 @@ int process_exit_current(u32 code)
     return 0;
 }
 
+int process_thread_exit_current(u32 code)
+{
+    struct process *self;
+
+    if (!task_current() || !task_process_current()) return -1;
+    self = task_process_current();
+    if (self->state != PROC_LIVE) return -1;
+
+    task_set_current_exit_code(code);
+    if (task_process_live_threads(self) <= 1)
+        return process_exit_current(code);
+    return 0;
+}
+
+int process_thread_join_current(int tid, u32 user_status)
+{
+    struct process *self;
+    struct task_info info;
+
+    if (!task_current() || !task_process_current()) return -1;
+    self = task_process_current();
+    if (!self->space) return -1;
+    if (user_status &&
+        !address_space_user_range_ok(self->space, user_status, 4, 1))
+        return -1;
+    if (tid <= 0 || tid == task_current_pid()) return -1;
+
+    for (;;) {
+        if (!task_thread_snapshot(self, tid, &info)) return -1;
+        if (info.state == TASK_ZOMBIE) break;
+        if (task_yield()) return -1;
+    }
+
+    if (user_status &&
+        address_space_copyout(self->space, user_status, &info.exit_code, 4) != 0)
+        return -1;
+    if (task_reap_thread(self, tid) != 0) return -1;
+    return 0;
+}
+
+int process_gettid_current(void)
+{
+    return task_current_pid();
+}
+
 int process_terminate_current(int sig)
 {
     struct process *self;
@@ -911,6 +1002,7 @@ int process_terminate_current(int sig)
     self = task_process_current();
     if (self->state != PROC_LIVE) return -1;
 
+    task_terminate_threads(self, task_current_pid());
     proc_fd_table_close_all(&self->fds);
     proc_signal_pending(self, sig);
     self->state = PROC_ZOMBIE;
@@ -1009,9 +1101,8 @@ int process_getppid_current(void)
 int process_alive(int pid)
 {
     struct process *p = proc_find_active(pid);
-    struct task_info info;
     if (!p || p->state != PROC_LIVE) return 0;
-    return task_snapshot_pid(pid, &info) && info.state != TASK_ZOMBIE;
+    return task_process_live_threads(p) > 0;
 }
 
 int process_live_count(void)
@@ -1046,7 +1137,9 @@ void process_cleanup(void)
 void process_reap_orphans(void)
 {
     int i;
-    int current_pid = task_current_pid();
+    int current_pid = task_process_current()
+                          ? process_pid_of(task_process_current())
+                          : task_current_pid();
 
     for (i = 0; i < PROC_MAX; i++) {
         struct process *p = &procs[i];
@@ -1073,6 +1166,8 @@ int process_snapshot(int slot, struct process_info *out)
     out->pid = p->pid;
     out->ppid = p->ppid;
     out->state = p->state;
+    out->thread_count = task_process_thread_count(p);
+    out->tid = 0;
     out->exit_code = p->exit_code;
     out->stack_top = p->stack_top;
     out->cr3 = address_space_cr3(p->space);
@@ -1095,9 +1190,10 @@ int process_snapshot(int slot, struct process_info *out)
     out->exec_argc = p->exec_argc;
     out->exec_envc = p->exec_envc;
 
-    has_task = task_snapshot_pid(p->pid, &info);
+    has_task = task_snapshot_process(p, &info);
     if (has_task) {
         int i;
+        out->tid = info.pid;
         out->task_state = info.state;
         out->switches = info.switches;
         out->cpu_ticks = info.cpu_ticks;

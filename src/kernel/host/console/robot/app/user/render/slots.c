@@ -125,6 +125,11 @@ static void selected_detail(int slot)
     ud_put_dec(33, 17, p.switches, C_WHITE);
     vga_text(40, 17, "ticks", C_GRAY);
     ud_put_dec(46, 17, p.cpu_ticks, C_WHITE);
+    vga_text(52, 17, "THR", C_GRAY);
+    ud_put_dec(56, 17, (u32)p.thread_count,
+               p.thread_count > 1 ? C_MAG : C_WHITE);
+    vga_text(59, 17, "TID", C_GRAY);
+    ud_put_dec(63, 17, (u32)p.tid, p.tid ? C_CYAN : C_GRAY);
 
     vga_text(2, 18, "SIG pend", C_GRAY);
     ud_put_hex(11, 18, p.pending, p.pending ? C_MAG : C_GRAY);

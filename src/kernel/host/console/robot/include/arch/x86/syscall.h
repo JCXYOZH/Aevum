@@ -6,7 +6,9 @@
 /* 最小系统调用：int 0x80；eax=2 让出，3 exit(ebx=code)，4 wait(ebx=pid,ecx=status)，
  * 5 getpid，6 fork，7 getppid，8 brk(ebx=new_brk)，9 peek(ebx=user ptr)，
  * 10 poke(ebx=user ptr,ecx=value)，11 sigaction，12 sigreturn，13 exec(image,argv,envp)，
- * 14 pipe，15 read，16 write，17 close，18 spawn(image,argv,envp)。 */
+ * 14 pipe，15 read，16 write，17 close，18 spawn(image,argv,envp)，
+ * 19 clone(ebx=entry,ecx=user_stack,edx=flags,esi=arg)，20 thread_exit(code)，
+ * 21 gettid，22 thread_join(ebx=tid,ecx=status)。 */
 void syscall_init(void);
 u32 syscall_dispatch(struct irq_frame *frame);
 u32 syscall_count_total(void);

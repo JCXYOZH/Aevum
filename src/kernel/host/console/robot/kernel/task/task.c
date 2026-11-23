@@ -1,5 +1,6 @@
 #include "kernel/task.h"
 #include "kernel/task/family.h"
+#include "kernel/task/stack.h"
 #include "kernel/proc.h"
 #include "arch/x86/interrupt.h"
 #include "arch/x86/frame.h"
@@ -18,8 +19,11 @@ struct context {
     u32 esp;
 };
 
+static void task_fill_info(struct task_struct *task, struct task_info *out);
+
 struct task_struct {
-    int  pid;
+    int  pid;       /* TID：调度实体 ID */
+    int  tgid;      /* 线程组 ID：同进程线程共享 */
     int  state;
     int  priority;
     char comm[TASK_NAME_MAX + 1];
@@ -27,6 +31,7 @@ struct task_struct {
     u32  stack_top;
     u32  switches;
     u32  cpu_ticks;
+    u32  exit_code;
     u64  vruntime;
     u32  fpu_state;
     int  user;
@@ -101,6 +106,7 @@ static void task_zero(struct task_struct *task)
 {
     int i;
     task->pid = 0;
+    task->tgid = 0;
     task->state = TASK_UNUSED;
     task->priority = 0;
     for (i = 0; i <= TASK_NAME_MAX; i++) task->comm[i] = 0;
@@ -108,6 +114,7 @@ static void task_zero(struct task_struct *task)
     task->stack_top = 0;
     task->switches = 0;
     task->cpu_ticks = 0;
+    task->exit_code = 0;
     task->vruntime = 0;
     task->fpu_state = 0;
     task->user = 0;
@@ -195,6 +202,7 @@ static const char *task_create_common(int priority, const char *name, u32 entry,
 
     task_zero(task);
     task->pid = pid;
+    task->tgid = proc ? process_pid_of(proc) : pid;
     task->priority = priority;
     /* 新任务从当前虚拟时间起跑，不靠 0 值抢占已运行任务的时间片。 */
     task->vruntime = current_task ? current_task->vruntime : 0;
@@ -204,6 +212,7 @@ static const char *task_create_common(int priority, const char *name, u32 entry,
     task->user = user;
     task->space = space;
     task->proc = proc;
+    task->exit_code = 0;
     for (i = 0; i < TASK_NAME_MAX && name[i]; i++) task->comm[i] = name[i];
     task->comm[i] = 0;
 
@@ -263,6 +272,29 @@ const char *task_create_user_with_pid(int priority, const char *name, u32 user_e
     if (!space || !proc || pid <= 0) return "space/proc/pid";
     return task_create_common(priority, name, user_eip, kernel_stack_top,
                               space, 1, user_stack_top, proc, pid, out);
+}
+
+const char *task_create_thread_user(int tid, const char *name,
+                                    struct process *proc,
+                                    struct address_space *space, u32 user_eip,
+                                    u32 kernel_stack_top, u32 user_stack_top,
+                                    u32 arg, struct task_struct **out)
+{
+    struct task_struct *task;
+    u32 *sp;
+    const char *rc;
+
+    if (!space || !proc || tid <= 0) return "space/proc/tid";
+    rc = task_create_common(1, name, user_eip, kernel_stack_top, space,
+                            1, user_stack_top, proc, tid, out);
+    if (rc) return rc;
+
+    task = *out;
+    /* 线程入口从 eax 读 arg；首轮必须有机会跑，父线程随后 yield/join。 */
+    sp = (u32 *)task->ctx.esp;
+    sp[0] = arg;
+    task->vruntime = 0;
+    return 0;
 }
 
 int task_pid_reserve(void)
@@ -474,6 +506,120 @@ int task_release_slot(int pid)
     return -1;
 }
 
+int task_process_live_threads(const struct process *proc)
+{
+    int i;
+    int n = 0;
+
+    if (!proc) return 0;
+    for (i = 0; i < TASK_MAX; i++)
+        if (tasks[i].state != TASK_UNUSED && tasks[i].proc == proc &&
+            tasks[i].state != TASK_ZOMBIE)
+            n++;
+    return n;
+}
+
+int task_process_thread_count(const struct process *proc)
+{
+    int i;
+    int n = 0;
+
+    if (!proc) return 0;
+    for (i = 0; i < TASK_MAX; i++)
+        if (tasks[i].state != TASK_UNUSED && tasks[i].proc == proc) n++;
+    return n;
+}
+
+int task_snapshot_process(const struct process *proc, struct task_info *out)
+{
+    int i;
+    int fallback = -1;
+
+    if (!out || !proc) return 0;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state == TASK_UNUSED || tasks[i].proc != proc) continue;
+        if (tasks[i].state != TASK_ZOMBIE) {
+            task_fill_info(&tasks[i], out);
+            return 1;
+        }
+        if (fallback < 0) fallback = i;
+    }
+    if (fallback >= 0) {
+        task_fill_info(&tasks[fallback], out);
+        return 1;
+    }
+    return 0;
+}
+
+int task_thread_snapshot(const struct process *proc, int tid,
+                         struct task_info *out)
+{
+    int i;
+
+    if (!out || !proc || tid <= 0) return 0;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state != TASK_UNUSED && tasks[i].proc == proc &&
+            tasks[i].pid == tid) {
+            task_fill_info(&tasks[i], out);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void task_set_current_exit_code(u32 code)
+{
+    if (current_task) current_task->exit_code = code & 0xFFu;
+}
+
+int task_reap_thread(struct process *proc, int tid)
+{
+    int i;
+
+    if (!proc || tid <= 0) return -1;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state != TASK_UNUSED && tasks[i].proc == proc &&
+            tasks[i].pid == tid && tasks[i].state == TASK_ZOMBIE) {
+            if (&tasks[i] == current_task) return -1;
+            kernel_stack_free(tasks[i].stack_top);
+            pid_free(tasks[i].pid);
+            task_zero(&tasks[i]);
+            return 0;
+        }
+    }
+    return -1;
+}
+
+int task_release_process_threads(struct process *proc)
+{
+    int i;
+    int n = 0;
+
+    if (!proc) return -1;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state == TASK_UNUSED || tasks[i].proc != proc) continue;
+        if (&tasks[i] == current_task) return -1;
+        kernel_stack_free(tasks[i].stack_top);
+        pid_free(tasks[i].pid);
+        task_zero(&tasks[i]);
+        n++;
+    }
+    return n ? 0 : -1;
+}
+
+void task_terminate_threads(struct process *proc, int except_tid)
+{
+    int i;
+
+    if (!proc) return;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state == TASK_UNUSED || tasks[i].proc != proc) continue;
+        if (tasks[i].pid == except_tid || tasks[i].state == TASK_ZOMBIE) continue;
+        tasks[i].exit_code = 0;
+        tasks[i].state = TASK_ZOMBIE;
+    }
+}
+
 /*
  * 唯一调度入口：IRQ0、int 0x40 都从这里切栈。
  * 返回下一个任务的帧指针；loader.asm 恢复该帧并 iret。
@@ -666,6 +812,7 @@ static void task_fill_info(struct task_struct *task, struct task_info *out)
     int i;
 
     out->pid = task->pid;
+    out->tgid = task->tgid;
     out->state = task->state;
     out->priority = task->priority;
     for (i = 0; i <= TASK_NAME_MAX; i++) out->comm[i] = task->comm[i];
@@ -673,6 +820,7 @@ static void task_fill_info(struct task_struct *task, struct task_info *out)
     out->stack_used = task_stack_used(task);
     out->switches = task->switches;
     out->cpu_ticks = task->cpu_ticks;
+    out->exit_code = task->exit_code;
 }
 
 int task_snapshot(int slot, struct task_info *out)

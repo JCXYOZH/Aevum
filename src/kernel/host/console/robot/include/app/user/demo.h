@@ -64,6 +64,12 @@ u32 user_demo_spawn_status(int lane);
 u32 user_demo_spawn_wait_ret(int lane);
 u32 user_demo_spawn_ok(int lane);
 
+/* P7.1：D clone 一个共享 AS 的线程，写共享计数器后 thread_exit，主线程 join。 */
+u32 user_demo_thread_tid(int lane);
+u32 user_demo_thread_join_ret(int lane);
+u32 user_demo_thread_shared(int lane);
+u32 user_demo_thread_ok(int lane);
+
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);
 u32 user_demo_heap_peek(int lane);

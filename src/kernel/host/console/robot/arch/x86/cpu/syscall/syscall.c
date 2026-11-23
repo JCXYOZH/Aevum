@@ -128,6 +128,30 @@ u32 syscall_dispatch(struct irq_frame *frame)
                 frame->eax = child ? (u32)process_pid_of(child) : (u32)-1;
             }
             break;
+        case 19:
+            {
+                struct process *self = task_process_current();
+                int tid = -1;
+                if ((frame->cs & 3u) == 3u && self) {
+                    tid = process_clone_thread_current(1, "userT",
+                                                       frame->ebx, frame->ecx,
+                                                       frame->edx, frame->esi);
+                }
+                frame->eax = (u32)tid;
+            }
+            break;
+        case 20:
+            (void)process_thread_exit_current(frame->ebx);
+            task_exit();
+        case 21:
+            frame->eax = (u32)process_gettid_current();
+            break;
+        case 22:
+            frame->eax = (process_thread_join_current((int)frame->ebx,
+                                                      frame->ecx) == 0)
+                             ? 0u
+                             : (u32)-1;
+            break;
         default:
             frame->eax = (u32)-1;
             break;

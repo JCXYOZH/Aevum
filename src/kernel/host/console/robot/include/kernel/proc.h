@@ -34,6 +34,17 @@ struct proc_orphan_event {
 #define PROC_SIGSEGV 11
 #define PROC_SIGCHLD 17
 
+/*
+ * P7.1 只接受线程组所需的 clone 子集。FS 目前没有 cwd/root 状态，
+ * 不声称支持 CLONE_FS；其余 flag 一律拒绝。
+ */
+#define PROC_CLONE_VM       0x00000100u
+#define PROC_CLONE_FILES    0x00000400u
+#define PROC_CLONE_SIGHAND  0x00000800u
+#define PROC_CLONE_THREAD   0x00010000u
+#define PROC_CLONE_THREAD_FLAGS \
+    (PROC_CLONE_VM | PROC_CLONE_FILES | PROC_CLONE_SIGHAND | PROC_CLONE_THREAD)
+
 /* wait status 高位置 1 表示被信号终止；正常退出仍保留原 exit code。 */
 #define PROC_WAIT_SIGNAL_FLAG 0x80000000u
 #define PROC_WAIT_STATUS(sig) (PROC_WAIT_SIGNAL_FLAG | ((u32)(sig) & 0x7Fu))
@@ -56,6 +67,8 @@ struct process_info {
     int used;
     int pid;
     int ppid;
+    int tid;            /* 首个可观测线程的 TID */
+    int thread_count;
     int state;
     int task_state;
     u32 exit_code;
@@ -101,6 +114,21 @@ struct process *process_fork(struct irq_frame *frame);
  */
 struct process *process_spawn_current(int priority, const char *name,
                                       int image_id, u32 argv, u32 envp);
+
+/*
+ * P7.1 线程组最小闭环：clone 只接受 PROC_CLONE_THREAD_FLAGS，子任务共享
+ * 当前 AS/fd/信号动作；成功返回 TID，失败返回 -1。entry 从 eax 收到 arg。
+ */
+int process_clone_thread_current(int priority, const char *name,
+                                 u32 entry, u32 user_stack, u32 flags, u32 arg);
+
+/* 线程退出：只标当前任务；最后一个活线程退出时才把进程标 ZOMBIE。 */
+int process_thread_exit_current(u32 code);
+
+/* 线程 join：只接受同组、非当前、已经 ZOMBIE 的 TID；status 可写 0。 */
+int process_thread_join_current(int tid, u32 user_status);
+
+int process_gettid_current(void);
 
 /*
  * P4.2 exec：保留当前 PID/PPID/任务槽，新建 AS 并切换到内嵌用户镜像。

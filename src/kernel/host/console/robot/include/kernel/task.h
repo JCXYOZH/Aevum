@@ -21,7 +21,8 @@ struct irq_frame;
 
 /* 进程描述符的只读快照；渲染/监视器只能读，不能改任务字段。 */
 struct task_info {
-    int pid;
+    int pid;        /* 调度实体 ID；线程场景下是 TID */
+    int tgid;       /* 所属线程组 ID；普通进程等于 pid */
     int state;
     int priority;
     char comm[TASK_NAME_MAX + 1];
@@ -29,6 +30,7 @@ struct task_info {
     u32 stack_used;
     u32 switches;
     u32 cpu_ticks;
+    u32 exit_code;  /* 线程退出码，thread_join 读取 */
 };
 
 /* 任务模块是 task_struct 字段的唯一写者；调用方只拿不透明句柄。
@@ -49,6 +51,28 @@ const char *task_create_user_with_pid(int priority, const char *name, u32 user_e
 const char *task_fork_user(int pid, const char *name, struct irq_frame *frame,
                            u32 kernel_stack_top, struct address_space *space,
                            struct process *proc, struct task_struct **out);
+
+/*
+ * P7.1 线程：新任务和同组线程共享 AS/fd/信号资源，但使用自己的内核栈、
+ * 用户栈、FPU 和 TID。user_eip 是 ring3 入口，arg 从 eax 传给入口。
+ */
+const char *task_create_thread_user(int tid, const char *name,
+                                    struct process *proc,
+                                    struct address_space *space, u32 user_eip,
+                                    u32 kernel_stack_top, u32 user_stack_top,
+                                    u32 arg, struct task_struct **out);
+
+/* 线程组观测/回收：线程任务不属于独立 process，不能走 task_reap()。 */
+int task_process_live_threads(const struct process *proc);
+int task_process_thread_count(const struct process *proc);
+int task_snapshot_process(const struct process *proc, struct task_info *out);
+int task_thread_snapshot(const struct process *proc, int tid,
+                         struct task_info *out);
+int task_reap_thread(struct process *proc, int tid);
+int task_release_process_threads(struct process *proc);
+/* 线程组整体退出时，把除当前线程外的活线程标 ZOMBIE；栈由 process_reap 回收。 */
+void task_terminate_threads(struct process *proc, int except_tid);
+void task_set_current_exit_code(u32 code);
 
 /* PID 由进程/任务共用；进程表保留 PID 后，任务创建不再二次分配。 */
 int task_pid_reserve(void);

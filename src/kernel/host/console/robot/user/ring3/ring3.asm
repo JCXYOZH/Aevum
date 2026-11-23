@@ -21,6 +21,9 @@
 ; 0x4010D0 P5.2 fork/wait 前的 yield 计数，让子进程 ZOMBIE 可被 V 页观察；
 ; 0x401140 spawn 只执行一次，0x401144 spawn 子 PID，0x401148 spawn wait status，
 ; 0x40114C spawn wait 返回值，0x401150 spawn 验收字；
+; 0x401154 thread 只执行一次，0x401158 thread TID，0x40115C thread join status，
+; 0x401160 共享计数器，0x401164 worker TID，0x401168 worker 完成标记，
+; 0x40116C thread join 返回值，0x401170 "THRD" 验收字；
 ; 0x401100..0x40111F pool 8 个子进程 pid；
 ; stress 复用 0x4010C0 round、0x4010C4 "POOL" 完成魔数、0x4010C8 只执行一次，
 ; 0x401100 first PID、0x401104 last PID、0x401108 wait status；
@@ -261,7 +264,7 @@ user_program_start:
 ; 运行 image 1，校验 alpha/beta 与 MODE=p42/LEVEL=2 后 exit(10)。
 .spawn_round:
     cmp dword [0x401140], 0
-    jne .yield
+    jne .thread_round
     mov dword [0x401140], 1
     mov eax, 18             ; syscall: spawn(1, argv, envp)
     mov ebx, 1
@@ -279,10 +282,65 @@ user_program_start:
     cmp dword [0x401148], 10
     jne .spawn_bad
     mov dword [0x401150], 0x5350574E ; "SPWN"
-    jmp .yield
+    jmp .thread_round
 
 .spawn_bad:
     mov dword [0x401150], 0x424144   ; "BAD"
+    jmp .thread_round
+
+; P7.1：clone 一个共享 AS/fd 的线程。线程从 eax 拿到共享计数器地址，
+; 写一次后 gettid、置完成标记并 thread_exit；主线程 join 后写 "THRD"。
+.thread_round:
+    cmp dword [0x401154], 0
+    jne .yield
+    mov dword [0x401154], 1
+    mov dword [0x401160], 0
+    mov dword [0x401164], 0
+    mov dword [0x401168], 0
+    mov dword [0x40116C], 0
+    mov dword [0x401170], 0
+
+    ; 线程栈放在 heap 第一页：brk(0x406000) 映射 0x405000..0x405FFF。
+    mov eax, 8              ; syscall: brk
+    mov ebx, 0x406000
+    int 0x80
+    cmp eax, 0x406000
+    jne .thread_bad
+
+    mov eax, 19             ; syscall: clone(entry, stack, flags, arg)
+    mov ebx, user_thread_entry - user_program_start + 0x400000
+    mov ecx, 0x406000
+    mov edx, 0x00010D00     ; VM|FILES|SIGHAND|THREAD
+    mov esi, 0x401160       ; 共享计数器地址
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    je .thread_bad
+    mov [0x401158], eax
+
+.thread_wait:
+    cmp dword [0x401168], 0
+    jne .thread_join
+    mov eax, 2              ; syscall: yield
+    int 0x80
+    jmp .thread_wait
+
+.thread_join:
+    mov ebx, [0x401158]
+    mov ecx, 0x40115C
+    mov eax, 22             ; syscall: thread_join(TID, &status)
+    int 0x80
+    mov [0x40116C], eax
+    test eax, eax
+    jnz .thread_bad
+    cmp dword [0x40115C], 0
+    jne .thread_bad
+    cmp dword [0x401160], 1
+    jne .thread_bad
+    mov dword [0x401170], 0x54485244 ; "THRD"
+    jmp .yield
+
+.thread_bad:
+    mov dword [0x401170], 0x424144   ; "BAD"
     jmp .yield
 
 .pipe_bad:
@@ -632,6 +690,21 @@ console_text_end:
 console_tail:
     db "FD01 OK", 10
 console_tail_end:
+
+; P7.1 线程入口：clone 把 arg 放在 eax；线程只碰共享数据页和 heap 栈，
+; 完成后必须 thread_exit，不能 ret 回用户栈。
+user_thread_entry:
+    mov ebx, eax
+    inc dword [ebx]
+    mov eax, 21             ; syscall: gettid
+    int 0x80
+    mov [0x401164], eax
+    mov dword [0x401168], 1
+    mov eax, 20             ; syscall: thread_exit(0)
+    xor ebx, ebx
+    int 0x80
+.hang_thread:
+    jmp .hang_thread
 
 user_program_end:
 
