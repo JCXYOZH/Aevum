@@ -218,13 +218,23 @@ P5.3 已在本地提交为 `115a31f`。这一阶段把「反复 fork/wait 100 �
 
 #### 截图
 
+当前机械臂工作台：
+
+![AEVUM FORGE 机械臂工作台](docs/assets/readme/kernel/forge-arm-workspace.png)
+
+左侧是结构树，中间是 QEMU 里的内核窗口，右侧是 3D 视口和 Inspector。内核给出 `q1 67.9°`、`q2 -76.8°`、`q3 -56.5°`；3D 视口把同一组关节角长成可见的臂，并在同一屏上显示 `TARGET/ACTUAL ANGLE`、`KP/KD`、`TORQUE`、`TRACKING ERROR 4.78 mm`。`TASK SCHED P3/31`、`nullsp ON` 和 `kthr 4 s5 OK` 说明机械臂在动的时候，任务调度、零空间投影和动态 kthread 也在跑。
+
+> Current AEVUM FORGE workbench: structure tree, QEMU kernel window, 3D viewport and Inspector. The kernel reports `q1 67.9°`, `q2 -76.8°`, `q3 -56.5°`; the 3D viewport turns the same joint angles into a visible arm and shows target/actual angle, gains, torque and `TRACKING ERROR 4.78 mm` on the same screen. `TASK SCHED P3/31`, `nullsp ON` and `kthr 4 s5 OK` show scheduling, null-space projection and the dynamic kthread running while the arm is live.
+
 启动、异常与恢复：
 
-| 机械臂主画面 | COW + signal frame + handler + 物理池 |
+| COW + signal frame + handler + 物理池 | 内核态 `#PF` 受控探针 |
 | --- | --- |
-| ![机械臂主画面](docs/assets/readme/kernel/kernel-main.png) | ![COW、signal frame 与物理池](docs/assets/readme/kernel/kernel-ring3-sigframe.png) |
-| 内核态 `#PF` 受控探针 | 按 `R` 恢复后的主画面 |
-| ![内核态 #PF 受控探针](docs/assets/readme/kernel/kernel-kernel-pf.png) | ![恢复后的主画面](docs/assets/readme/kernel/kernel-recover-main.png) |
+| ![COW、signal frame 与物理池](docs/assets/readme/kernel/kernel-ring3-sigframe.png) | ![内核态 #PF 受控探针](docs/assets/readme/kernel/kernel-kernel-pf.png) |
+
+按 `R` 恢复后的主画面：
+
+![恢复后的主画面](docs/assets/readme/kernel/kernel-recover-main.png)
 
 P4 与 P5 观测页：
 
