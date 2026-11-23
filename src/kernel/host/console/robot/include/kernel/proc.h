@@ -128,6 +128,9 @@ int process_thread_exit_current(u32 code);
 /* 线程 join：只接受同组、非当前、已经 ZOMBIE 的 TID；status 可写 0。 */
 int process_thread_join_current(int tid, u32 user_status);
 
+/* 线程 detach：标记同组 TID 为 detached；之后 join 返回 -1，退出由调度器自动回收。 */
+int process_thread_detach_current(int tid);
+
 int process_gettid_current(void);
 
 /*

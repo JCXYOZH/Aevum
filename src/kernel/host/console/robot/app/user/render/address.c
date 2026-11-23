@@ -51,7 +51,7 @@ void ur_render_address(void)
     u32 himg0 = 0, harg0 = 0, henp0 = 0;
     u32 himg1 = 0, harg1 = 0, henp1 = 0;
     int r0 = -1, r1 = -1;
-    u32 wait_magic, cow_ok, sig_ok, exec_ok, pipe_ok, spawn_ok, thread_ok;
+    u32 wait_magic, cow_ok, sig_ok, exec_ok, pipe_ok, spawn_ok, thread_ok, det_ok;
     u32 brk, poke, peek, guard, bad;
 
     if (!process_snapshot(slot, &p)) {
@@ -215,6 +215,10 @@ void ur_render_address(void)
     vga_text(43, 20,
              user_demo_thread_ok(USER_DEMO_FORK_LANE) == 0x54485244u ? "THRD" : "BAD",
              user_demo_thread_ok(USER_DEMO_FORK_LANE) == 0x54485244u ? C_GREEN : C_MAG);
+    vga_text(50, 20, "det", C_GRAY);
+    vga_text(54, 20,
+             user_demo_thread_det_ok(USER_DEMO_FORK_LANE) == 0x44544544u ? "OK" : "..",
+             user_demo_thread_det_ok(USER_DEMO_FORK_LANE) == 0x44544544u ? C_GREEN : C_YELLOW);
 
     wait_magic = user_demo_wait_magic(USER_DEMO_FORK_LANE);
     cow_ok = user_demo_cow_ok(USER_DEMO_FORK_LANE);
@@ -223,6 +227,7 @@ void ur_render_address(void)
     pipe_ok = user_demo_pipe_ok(USER_DEMO_FORK_LANE);
     spawn_ok = user_demo_spawn_ok(USER_DEMO_FORK_LANE);
     thread_ok = user_demo_thread_ok(USER_DEMO_FORK_LANE);
+    det_ok = user_demo_thread_det_ok(USER_DEMO_FORK_LANE);
     brk = user_demo_brk(0);
     poke = user_demo_heap_poke(0);
     peek = user_demo_heap_peek(0);
@@ -251,6 +256,9 @@ void ur_render_address(void)
     vga_text(60, 21, "thr", C_GRAY);
     vga_text(64, 21, thread_ok == 0x54485244u ? "OK" : "..",
              thread_ok == 0x54485244u ? C_GREEN : C_YELLOW);
+    vga_text(68, 21, "det", C_GRAY);
+    vga_text(72, 21, det_ok == 0x44544544u ? "OK" : "..",
+             det_ok == 0x44544544u ? C_GREEN : C_YELLOW);
 
     vga_text(2, 22, "A brk", C_GRAY);
     ud_put_hex(8, 22, brk, C_YELLOW);

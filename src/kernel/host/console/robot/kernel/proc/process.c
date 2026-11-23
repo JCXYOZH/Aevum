@@ -977,6 +977,7 @@ int process_thread_join_current(int tid, u32 user_status)
 
     for (;;) {
         if (!task_thread_snapshot(self, tid, &info)) return -1;
+        if (info.detached) return -1;
         if (info.state == TASK_ZOMBIE) break;
         if (task_yield()) return -1;
     }
@@ -986,6 +987,17 @@ int process_thread_join_current(int tid, u32 user_status)
         return -1;
     if (task_reap_thread(self, tid) != 0) return -1;
     return 0;
+}
+
+int process_thread_detach_current(int tid)
+{
+    struct process *self;
+
+    if (!task_current() || !task_process_current()) return -1;
+    self = task_process_current();
+    if (!self->space || self->state != PROC_LIVE) return -1;
+    if (tid <= 0) return -1;
+    return task_detach_thread(self, tid);
 }
 
 int process_gettid_current(void)

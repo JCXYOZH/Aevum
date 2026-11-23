@@ -12,15 +12,15 @@
 | 内存布局 | `config/memory.h` | 物理地址常量 | 只读宏 |
 | 基础类型 | `include/kernel/types.h` | `i32/u32/u16/u8/i64/u64` | 只读类型 |
 | 错误入口 | `kernel/error/error.c` | 错误屏、停机 | `aevum_fail()` |
-| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime`/`fpu_state`；P7.1 增加 `tgid/exit_code` 与线程创建/回收/终止/快照 helper | `task_boot/task_create/task_create_thread_user/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_pid_of/task_snapshot_pid/task_preempt_total/task_cpu_total/task_process_live_threads/task_reap_thread/task_release_process_threads` |
+| 任务 | `kernel/task/task.c` | `task_struct` 字段、`tasks[]`、`current_task`、`pid_map`、切换轨迹、`cpu_ticks`/`vruntime`/`fpu_state`；P7.1 增加 `tgid/exit_code` 与线程创建/回收/终止/快照 helper；P7.2 增加 `detached` 标志与调度器延后回收 | `task_boot/task_create/task_create_thread_user/task_start/task_current/task_exit/task_yield/task_block/task_wake/task_pid_used/task_pid_of/task_snapshot_pid/task_preempt_total/task_cpu_total/task_process_live_threads/task_detach_thread/task_reap_thread/task_release_process_threads` |
 | 进程家族 | `kernel/task/family/family.c` | `family[]`、`reaper`、最近一次重挂事件；只写 `ppid` 关系 | `family_boot/set_reaper/add/exit/snapshot/last_event` |
-| 用户 PCB | `kernel/proc/process.c` | PCB 槽、PID/PPID、LIVE/ZOMBIE/DEAD、wait status、fork/exec/reap；P6.0 的 `wait` 先校验直接子进程，并记录最近一次 orphan/reparent 事件；P7.1 以 `process` 为 TGID 资源组，增加 `clone/thread_exit/thread_join/gettid` 和线程组回收 | `process_snapshot/process_slot_space/process_slot_fd_info/process_last_orphan/process_clone_thread_current/process_thread_exit_current/process_thread_join_current` |
+| 用户 PCB | `kernel/proc/process.c` | PCB 槽、PID/PPID、LIVE/ZOMBIE/DEAD、wait status、fork/exec/reap；P6.0 的 `wait` 先校验直接子进程，并记录最近一次 orphan/reparent 事件；P7.1 以 `process` 为 TGID 资源组，增加 `clone/thread_exit/thread_join/gettid` 和线程组回收；P7.2 增加 `thread_detach` | `process_snapshot/process_slot_space/process_slot_fd_info/process_last_orphan/process_clone_thread_current/process_thread_exit_current/process_thread_join_current/process_thread_detach_current` |
 | 地址空间 | `kernel/mm/address_space/address_space.c` | 用户 PD/PT、用户页、CR3 切换与地址空间槽 | `address_space_boot/kernel/create_user/switch/release/cr3/id/set_mode/...` |
 | 页错误 | `arch/x86/cpu/fault/page_fault.c` | IDT 14 门、CR2/ERR/EIP 记录、用户 #PF 修复/终止、内核态 panic 页、受控探针 | `page_fault_init/last/count/clear/probe` |
 | 同步异常 | `arch/x86/cpu/exception/exception.c` | IDT 0/3/6/13 门、用户 `#DE/#BP/#UD/#GP` 现场、信号映射、默认终止、CPL0 诊断停机 | `exception_init/clear/last/count/vector_count/..._name` |
 | TSS | `arch/x86/cpu/tss/tss.c` | `tss.esp0/ss0`、TSS 描述符、`ltr` | `tss_init/tss_set_esp0` |
-| 系统调用 | `arch/x86/cpu/syscall/syscall.c` | `int 0x80` 入口、调用计数、最后 CS；分发 `eax=2..22`，新增 `18 spawn`、`19 clone`、`20 thread_exit`、`21 gettid`、`22 thread_join` | `syscall_init/dispatch/count_total/last_cs` |
-| 用户程序 | `user/ring3/ring3.asm` | 被复制进每个用户地址空间的 ring3 代码；同一段代码按 `mode` 进入正常/故障路径；P4.3 增加第四轮 pipe/fork/exec/read/wait；P4.4 增加 mode 4 console 父子共享 fd 0/1；P7.1 在 D lane 增加 `clone` worker、共享计数器、`thread_exit` 与 `thread_join` | `user_program_start/end` |
+| 系统调用 | `arch/x86/cpu/syscall/syscall.c` | `int 0x80` 入口、调用计数、最后 CS；分发 `eax=2..23`，新增 `18 spawn`、`19 clone`、`20 thread_exit`、`21 gettid`、`22 thread_join`、`23 thread_detach` | `syscall_init/dispatch/count_total/last_cs` |
+| 用户程序 | `user/ring3/ring3.asm` | 被复制进每个用户地址空间的 ring3 代码；同一段代码按 `mode` 进入正常/故障路径；P4.3 增加第四轮 pipe/fork/exec/read/wait；P4.4 增加 mode 4 console 父子共享 fd 0/1；P7.1 在 D lane 增加 `clone` worker、共享计数器、`thread_exit` 与 `thread_join`；P7.2 增加自 detach 的第二个 worker 与 `DETD` 验收 | `user_program_start/end` |
 | 用户 exec 镜像 | `user/exec/exec.asm` | P4.2 的第二个 flat 镜像，固定链接在 `0x400000`；从新栈校验 `argv/envp`，写 PID/`EXEC`/`ARGV`/`ENVP` 后 `exit(10)`，失败码 20..25 | `user_exec_start/end` |
 | 用户 pipe 镜像 | `user/exec-pipe/exec_pipe.asm` | P4.3 image 2，固定链接在 `0x400000`；从 `argv` 取 fd，向继承的写端写 4 字节 `PIPE` 后 `exit(12)`，失败码 26..31 | `user_pipe_exec_start/end` |
 | 每进程 fd 表 | `kernel/proc/fd/fd.c` | 8 槽 fd 表、fork 复制、close_all、pipe/read/write/close 与用户指针校验；fd 0/1 是 console 读/写，kind 区分 console 与 pipe；P5.2 增加逐 fd `used/kind` 快照 | `proc_fd_table_*/proc_fd_pipe/read/write/close/console_open/proc_fd_snapshot` |
@@ -28,10 +28,10 @@
 | console 设备 | `drivers/console/console.c` | 16 字节 US ASCII 输入队列、8×64 输出行缓存、COM1 镜像、scan/push/drop 统计 | `console_input_push/read/write/reset/...` |
 | console 演示 | `app/console/demo/demo.c` | mode 4 用户进程；父 fork 后关闭自身 0/1，子进程继续读 fd0/写 fd1 | `console_demo_start/stop/alive/...` |
 | console 渲染 | `app/console/render/render.c` | 独立 X 全屏页，显示 close 边界、输入队列、输出行和 UART 字节 | `console_render_frame` |
-| 用户演示 | `app/user/demo/demo.c` | A/B/C/D/F 的创建、停止、地址空间和 PID；D 的子进程由 fork 产生；D lane 在 wait 前 yield 262144 次，留出可观察 ZOMBIE 窗口；P7.1 增加 `clone` 后的共享计数器、join 返回值和 `THRD` 验收字 | `user_demo_start/stop/alive/error/pid/space/thread_tid/thread_join_ret/thread_shared/thread_ok` |
+| 用户演示 | `app/user/demo/demo.c` | A/B/C/D/F 的创建、停止、地址空间和 PID；D 的子进程由 fork 产生；D lane 在 wait 前 yield 262144 次，留出可观察 ZOMBIE 窗口；P7.1 增加 `clone` 后的共享计数器、join 返回值和 `THRD` 验收字；P7.2 增加自 detach worker 的 `DETD` 验收 | `user_demo_start/stop/alive/error/pid/space/thread_tid/thread_join_ret/thread_shared/thread_ok/thread_det_*` |
 | V 页导航 | `app/user/page/page.c` | 页面模式、选中 PCB 槽、10 行窗口；扫描码解释的唯一 owner | `user_page_reset/key/mode/selected_slot/first_slot/name` |
 | V 页渲染 | `app/user/render/render.c` + `draw.c` | 公共标题/页签/slot 状态/底栏/页面分派；`draw.c` 统一十进制/十六进制、进程/VMA/fd 状态名与颜色 | `user_render_frame` |
-| V 页子页 | `app/user/render/slots.c` / `tree.c` / `address.c` / `fd.c` | 每页只读 PCB/AS/fd/信号快照并画自己的行布局；P6.0 的 TREE 页只读 `process_last_orphan()`；P7.1 的 ADDRESS/SLOTS 页显示 `THR/TID` 与 `THREAD tid/join/shared/THRD` | `ur_render_*` |
+| V 页子页 | `app/user/render/slots.c` / `tree.c` / `address.c` / `fd.c` | 每页只读 PCB/AS/fd/信号快照并画自己的行布局；P6.0 的 TREE 页只读 `process_last_orphan()`；P7.1 的 ADDRESS/SLOTS 页显示 `THR/TID` 与 `THREAD tid/join/shared/THRD`；P7.2 的 ADDRESS 页增加 `det OK`，用于验证 detached worker 自 detach 与 join 拒绝 | `ur_render_*` |
 | 端口 I/O | `include/arch/x86/io.h` | `in/out` 指令封装 | `port_inb/port_outb`（内联） |
 | 中断/定时 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC、PIT 100Hz、IRQ0 EOI | `interrupt_init/interrupt_set_user_gate/interrupt_eoi` |
 | VGA | `drivers/video/vga/text/vga.c` | 影子显存 `0x20000`、`0xB8000` 刷新 | `vga_*` |
@@ -240,7 +240,7 @@ P5.3 在 P5.1 的 `Y` 池页外壳上增加 `S` 模式，不新增页面、不�
 - `user/ring3/ring3.asm` mode 6：父进程 100 轮 `eax=6 fork`，子进程直接 `eax=3, ebx=7 exit(7)`；父进程以本轮返回子 PID 调 `eax=4 wait`，校验返回 PID 等于子 PID、`0x401108` status 等于 7，首轮子 PID 写 `0x401100`，后续 99 轮必须与首轮相同（PID 复用）。全部通过后写 `0x4010C4="POOL"` 并保持存活，按 `S` 停止时 `exit(18)`。
 - 压测复用 P5.1 数据布局，不复制结构体：`0x4010C0` 是已完成轮次，`0x4010C4` 是完成魔数，`0x4010C8` 是只执行一次标记，`0x401100/0x401104/0x401108` 是首 PID/末 PID/wait status。页面仍由 `app/pool/render/render.c` 唯一绘制；`pool_demo_child_count()` 在 stress 下返回 0..100 轮次，并跳过 8 项 PID 缓存循环，避免越界。
 - 页面复用现有池统计，不额外调用 `process_live_count/process_slot_used/address_space_slot_used/kernel_stack_used`：`round 100/100 first 5 -> 5 live 1 state STRESS OK`，`PHYS 6/255 proc 1/12 AS 1/12 KSTK 1/12`。`state STRESS OK` 只在魔数写入后出现；任何一轮 wait 返回 PID/status 不符或 PID 未复用，轮次停在 `<100`、不写魔数，页面显示 `RUN`。
-- 构建预算：`Makefile` 的 C 目标增加 `-ffunction-sections -fdata-sections`，链接增加 `--gc-sections`，按 `ENTRY(start)` 保留可达函数/数据。P7.1 clean 构建为 70,568 字节，上限 98,304 字节。
+- 构建预算：`Makefile` 的 C 目标增加 `-ffunction-sections -fdata-sections`，链接增加 `--gc-sections`，按 `ENTRY(start)` 保留可达函数/数据。P7.2 clean 构建为 71,272 字节，上限 98,304 字节。
 
 ### 3.10 P6.0 细节收口
 
@@ -250,7 +250,7 @@ P6.0 不新增页面、不合并两套树，只修已有进程/家族树的语�
 - `proc_orphan_children()`：父进程退出或异常终止时，同时把 `LIVE` 和 `ZOMBIE` 的直接子进程 `ppid` 改成 0；`process_reap_orphans()` 仍负责回收无活父的 ZOMBIE。每次有子进程被改挂，写 `last_orphan`：`valid/seq/from/to/child_count/children[4]`；`process_last_orphan()` 只读导出。
 - V 页 TREE：`tree.c` 的节点上限从 row 21 收到 row 19，row 20/21 画 `ORPHAN from N to 0 children N` 与 `kids pid,pid +N more`；row 22 保留 TREE 统计，row 23/24 保留公共底栏。
 - G 页：`draw_event()` 的子进程行从 3 行扩到 4 行（row 8..11），`reaper` 下移到 row 12；`child_count > AEVUM_FAMILY_EVENT_CHILDREN` 时在 row 13 显示 `+N more`，总数仍显示原 `child_count`。
-- 当前速度基线另见 `PERFORMANCE.md`：100 Hz PIT，4.14 秒窗口 `SWITCHES +129,890`、`PREEMPTIONS +384`，control/render/idle 50/38/12；P7.1 clean `kernel.bin=70,568`，距 98,304 上限余 27,736B。
+- 当前速度基线另见 `PERFORMANCE.md`：100 Hz PIT，4.14 秒窗口 `SWITCHES +129,890`、`PREEMPTIONS +384`，control/render/idle 50/38/12；P7.2 clean `kernel.bin=71,272`，距 98,304 上限余 27,032B。
 
 
 ## 四、内存与构建预算
@@ -259,8 +259,8 @@ P6.0 不新增页面、不合并两套树，只修已有进程/家族树的语�
 | --- | --- |
 | `0x80000` | 内核镜像起点 |
 | `0x80000..0x90000` | boot 第一段 LBA 读取：128 扇区（64KB）窗口 |
-| `0x90000..0x98000` | boot 第二段 LBA 读取：64 扇区（32KB）窗口；当前 `kernel.bin` 70,568 字节，结束于 `0x913A8` |
-| `0x913C0..0x952BC` | 当前构建的 BSS；`__bss_start=0x913C0`、`__bss_end=0x952BC`，低于 `AEVUM_KERNEL_END=0x96000` |
+| `0x90000..0x98000` | boot 第二段 LBA 读取：64 扇区（32KB）窗口；当前 `kernel.bin` 71,272 字节，结束于 `0x91668` |
+| `0x91680..0x955BC` | 当前构建的 BSS；`__bss_start=0x91680`、`__bss_end=0x955BC`，低于 `AEVUM_KERNEL_END=0x96000` |
 | `0x9000..0x9FFF` | `render` 任务栈（栈顶 `0xA000`） |
 | `0xA000..0xAFFF` | `idle` 任务栈（栈顶 `0xB000`） |
 | `0xB000..0xBFFF` | 内核主线程栈（栈顶 `0xC000`） |
@@ -285,7 +285,7 @@ P6.0 不新增页面、不合并两套树，只修已有进程/家族树的语�
 | `0xB8000` | VGA 文本显存 |
 
 `boot.asm` 先读 128 个扇区，再读 64 个扇区到 `0x80000`，合计 192 个扇区，因此 `kernel.bin` 上限为 98,304 字节。
-当前 P7.1 clean 构建 70,568 字节，BSS 从 `0x913C0` 到 `0x952BC`；镜像余量 27,736 字节。BSS 尾部超出 `kernel.bin` 结束地址 `0x913A8`，但仍在第二段读取窗口 `0x90000..0x98000` 内，loader 按 `__bss_end` 清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
+当前 P7.2 clean 构建 71,272 字节，BSS 从 `0x91680` 到 `0x955BC`；镜像余量 27,032 字节。BSS 尾部超出 `kernel.bin` 结束地址 `0x91668`，但仍在第二段读取窗口 `0x90000..0x98000` 内，loader 按 `__bss_end` 清零。BSS 与 `render` 栈 `0x9000`、VGA `0xB8000`、VGA BIOS 影子 ROM `0xC0000` 均不重叠。
 `kernel.bin` 由 `kernel.elf` 经 `objcopy -O binary` 生成，保证 loader 与 C 看到的 `__bss_start`/`__bss_end` 一致。
 若继续增长，先加 `boot.asm` 扇区数，同时同步 `kernel.ld` 与 `config/memory.h` 的 `AEVUM_KERNEL_END`，并确认 BSS 不越过内核主线程栈底 `0xC000`。`AEVUM_TASK_STACK_MIN=0x8000`，
 `AEVUM_TASK_STACK_MAX=0x20C000`，`AEVUM_KSTACK_COUNT=12`，`AEVUM_TASK_STACK_SIZE=0x1000`，`AEVUM_AS_MAX=12`，`PROC_MAX=12`，`TASK_MAX=16`，`AEVUM_PHYS_POOL_BASE=0x100000`，`AEVUM_PHYS_POOL_END=0x1FF000`。
@@ -302,7 +302,7 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 
 通过标准：
 
-- `kernel.bin` 不超过 98,304 字节，链接无 undefined symbol；P7.1 clean 构建 70,568 字节。
+- `kernel.bin` 不超过 98,304 字节，链接无 undefined symbol；P7.2 clean 构建 71,272 字节。
 - QEMU 不 triple fault，串口首帧为 `a5 5a 01 ...`。
 - 屏幕出现机械臂、目标点、轨迹和右侧 `ARM STATUS` 面板；标题显示 `PIT 100Hz | P/B/T/C/F/G/V/K`，面板出现 `px` 抢占计数和每任务 CPU 百分比。
 - 空格扫描码 `0x39` 可切换零空间；每 420 帧自动切换。
@@ -330,6 +330,9 @@ xxd -l 4 /tmp/robot-serial.bin   # 期望 a5 5a 01
 - P7.1 clean 构建 `kernel.bin=70,568`、`boot.bin=512`、`disk.img=1,474,560` 字节；SHA256 分别为 kernel `0E963C6BB20E9F3E8BA6ADC61BE3C4CB3FC4E685D54C396062D23A14CACF281B`、boot `218ECC892630F5F723B8E3228898714B18D82BF31A4AD31071F9A3480B6CE3D2`、disk `FE69DF086AC6B54D41E5A37E8FE79C98785EF66E994AF26D362B6475BBDF8C2`。`__bss_start=0x913C0`、`__bss_end=0x952BC`，`AEVUM_KERNEL_END=0x96000`；增量构建与 `make clean && make all` 的 kernel 哈希一致。
 - P7.1 QEMU 验收：V 页 ADDRESS 显示 `TASK READY ... THR 1 TID 7`、`THREAD tid 6 join 0 shared 1 THRD`；TEST 行 `wait OK cow OK hand OK exec OK pipe OK spawn OK thr OK`。线程组 PID 7，主线程 TID 7，worker TID 6；worker 对共享计数器加 1 后 `thread_exit(0)`，主线程 `thread_join(6, status)` 返回 0、status 0，回收后线程任务槽/内核栈归还，只剩 `THR 1`。
 - P7.1 边界：只验证正常 clone/exit/join；尚未覆盖主线程先退、worker 继续、重复 join、join 自己、worker `#PF/#DE`、多线程 `exec` 拒绝返回值和 `process_stop_all()` 的线程组停止语义。`clone` 只接受 `VM/FILES/SIGHAND/THREAD`，没有 `CLONE_FS`、TLS、futex、detach 或 per-thread signal pending。
+- P7.2 clean 构建 `kernel.bin=71,272`、`boot.bin=512`、`disk.img=1,474,560` 字节；SHA256 分别为 kernel `0BBD860EEA0A89E2DE00A4431CF56629DAA1426772867216AA03AA98B6C7BF27`、boot `218ECC892630F5F723B8E3228898714B18D82BF31A4AD31071F9A3480B6CE3D2`、disk `43D37B6F70507E30A9A8CA1A1D392D6E86C83AAC1FF734FAA60D0F1716ECA10A`。`__bss_start=0x91680`、`__bss_end=0x955BC`，`AEVUM_KERNEL_END=0x96000`；`.text` 结束 `0x8F78E`，`.rodata` `0x8F7A0..0x91568`，`.data` `0x91580..0x91668`，`kernel.bin` 结束正好 `0x91668`。
+- P7.2 QEMU 验收：V 页 ADDRESS 显示 `THREAD tid 6 join 0 shared 1 THRD det OK`；TEST 行 `wait OK cow OK hand OK exec OK pipe OK spawn OK thr OK det OK`；`TASK READY ... THR 1 TID 7`。第二个 worker 从 `eax` 取共享计数器地址，`gettid` 后自 `thread_detach`，返回 0；它写计数器 1、置完成标记后 `thread_exit(0)`。主线程对 detached TID 调 `thread_join` 得到 -1，写 `DETD=0x44544544`；任务槽由 `task_reap_detached()` 延后回收，页面只剩主线程。
+- P7.2 边界：detach 只验证 self-detach 的正常退出；最后一个活线程是 detached 线程时的行为、重复 detach、主线程 detach 其他 worker、detached 线程故障终止整组、以及 `process_stop_all()` 对 detached 线程的停止语义仍未单独压测。
 - G 页按 `G` 进入后约 3 秒抓屏，`LAST REPARENT` 显示 `parent 4 / exited / children 2 / famA ->3 / famB ->3 / reaper 3`；树中 `famA`/`famB` 已挂到 `idle` 下面，说明 4 行显示与 reaper 下移没有破坏现有两子进程场景。
 - V 页 `2 TREE` 抓屏显示 `roots 5 used 6/12 live 3 zomb 1 dead 2`，底部 `ORPHAN none yet` 不覆盖 TREE 统计和第 23/24 行公共底栏；当前 demo 没有父进程先退出留子的 lane，所以只验证了空事件布局，事件写入路径由 `process_exit_current/process_terminate_current` 的真实退出分支调用。
 

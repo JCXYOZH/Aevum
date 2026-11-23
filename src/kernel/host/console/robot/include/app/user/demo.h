@@ -70,6 +70,12 @@ u32 user_demo_thread_join_ret(int lane);
 u32 user_demo_thread_shared(int lane);
 u32 user_demo_thread_ok(int lane);
 
+/* P7.2：第二个 worker 自 detach，主线程 join 必须失败；退出任务由调度器自动回收。 */
+u32 user_demo_thread_det_tid(int lane);
+u32 user_demo_thread_det_ret(int lane);
+u32 user_demo_thread_det_join_ret(int lane);
+u32 user_demo_thread_det_ok(int lane);
+
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);
 u32 user_demo_heap_peek(int lane);

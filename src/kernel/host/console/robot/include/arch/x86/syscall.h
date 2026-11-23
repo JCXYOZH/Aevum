@@ -8,7 +8,7 @@
  * 10 poke(ebx=user ptr,ecx=value)，11 sigaction，12 sigreturn，13 exec(image,argv,envp)，
  * 14 pipe，15 read，16 write，17 close，18 spawn(image,argv,envp)，
  * 19 clone(ebx=entry,ecx=user_stack,edx=flags,esi=arg)，20 thread_exit(code)，
- * 21 gettid，22 thread_join(ebx=tid,ecx=status)。 */
+ * 21 gettid，22 thread_join(ebx=tid,ecx=status)，23 thread_detach(ebx=tid)。 */
 void syscall_init(void);
 u32 syscall_dispatch(struct irq_frame *frame);
 u32 syscall_count_total(void);

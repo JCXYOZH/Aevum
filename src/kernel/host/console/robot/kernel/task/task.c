@@ -32,6 +32,7 @@ struct task_struct {
     u32  switches;
     u32  cpu_ticks;
     u32  exit_code;
+    int  detached;  /* 1：线程退出后由调度器自动回收，不等待 join */
     u64  vruntime;
     u32  fpu_state;
     int  user;
@@ -115,6 +116,7 @@ static void task_zero(struct task_struct *task)
     task->switches = 0;
     task->cpu_ticks = 0;
     task->exit_code = 0;
+    task->detached = 0;
     task->vruntime = 0;
     task->fpu_state = 0;
     task->user = 0;
@@ -572,6 +574,39 @@ void task_set_current_exit_code(u32 code)
     if (current_task) current_task->exit_code = code & 0xFFu;
 }
 
+int task_detach_thread(struct process *proc, int tid)
+{
+    int i;
+
+    if (!proc || tid <= 0) return -1;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state != TASK_UNUSED && tasks[i].proc == proc &&
+            tasks[i].pid == tid) {
+            tasks[i].detached = 1;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+/*
+ * detached 线程已经退出，但当前任务可能正踩在它的内核栈上；只回收
+ * 非 current 的 ZOMBIE。当前任务的栈会在下一次切换时由这里回收。
+ */
+static void task_reap_detached(void)
+{
+    int i;
+
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].state != TASK_ZOMBIE || !tasks[i].proc ||
+            !tasks[i].detached || &tasks[i] == current_task)
+            continue;
+        kernel_stack_free(tasks[i].stack_top);
+        pid_free(tasks[i].pid);
+        task_zero(&tasks[i]);
+    }
+}
+
 int task_reap_thread(struct process *proc, int tid)
 {
     int i;
@@ -689,6 +724,7 @@ u32 task_schedule_irq(struct irq_frame *frame)
     }
 
     task_reap();
+    task_reap_detached();
     process_reap_orphans();
     next = task_pick_next(prev);
 
@@ -821,6 +857,7 @@ static void task_fill_info(struct task_struct *task, struct task_info *out)
     out->switches = task->switches;
     out->cpu_ticks = task->cpu_ticks;
     out->exit_code = task->exit_code;
+    out->detached = task->detached;
 }
 
 int task_snapshot(int slot, struct task_info *out)

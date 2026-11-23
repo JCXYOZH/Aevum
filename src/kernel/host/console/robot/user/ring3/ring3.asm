@@ -24,6 +24,10 @@
 ; 0x401154 thread 只执行一次，0x401158 thread TID，0x40115C thread join status，
 ; 0x401160 共享计数器，0x401164 worker TID，0x401168 worker 完成标记，
 ; 0x40116C thread join 返回值，0x401170 "THRD" 验收字；
+; 0x401174 detached worker TID，0x401178 detached 共享计数器，
+; 0x40117C detached worker 的 thread_detach 返回值，0x401180 detached 完成标记，
+; 0x401184 detached worker TID 副本，0x401188 detached join 返回值，
+; 0x40118C "DETD" 验收字；
 ; 0x401100..0x40111F pool 8 个子进程 pid；
 ; stress 复用 0x4010C0 round、0x4010C4 "POOL" 完成魔数、0x4010C8 只执行一次，
 ; 0x401100 first PID、0x401104 last PID、0x401108 wait status；
@@ -337,6 +341,53 @@ user_program_start:
     cmp dword [0x401160], 1
     jne .thread_bad
     mov dword [0x401170], 0x54485244 ; "THRD"
+
+; P7.2：第二个 worker 自己 thread_detach，主线程不能 join 它。
+.thread_detach_round:
+    mov dword [0x401174], 0
+    mov dword [0x401178], 0
+    mov dword [0x40117C], 0
+    mov dword [0x401180], 0
+    mov dword [0x401184], 0
+    mov dword [0x401188], 0
+    mov dword [0x40118C], 0
+
+    mov eax, 19             ; syscall: clone(detached entry, stack, flags, arg)
+    mov ebx, user_detached_entry - user_program_start + 0x400000
+    mov ecx, 0x406000
+    mov edx, 0x00010D00     ; VM|FILES|SIGHAND|THREAD
+    mov esi, 0x401178       ; detached 共享计数器
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    je .thread_det_bad
+    mov [0x401174], eax
+
+.thread_det_wait:
+    cmp dword [0x401180], 0
+    jne .thread_det_join
+    mov eax, 2              ; syscall: yield
+    int 0x80
+    jmp .thread_det_wait
+
+.thread_det_join:
+    mov ebx, [0x401174]
+    xor ecx, ecx            ; status 传 0，避免不需要的 copyout
+    mov eax, 22             ; syscall: thread_join(detached TID)
+    int 0x80
+    mov [0x401188], eax
+    cmp eax, 0xFFFFFFFF
+    jne .thread_det_bad
+    cmp dword [0x40117C], 0
+    jne .thread_det_bad
+    cmp dword [0x401178], 1
+    jne .thread_det_bad
+    cmp dword [0x401184], 0
+    je .thread_det_bad
+    mov dword [0x40118C], 0x44544544 ; "DETD"
+    jmp .yield
+
+.thread_det_bad:
+    mov dword [0x40118C], 0x424144 ; "BAD"
     jmp .yield
 
 .thread_bad:
@@ -705,6 +756,25 @@ user_thread_entry:
     int 0x80
 .hang_thread:
     jmp .hang_thread
+
+; P7.2 detached worker：先 detach 自己，再写共享计数和完成标记并 thread_exit。
+; edx 保存 clone 传入的共享计数地址；gettid/detach 只改 eax/ebx。
+user_detached_entry:
+    mov edx, eax
+    mov eax, 21             ; syscall: gettid
+    int 0x80
+    mov [0x401184], eax
+    mov ebx, eax
+    mov eax, 23             ; syscall: thread_detach(self)
+    int 0x80
+    mov [0x40117C], eax
+    inc dword [edx]
+    mov dword [0x401180], 1
+    mov eax, 20             ; syscall: thread_exit(0)
+    xor ebx, ebx
+    int 0x80
+.hang_detached:
+    jmp .hang_detached
 
 user_program_end:
 

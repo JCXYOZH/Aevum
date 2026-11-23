@@ -31,6 +31,7 @@ struct task_info {
     u32 switches;
     u32 cpu_ticks;
     u32 exit_code;  /* 线程退出码，thread_join 读取 */
+    int detached;   /* 1 表示已 detach，线程退出后自动回收 */
 };
 
 /* 任务模块是 task_struct 字段的唯一写者；调用方只拿不透明句柄。
@@ -68,6 +69,8 @@ int task_process_thread_count(const struct process *proc);
 int task_snapshot_process(const struct process *proc, struct task_info *out);
 int task_thread_snapshot(const struct process *proc, int tid,
                          struct task_info *out);
+/* P7.2：detached 线程退出后由调度器延后回收，不能再被 join。 */
+int task_detach_thread(struct process *proc, int tid);
 int task_reap_thread(struct process *proc, int tid);
 int task_release_process_threads(struct process *proc);
 /* 线程组整体退出时，把除当前线程外的活线程标 ZOMBIE；栈由 process_reap 回收。 */
