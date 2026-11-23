@@ -66,7 +66,7 @@ B 行三任务 ticks 相加为 702，PIT TICKS 为 700；这是同一帧页面�
 
 ## 6. 对后续硬件内核的直接含义
 
-1. **先做阻塞 wait**：当前 `wait` / `thread_join` 仍是 `task_yield_wait()` 轮询；轮询会记 vruntime，避免饿死被等任务，但父进程等待时仍持续参与调度。P6.1 应把“扫描子进程 + 进入 BLOCKED”放在同一个不可被打断的临界区，避免 lost wake。
+1. **阻塞 wait 已由 P7.5 实现**：`wait` / `thread_join` 不再用 `task_yield_wait()` 轮询，而是在 `cli` 窗口内重查条件后进入 `TASK_BLOCKED`；调度器在任务真实 ZOMBIE 后唤醒同组/父进程组。P7.5 页面给出 `wait_blocks=7`、`join_blocks=1`，对应唤醒计数均非零；等待者不再持续参与 vruntime 竞争。仍未实现超时与 EINTR。
 2. **idle 要能停机**：`idle` 占 12% 且频繁 yield；真实硬件上应改成 `hlt`/WFI 或事件驱动，不能让 idle 空转。
 3. **控制周期要独立于 100 Hz tick**：1 kHz 伺服需要 1 kHz tick、APIC/HPET one-shot 或独立 PWM/定时器；不能把 100 Hz 当控制周期。
 4. **把渲染移出控制路径**：`render` 占 38%，当前和 `control` 共享 PIT tick；硬件上应先保证 control 的截止时间，再让 render 降频或在空闲时间跑。
@@ -80,3 +80,12 @@ B 行三任务 ticks 相加为 702，PIT TICKS 为 700；这是同一帧页面�
 - `D:\Aevum\build\p6-baseline\p60-vtree.png`：V 页 TREE
 - `D:\Aevum\build\p6-baseline\bootf-00.png`：首帧采样（PNG，已从 PPM 转换）
 - `D:\Aevum\src\kernel\host\console\robot\kernel.bin`、`disk.img`：本轮 clean 产物
+
+## 8. P7.5 阻塞等待观测
+
+P7.5 clean 构建 `kernel.bin=73,992`，V 页 ADDRESS 在 `EXEC` 行显示 `THR 1 TID 7 blk 7 /1`：
+
+- `wait_blocks=7`：P7.4 与 P7.5 的父进程在子进程 LIVE 时实际进入 BLOCKED 的次数。
+- `join_blocks=1`：P7.5 子进程主线程在 worker 仍 LIVE 时实际进入 BLOCKED 的次数。
+- `wait_wakes` / `join_wakes` 均非零；`blk OK` 只有在 `WBLK` 与四个计数全部成立时才显示。
+- P7.4 的 `grp OK` 在新构建下仍通过，说明把轮询替换为阻塞没有破坏整组回收。该页仍是功能验收，不是延迟测量；单次阻塞/唤醒的周期成本尚未用 TSC 测量。

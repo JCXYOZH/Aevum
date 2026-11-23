@@ -83,6 +83,9 @@ u32 user_demo_main_first_ok(int lane);
 /* P7.4：主线程不 join，两个 worker 继续运行；最后 worker 触发整组回收。 */
 u32 user_demo_thread_group_ok(int lane);
 
+/* P7.5：父 wait 与子线程 join 都已真实进入 BLOCKED 并被唤醒。 */
+u32 user_demo_block_ok(int lane);
+
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);
 u32 user_demo_heap_peek(int lane);

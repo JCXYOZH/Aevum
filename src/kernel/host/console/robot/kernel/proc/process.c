@@ -75,9 +75,27 @@ struct process {
 
 static struct process procs[PROC_MAX];
 
+/* P7.5 wait/join 的关中断重查上下文；函数定义放在进程表 helper 之后。 */
+struct proc_wait_ctx {
+    struct process *self;
+    int pid;
+};
+struct proc_join_ctx {
+    struct process *self;
+    int tid;
+};
+static int proc_wait_ready(void *arg);
+static int proc_join_ready(void *arg);
+
 /* 最近一次 orphan/reparent 事件；V 页只读，不参与调度决策。 */
 static struct proc_orphan_event last_orphan;
 static u32 orphan_seq;
+
+/* P7.5：只统计 wait/join 的阻塞与唤醒，不含 idle 的 task_block。 */
+static u32 wait_block_total;
+static u32 wait_wake_total;
+static u32 join_block_total;
+static u32 join_wake_total;
 
 static void proc_reset_signals(struct process *p)
 {
@@ -141,6 +159,10 @@ void process_boot(void)
     }
     proc_zero_orphan(&last_orphan);
     orphan_seq = 0;
+    wait_block_total = 0;
+    wait_wake_total = 0;
+    join_block_total = 0;
+    join_wake_total = 0;
     kernel_stack_reset();
 }
 
@@ -366,6 +388,22 @@ static void proc_notify_parent(struct process *self)
         proc_signal_pending(parent, PROC_SIGCHLD);
 }
 
+/*
+ * P7.5：只在任务真的进入 TASK_ZOMBIE 后调用。此时目标已经不能再运行，
+ * join 等待者重查一定能看到 ZOMBIE；若整个进程也转 ZOMBIE，再唤醒父进程。
+ */
+void process_notify_task_zombie(struct process *proc)
+{
+    struct process *parent;
+
+    if (!proc) return;
+    task_wake_process(proc);
+    if (proc->state != PROC_ZOMBIE || proc->ppid <= 0) return;
+    parent = proc_find_active(proc->ppid);
+    if (parent && parent->state == PROC_LIVE)
+        task_wake_process(parent);
+}
+
 static void proc_orphan_children(struct process *self)
 {
     struct proc_orphan_event event;
@@ -396,6 +434,15 @@ int process_last_orphan(struct proc_orphan_event *out)
     if (!out) return 0;
     *out = last_orphan;
     return out->valid;
+}
+
+void process_block_stats(u32 *wait_blocks, u32 *wait_wakes,
+                         u32 *join_blocks, u32 *join_wakes)
+{
+    if (wait_blocks) *wait_blocks = wait_block_total;
+    if (wait_wakes) *wait_wakes = wait_wake_total;
+    if (join_blocks) *join_blocks = join_block_total;
+    if (join_wakes) *join_wakes = join_wake_total;
 }
 
 /* 连续 fork/wait 时优先复用刚退出的直接子 PID，保住无关 lane 的墓碑。 */
@@ -957,6 +1004,8 @@ int process_thread_join_current(int tid, u32 user_status)
 {
     struct process *self;
     struct task_info info;
+    struct proc_join_ctx block_ctx;
+    int block_rc;
 
     if (!task_current() || !task_process_current()) return -1;
     self = task_process_current();
@@ -965,12 +1014,19 @@ int process_thread_join_current(int tid, u32 user_status)
         !address_space_user_range_ok(self->space, user_status, 4, 1))
         return -1;
     if (tid <= 0 || tid == task_current_pid()) return -1;
+    block_ctx.self = self;
+    block_ctx.tid = tid;
 
     for (;;) {
         if (!task_thread_snapshot(self, tid, &info)) return -1;
         if (info.detached) return -1;
         if (info.state == TASK_ZOMBIE) break;
-        if (task_yield_wait()) return -1;
+        block_rc = task_block_until(proc_join_ready, &block_ctx);
+        if (block_rc < 0) return -1;
+        if (block_rc > 0) {
+            join_block_total++;
+            join_wake_total++;
+        }
     }
 
     if (user_status &&
@@ -1026,6 +1082,45 @@ static int proc_has_children(const struct process *self)
     return 0;
 }
 
+static int proc_is_direct_child(const struct process *self, int pid);
+
+static int proc_has_zombie_child(const struct process *self, int pid)
+{
+    int i;
+    for (i = 0; i < PROC_MAX; i++)
+        if (procs[i].state == PROC_ZOMBIE &&
+            procs[i].ppid == self->pid &&
+            (pid <= 0 || procs[i].pid == pid))
+            return 1;
+    return 0;
+}
+
+/*
+ * 在关中断窗口里重查：只要出现可回收的 ZOMBIE、指定 PID 已消失、或已经没有
+ * 子进程，就返回 1 让外层重新走完整扫描/错误路径；否则返回 0 进入 BLOCKED。
+ */
+static int proc_wait_ready(void *arg)
+{
+    struct proc_wait_ctx *ctx = (struct proc_wait_ctx *)arg;
+    if (!ctx || !ctx->self) return 1;
+    if (proc_has_zombie_child(ctx->self, ctx->pid)) return 1;
+    if (ctx->pid > 0 && !proc_is_direct_child(ctx->self, ctx->pid)) return 1;
+    if (!proc_has_children(ctx->self)) return 1;
+    return 0;
+}
+
+static int proc_join_ready(void *arg)
+{
+    struct proc_join_ctx *ctx = (struct proc_join_ctx *)arg;
+    struct task_info info;
+
+    if (!ctx || !ctx->self) return 1;
+    if (!task_thread_snapshot(ctx->self, ctx->tid, &info)) return 1;
+    if (info.detached) return 1;
+    if (info.state == TASK_ZOMBIE) return 1;
+    return 0;
+}
+
 /* pid>0 只接受自己的直接子进程；ZOMBIE 也算，尚未被 wait 消费。 */
 static int proc_is_direct_child(const struct process *self, int pid)
 {
@@ -1041,13 +1136,17 @@ static int proc_is_direct_child(const struct process *self, int pid)
 int process_wait(int pid, u32 user_status)
 {
     struct process *self;
+    struct proc_wait_ctx block_ctx;
     int i;
+    int block_rc;
 
     if (!task_current() || !task_process_current()) return -1;
     self = task_process_current();
     if (!address_space_user_range_ok(self->space, user_status, 4, 1)) return -1;
     if (pid > 0 && !proc_is_direct_child(self, pid)) return -1;
     if (!proc_has_children(self)) return -1;
+    block_ctx.self = self;
+    block_ctx.pid = pid;
 
     for (;;) {
         for (i = 0; i < PROC_MAX; i++) {
@@ -1083,7 +1182,12 @@ int process_wait(int pid, u32 user_status)
 
         /* 指定 PID 已经不存在：不要永久等一个永远不会退出的子进程。 */
         if (pid > 0 && !proc_is_direct_child(self, pid)) return -1;
-        if (task_yield_wait()) return -1;
+        block_rc = task_block_until(proc_wait_ready, &block_ctx);
+        if (block_rc < 0) return -1;
+        if (block_rc > 0) {
+            wait_block_total++;
+            wait_wake_total++;
+        }
     }
 }
 

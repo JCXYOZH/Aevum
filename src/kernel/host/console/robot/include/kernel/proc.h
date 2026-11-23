@@ -171,13 +171,23 @@ int process_sigreturn_current(struct irq_frame *frame);
 /* 当前进程已执行 handler 的次数；异常记录在投递时取一次快照，避免 PID 复用后失真。 */
 u32 process_sig_handled_current(void);
 
-/* wait 子进程：P1 用 task_yield() 轮询，找到 ZOMBIE 后写 user status 并回收。
+/* wait 子进程：P7.5 用 BLOCKED/WAKE 等待，找到 ZOMBIE 后写 user status 并回收。
  * pid>0 只等指定直接子进程，不是当前进程的子进程立即返回 -1；
  * pid<=0 等任意直接子进程。 */
 int process_wait(int pid, u32 user_status);
 
 /* 最近一次 orphan/reparent 事件；没有发生过返回 0。 */
 int process_last_orphan(struct proc_orphan_event *out);
+
+/*
+ * P7.5：调度器在任务真正转 ZOMBIE 后调用。先唤醒同组 join 等待者；
+ * 若进程已整体 ZOMBIE，再唤醒父进程的 wait 等待者。
+ */
+void process_notify_task_zombie(struct process *proc);
+
+/* P7.5 wait/join 阻塞计数：blocks 为实际进入 BLOCKED 的次数，wakes 为被唤醒返回次数。 */
+void process_block_stats(u32 *wait_blocks, u32 *wait_wakes,
+                         u32 *join_blocks, u32 *join_wakes);
 
 int process_getpid_current(void);
 int process_getppid_current(void);

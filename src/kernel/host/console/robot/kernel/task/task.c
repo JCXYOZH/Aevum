@@ -716,6 +716,12 @@ u32 task_schedule_irq(struct irq_frame *frame)
          * 必须在清槽前保存自己的 FPU 状态，不能让 task_zero 后的指针进入 fxsave。
          */
         fpu_save((void *)prev->fpu_state);
+        /*
+         * P7.5：任务已经真的变成 ZOMBIE，此时才唤醒 join 等待者。
+         * 不能在 process_thread_exit_current() 里提前唤醒：目标可能还是
+         * RUNNING，等待者会重查后再次阻塞，形成 lost wake。
+         */
+        process_notify_task_zombie(prev->proc);
         prev_reaped = 1;
     }
 
@@ -810,6 +816,40 @@ const char *task_wake(int pid)
         }
     }
     return "pid";
+}
+
+int task_block_until(task_block_check_t ready, void *ctx)
+{
+    u32 flags;
+
+    if (!current_task || current_task->state != TASK_RUNNING) return -1;
+    __asm__ __volatile__("pushf; pop %0; cli" : "=r"(flags) : : "memory");
+    if (ready && ready(ctx)) {
+        __asm__ __volatile__("push %0; popf" : : "r"(flags) : "memory", "cc");
+        return 0;
+    }
+
+    /*
+     * 先写 BLOCKED 再进门，调度器不会再把当前任务当成 RUNNING 重新放回。
+     * 从 cli 到 int 0x40 之间没有 PIT，也没有其他任务能运行，因此
+     * “重查条件”和“真正阻塞”是一个不可分割的窗口。
+     */
+    current_task->state = TASK_BLOCKED;
+    sched_reason = SCHED_BLOCK;
+    sched_failed = 0;
+    __asm__ __volatile__("int $0x40");
+    __asm__ __volatile__("push %0; popf" : : "r"(flags) : "memory", "cc");
+    return sched_failed ? -1 : 1;
+}
+
+void task_wake_process(struct process *proc)
+{
+    int i;
+    if (!proc) return;
+    for (i = 0; i < TASK_MAX; i++) {
+        if (tasks[i].proc == proc && tasks[i].state == TASK_BLOCKED)
+            tasks[i].state = TASK_READY;
+    }
 }
 
 const char *task_yield(void)

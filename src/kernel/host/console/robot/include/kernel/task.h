@@ -117,6 +117,16 @@ const char *task_yield_wait(void);
 /* 阻塞/唤醒：阻塞时切走；另一个任务 task_wake(pid) 置 READY 后，本调用才返回。 */
 const char *task_block(void);
 const char *task_wake(int pid);
+/*
+ * P7.5：在关中断的临界区里重查 ready(ctx)，仍不满足才把当前任务置 BLOCKED
+ * 并切走。check 返回非 0 表示“条件已满足，不要阻塞”，函数返回 0；
+ * 真正阻塞并被唤醒后返回 1；状态或调度失败返回 -1。
+ * 这样 wait/join 的“重查”和“进入 BLOCKED”之间不会丢唤醒。
+ */
+typedef int (*task_block_check_t)(void *ctx);
+int task_block_until(task_block_check_t ready, void *ctx);
+/* 唤醒同组所有 BLOCKED 任务；用于 wait/join 的退出通知。 */
+void task_wake_process(struct process *proc);
 
 /*
  * 统一的当前任务状态入口：

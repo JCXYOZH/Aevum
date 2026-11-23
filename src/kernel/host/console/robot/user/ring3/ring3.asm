@@ -508,11 +508,91 @@ user_program_start:
     cmp eax, [0x4011E8]
     jne .thread_group_bad
     mov dword [0x4011F8], 0x4D475250 ; "MGRP"
-    jmp .yield
+    jmp .block_round
 
 .thread_group_bad:
     mov dword [0x4011F8], 0x424144 ; "BAD"
     jmp .yield
+
+; P7.5：父 wait 和一个子线程 join 都必须在目标仍 LIVE 时进入 BLOCKED。
+; 子进程主线程 clone 一个 worker 后立即 join；worker 先等 start 标记，
+; 再做一小段 yield，确保 join 一定先阻塞、随后被退出唤醒。
+.block_round:
+    cmp dword [0x4011FC], 0
+    jne .yield
+    mov dword [0x4011FC], 1
+
+    mov eax, 6              ; syscall: fork
+    int 0x80
+    test eax, eax
+    jz .child_block_exit
+    cmp eax, 0xFFFFFFFF
+    je .block_bad
+
+    mov [0x401220], eax             ; child pid
+    mov ebx, eax
+    mov ecx, 0x401224
+    mov eax, 4              ; syscall: wait，子进程仍在运行时阻塞
+    int 0x80
+    mov [0x401228], eax
+    cmp dword [0x401224], 9
+    jne .block_bad
+    cmp eax, [0x401220]
+    jne .block_bad
+    mov dword [0x40122C], 0x57424C4B ; "WBLK"
+    jmp .yield
+
+.block_bad:
+    mov dword [0x40122C], 0x424144 ; "BAD"
+    jmp .yield
+
+; P7.5 子进程：主线程 clone worker 后立刻 thread_join，worker 尚 LIVE。
+.child_block_exit:
+    mov eax, 8              ; syscall: brk(0x407000)
+    mov ebx, 0x407000
+    int 0x80
+    cmp eax, 0x407000
+    jne .child_block_bad
+
+    mov eax, 21             ; syscall: gettid
+    int 0x80
+    mov [0x401200], eax
+
+    mov eax, 19             ; clone(worker, 0x407000)
+    mov ebx, user_block_worker - user_program_start + 0x400000
+    mov ecx, 0x407000
+    mov edx, 0x00010D00     ; VM|FILES|SIGHAND|THREAD
+    mov esi, [0x401200]
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    je .child_block_bad
+    mov [0x401204], eax
+
+    mov dword [0x401208], 1 ; 释放 worker；主线程紧接着 join
+    mov ebx, [0x401204]
+    mov ecx, 0x401214
+    mov eax, 22             ; syscall: thread_join，worker 仍 LIVE -> BLOCKED
+    int 0x80
+    mov [0x401218], eax
+    test eax, eax
+    jnz .child_block_bad
+    cmp dword [0x401214], 4
+    jne .child_block_bad
+    mov dword [0x40121C], 0x424C4B35 ; "BLK5"
+    mov eax, 20             ; syscall: thread_exit(9)
+    mov ebx, 9
+    int 0x80
+    jmp .hang_block_child
+
+.child_block_bad:
+    mov dword [0x40121C], 0x424144 ; "BAD"
+    mov eax, 20
+    mov ebx, 8
+    int 0x80
+    jmp .hang_block_child
+
+.hang_block_child:
+    jmp .hang_block_child
 
 ; P7.4 子进程：主线程 clone A/B 后立即 thread_exit(0)，不等待也不 join。
 .child_group_exit:
@@ -1122,6 +1202,44 @@ user_group_last_worker:
 
 .hang_group_last:
     jmp .hang_group_last
+
+; P7.5 worker：等主线程释放 start 后先 yield 一小段，再 thread_exit(4)。
+; 主线程 join 时 worker 仍 LIVE，因此必须走 BLOCKED 而不是直接看到 ZOMBIE。
+user_block_worker:
+    mov eax, 21             ; syscall: gettid
+    int 0x80
+    mov [0x401210], eax
+    cmp eax, [0x401200]
+    je .block_worker_fail
+
+.block_worker_wait:
+    cmp dword [0x401208], 1
+    je .block_worker_delay
+    mov eax, 2              ; syscall: yield
+    int 0x80
+    jmp .block_worker_wait
+
+.block_worker_delay:
+    mov ecx, 1024
+.block_worker_loop:
+    mov eax, 2              ; syscall: yield
+    int 0x80
+    dec ecx
+    jnz .block_worker_loop
+    mov eax, 20             ; syscall: thread_exit(4)
+    mov ebx, 4
+    int 0x80
+    jmp .hang_block_worker
+
+.block_worker_fail:
+    mov dword [0x40121C], 0x424144 ; "BAD"
+    mov eax, 20
+    mov ebx, 8
+    int 0x80
+    jmp .hang_block_worker
+
+.hang_block_worker:
+    jmp .hang_block_worker
 
 user_program_end:
 
