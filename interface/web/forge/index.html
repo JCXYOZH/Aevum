@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AEVUM FORGE — ARM3</title>
+<style>
+  :root{
+    --bg:#0a0d10;
+    --panel:#10151a;
+    --panel2:#141b21;
+    --line:#25313a;
+    --text:#dce8ec;
+    --dim:#7f929b;
+    --cyan:#37c7d4;
+    --amber:#f0a43a;
+    --red:#e45b58;
+    --green:#7ed48b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;overflow:hidden}
+  body{display:flex;flex-direction:column}
+  header{
+    height:58px;flex:0 0 58px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 18px;border-bottom:1px solid var(--line);background:#0c1115;z-index:2
+  }
+  .brand{display:flex;align-items:center;gap:12px;min-width:240px}
+  .mark{width:30px;height:30px;border:1px solid var(--cyan);position:relative;transform:rotate(45deg)}
+  .mark:after{content:"";position:absolute;inset:7px;border:1px solid var(--amber)}
+  .brand b{font:700 15px/1.1 "Segoe UI",sans-serif;letter-spacing:.16em;color:#fff}
+  .brand small{display:block;font:500 10px/1.2 "Segoe UI",sans-serif;letter-spacing:.18em;color:var(--dim);margin-top:3px}
+  .top-center{display:flex;gap:8px;align-items:center}
+  .pill{font:600 10px/1 "Segoe UI",sans-serif;letter-spacing:.1em;padding:7px 9px;border:1px solid var(--line);color:var(--dim);background:#0a0e12}
+  .pill.on{color:var(--green);border-color:#31543a}
+  .pill.warn{color:var(--amber);border-color:#564226}
+  .top-actions{display:flex;gap:8px;align-items:center}
+  button{
+    border:1px solid var(--line);background:#121a20;color:var(--text);padding:8px 12px;
+    font:600 11px/1 "Segoe UI",sans-serif;letter-spacing:.1em;cursor:pointer;border-radius:2px
+  }
+  button:hover{border-color:var(--cyan);color:#fff}
+  button.primary{border-color:#2a7780;background:#0e2b30;color:#c9f7fa}
+  button.amber{border-color:#6b4b24;background:#241a0e;color:#ffd79b}
+  button.ghost{background:transparent}
+  .app{flex:1;min-height:0;width:100vw;max-width:100vw;overflow:hidden;display:grid;grid-template-columns:242px minmax(0,1fr) 330px;gap:1px;background:var(--line)}
+  aside{background:var(--panel);min-height:0;min-width:0;overflow:auto}
+  .left{padding:16px 14px}
+  .right{padding:0}
+  .section-title{font:700 10px/1 "Segoe UI",sans-serif;letter-spacing:.16em;color:var(--dim);margin:0 0 10px}
+  .tree-item{
+    border:1px solid transparent;border-left:2px solid #26343d;padding:9px 9px 9px 12px;margin:0 0 6px;
+    cursor:pointer;background:#0e1419
+  }
+  .tree-item:hover{border-color:#2d4650}
+  .tree-item.active{border-left-color:var(--amber);background:#17180e}
+  .tree-item .k{font:700 11px/1.2 "Segoe UI",sans-serif;letter-spacing:.1em;color:#fff}
+  .tree-item .v{font:500 10px/1.35 "Segoe UI",sans-serif;color:var(--dim);margin-top:4px}
+  .tree-item .tag{float:right;font:600 9px/1 "Segoe UI",sans-serif;color:var(--cyan);border:1px solid #24545c;padding:3px 4px;margin-top:-2px}
+  .purpose{margin-top:18px;border-top:1px solid var(--line);padding-top:14px;color:var(--dim);font:500 11px/1.55 "Segoe UI",sans-serif}
+  .purpose b{color:var(--cyan);display:block;letter-spacing:.08em;font-size:10px;margin-bottom:5px}
+  .stage{position:relative;min-height:0;min-width:0;overflow:hidden;background:#080b0e}
+  #gl{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+  #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .joint-label{
+    position:absolute;transform:translate(-50%,-50%);border:1px solid #5b6e76;background:#0b1115cc;
+    color:#cfe9ed;font:700 9px/1 "Segoe UI",sans-serif;letter-spacing:.08em;padding:4px 5px;
+    white-space:nowrap;backdrop-filter:blur(3px)
+  }
+  .joint-label.sel{border-color:var(--amber);color:#ffd89b;background:#241a0ed9}
+  .hud{position:absolute;left:16px;top:16px;pointer-events:none}
+  .hud .big{font:700 14px/1.2 "Segoe UI",sans-serif;letter-spacing:.14em;color:#fff}
+  .hud .sub{font:500 10px/1.4 "Segoe UI",sans-serif;color:var(--dim);margin-top:4px}
+  .hint{position:absolute;left:16px;bottom:14px;font:500 10px/1.4 "Segoe UI",sans-serif;color:#78909a;pointer-events:none}
+  .hint span{color:#c3d4d9}
+  .right .head{display:flex;justify-content:space-between;align-items:center;padding:16px 16px 12px;border-bottom:1px solid var(--line)}
+  .right .head b{font:700 10px/1 "Segoe UI",sans-serif;letter-spacing:.16em;color:var(--dim)}
+  #selId{font:600 10px/1 "Segoe UI",sans-serif;letter-spacing:.08em;color:var(--cyan)}
+  #inspector{padding:14px 16px 24px}
+  .group{margin-bottom:18px}
+  .group .gtitle{font:700 9px/1 "Segoe UI",sans-serif;letter-spacing:.15em;color:var(--dim);margin-bottom:8px}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:8px 0;font:500 11px/1.3 "Segoe UI",sans-serif;color:#a9bbc2}
+  .row output{color:#fff;font:600 11px/1.2 "Consolas",monospace}
+  input[type=range]{width:100%;accent-color:var(--cyan);height:16px}
+  input[type=number],input[type=text]{
+    width:86px;background:#0a0f13;border:1px solid var(--line);color:#fff;padding:6px 7px;
+    font:600 11px/1.2 "Consolas",monospace;outline:none
+  }
+  input[type=text]{width:100%}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .field label{display:block;font:500 9px/1.2 "Segoe UI",sans-serif;color:var(--dim);letter-spacing:.08em;margin-bottom:4px}
+  .field input{width:100%}
+  .note{color:#80939b;font:500 10px/1.5 "Segoe UI",sans-serif;border-left:2px solid #2c4850;padding-left:9px;margin-top:8px}
+  .actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+  .actions button{flex:1;min-width:92px}
+  .bridge{background:#0d151a;border:1px solid var(--line);padding:10px;margin-top:8px}
+  .bridge .status{font:600 10px/1.2 "Segoe UI",sans-serif;color:var(--dim);letter-spacing:.08em}
+  .bridge .status.on{color:var(--green)}
+  .bridge input{margin:8px 0;width:100%}
+  .bridge .note{margin-top:8px;font-size:9px}
+  footer{
+    flex:0 0 166px;border-top:1px solid var(--line);background:#0b1014;display:grid;
+    grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;position:relative;z-index:1
+  }
+  .metric{padding:14px 16px;background:#0b1014;min-width:0}
+  .metric .m{font:700 9px/1 "Segoe UI",sans-serif;letter-spacing:.14em;color:var(--dim);white-space:nowrap}
+  .metric .v{font:700 20px/1.1 "Segoe UI",sans-serif;color:#fff;margin-top:8px;white-space:nowrap}
+  .metric .s{font:500 9px/1.3 "Segoe UI",sans-serif;color:var(--dim);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart-wrap{grid-column:span 2;padding:10px 14px;background:#0b1014;min-width:0}
+  #chart{width:100%;height:135px;display:block}
+  #toast{
+    position:fixed;left:50%;bottom:185px;transform:translateX(-50%);z-index:9;
+    background:#111c21;border:1px solid #3c5a62;color:#dff6f8;padding:9px 14px;
+    font:600 11px/1.2 "Segoe UI",sans-serif;letter-spacing:.06em;opacity:0;pointer-events:none;transition:.22s
+  }
+  #toast.show{opacity:1}
+  @media (max-width:1100px){
+    .app{grid-template-columns:190px minmax(0,1fr) 290px}
+    footer{grid-template-columns:repeat(3,1fr);flex-basis:190px}
+    .chart-wrap{grid-column:span 2}
+    .metric:nth-child(4),.metric:nth-child(5),.metric:nth-child(6){display:none}
+  }
+  @media (max-width:760px){
+    .app{grid-template-columns:0 1fr 280px}
+    .left{display:none}
+    footer{display:none}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="mark"></div>
+    <div><b>AEVUM FORGE</b><small>BODY 0 / 3R ARM / MINI ENGINE</small></div>
+  </div>
+  <div class="top-center">
+    <span class="pill on" id="modePill">LOCAL SIM</span>
+    <span class="pill warn" id="kernelPill">KERNEL OFFLINE</span>
+    <span class="pill">WEBGL / NO DEPS</span>
+  </div>
+  <div class="top-actions">
+    <button class="primary" id="btnRun">RUN</button>
+    <button class="amber" id="btnSine">SINE TEST</button>
+    <button class="ghost" id="btnReset">RESET</button>
+  </div>
+</header>
+
+<main class="app">
+  <aside class="left">
+    <div class="section-title">BODY DOCUMENT</div>
+    <div id="tree"></div>
+    <div class="purpose" id="purpose"></div>
+  </aside>
+
+  <section class="stage">
+    <canvas id="gl"></canvas>
+    <div id="labels"></div>
+    <div class="hud">
+      <div class="big" id="hudTitle">ARM3 / KINEMATIC BENCH</div>
+      <div class="sub">own renderer · jaw 3R · 100 Hz control seam</div>
+    </div>
+    <div class="hint">DRAG <span>orbit</span> · WHEEL <span>zoom</span> · CLICK <span>joint</span></div>
+  </section>
+
+  <aside class="right">
+    <div class="head"><b>INSPECTOR</b><span id="selId">J1</span></div>
+    <div id="inspector"></div>
+  </aside>
+</main>
+
+<footer>
+  <div class="metric"><div class="m">CONTROL LOOP</div><div class="v" id="mLoop">100 Hz</div><div class="s" id="mMode">local PD · paused</div></div>
+  <div class="metric"><div class="m">RMS ERROR</div><div class="v" id="mRms">0.0°</div><div class="s">target vs actual</div></div>
+  <div class="metric"><div class="m">PEAK ERROR</div><div class="v" id="mPeak">0.0°</div><div class="s">last 3 seconds</div></div>
+  <div class="metric"><div class="m">TORQUE</div><div class="v" id="mTorque">0.0</div><div class="s">N·m / all joints</div></div>
+  <div class="metric"><div class="m">PACKET LOSS</div><div class="v" id="mLoss">0</div><div class="s">virtual bus</div></div>
+  <div class="metric"><div class="m">SIM TIME</div><div class="v" id="mTime">0.00</div><div class="s">seconds</div></div>
+  <div class="chart-wrap"><canvas id="chart"></canvas></div>
+</footer>
+
+<div id="toast"></div>
+<input type="file" id="fileDoc" accept=".json,application/json" hidden>
+
+<script>
+"use strict";
+/* ==========================================================================
+   AEVUM FORGE — v0
+   Own mini WebGL renderer, own BodyDocument, own PD bench.
+   No React, no Three.js, no external assets.
+   The kernel is NOT imported here. Bridge is a temporary seam.
+   ========================================================================== */
+
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const D2R = Math.PI/180, R2D = 180/Math.PI;
+const $ = id => document.getElementById(id);
+const fmt = (v,n=1)=>Number(v).toFixed(n);
+
+function defaultDoc(){
+  return {
+    format:"aevum.body/0",
+    name:"AEVUM 3R ARM",
+    base:{w:0.54,h:0.24,d:0.38,mass:2.2,color:[0.15,0.19,0.23]},
+    segments:[
+      {id:"J1",name:"SHOULDER",q:-0.35,target:-0.35,min:-170,max:170,torque:12,inertia:0.035,damping:0.05,kp:38,kd:9,length:0.62,width:0.12,depth:0.14,mass:1.1,color:[0.18,0.62,0.72]},
+      {id:"J2",name:"ELBOW",q:0.68,target:0.68,min:-150,max:150,torque:9,inertia:0.022,damping:0.04,kp:32,kd:7,length:0.52,width:0.10,depth:0.12,mass:0.8,color:[0.22,0.50,0.70]},
+      {id:"J3",name:"WRIST",q:-1.05,target:-1.05,min:-170,max:170,torque:5,inertia:0.012,damping:0.03,kp:24,kd:5,length:0.24,width:0.075,depth:0.09,mass:0.35,color:[0.70,0.45,0.18]}
+    ],
+    tool:{length:0.20,width:0.075,depth:0.09,color:[0.82,0.55,0.22]},
+    control:{loop_hz:100,dt:0.01}
+  };
+}
+
+let doc = defaultDoc();
+let selected = {kind:"joint",index:0};
+let sim = {
+  running:false, sine:false, time:0, last:performance.now(), acc:0,
+  q:doc.segments.map(s=>s.q), qd:doc.segments.map(()=>0),
+  errHist:[], lastUi:0, seq:0
+};
+let cam = {yaw:0.22, pitch:0.18, dist:3.15, target:[0.52,0.38,0]};
+let bridge = {ws:null, url:"ws://127.0.0.1:8765", lastSend:0, online:false};
+
+/* ==========================================================================
+   MINI MATH
+   ========================================================================== */
+const I4 = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+function mat4(){ return new Float32Array(I4); }
+function mul(a,b){
+  const o=new Float32Array(16);
+  for(let c=0;c<4;c++) for(let r=0;r<4;r++){
+    o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];
+  }
+  return o;
+}
+function trans(x,y,z){ const m=mat4(); m[12]=x; m[13]=y; m[14]=z; return m; }
+function scale(x,y,z){ const m=mat4(); m[0]=x; m[5]=y; m[10]=z; return m; }
+function rz(a){ const c=Math.cos(a),s=Math.sin(a); const m=mat4(); m[0]=c; m[1]=s; m[4]=-s; m[5]=c; return m; }
+function perspective(fovy,aspect,near,far){
+  const f=1/Math.tan(fovy/2), m=new Float32Array(16);
+  m[0]=f/aspect; m[5]=f; m[10]=(far+near)/(near-far); m[11]=-1; m[14]=(2*far*near)/(near-far);
+  return m;
+}
+function lookAt(eye,center,up){
+  let zx=eye[0]-center[0], zy=eye[1]-center[1], zz=eye[2]-center[2];
+  let zl=Math.hypot(zx,zy,zz)||1; zx/=zl; zy/=zl; zz/=zl;
+  let xx=up[1]*zz-up[2]*zy, xy=up[2]*zx-up[0]*zz, xz=up[0]*zy-up[1]*zx;
+  let xl=Math.hypot(xx,xy,xz)||1; xx/=xl; xy/=xl; xz/=xl;
+  let yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
+  const m=new Float32Array(16);
+  m[0]=xx; m[1]=yx; m[2]=zx; m[4]=xy; m[5]=yy; m[6]=zy; m[8]=xz; m[9]=yz; m[10]=zz;
+  m[12]=-(xx*eye[0]+xy*eye[1]+xz*eye[2]);
+  m[13]=-(yx*eye[0]+yy*eye[1]+yz*eye[2]);
+  m[14]=-(zx*eye[0]+zy*eye[1]+zz*eye[2]);
+  m[15]=1;
+  return m;
+}
+function mat3(m){ return new Float32Array([m[0],m[1],m[2], m[4],m[5],m[6], m[8],m[9],m[10]]); }
+function transformPoint(m,p){ return [m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12], m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13], m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]]; }
+function translation(m){ return [m[12],m[13],m[14]]; }
+
+/* ==========================================================================
+   MINI MESHES
+   ========================================================================== */
+function unitBox(){
+  const v=[];
+  const face=(a,b,c,d,n)=>{ v.push(...a,...n,...b,...n,...c,...n, ...a,...n,...c,...n,...d,...n); };
+  const A=[-.5,-.5,-.5], B=[.5,-.5,-.5], C=[.5,.5,-.5], D=[-.5,.5,-.5];
+  const E=[-.5,-.5,.5], F=[.5,-.5,.5], G=[.5,.5,.5], H=[-.5,.5,.5];
+  face(E,F,G,H,[0,0,1]);
+  face(B,A,D,C,[0,0,-1]);
+  face(F,B,C,G,[1,0,0]);
+  face(A,E,H,D,[-1,0,0]);
+  face(D,C,G,H,[0,1,0]);
+  face(A,B,F,E,[0,-1,0]);
+  return v;
+}
+function cylinderZ(r,h,seg=18){
+  const v=[], half=h/2;
+  for(let i=0;i<seg;i++){
+    const a0=i/seg*Math.PI*2, a1=(i+1)/seg*Math.PI*2;
+    const x0=Math.cos(a0)*r,y0=Math.sin(a0)*r,x1=Math.cos(a1)*r,y1=Math.sin(a1)*r;
+    const n0=[Math.cos(a0),Math.sin(a0),0], n1=[Math.cos(a1),Math.sin(a1),0];
+    v.push(x0,y0,-half,...n0, x1,y1,-half,...n1, x1,y1,half,...n1);
+    v.push(x0,y0,-half,...n0, x1,y1,half,...n1, x0,y0,half,...n0);
+    v.push(0,0,half,0,0,1, x0,y0,half,...n0, x1,y1,half,...n1);
+    v.push(0,0,-half,0,0,-1, x1,y1,-half,...n1, x0,y0,-half,...n0);
+  }
+  return v;
+}
+function gridLines(){
+  const v=[];
+  const N=12, S=0.25;
+  for(let i=-N;i<=N;i++){
+    v.push(-N*S,0.012,i*S, N*S,0.012,i*S);
+    v.push(i*S,0.012,-N*S, i*S,0.012,N*S);
+  }
+  return v;
+}
+
+/* ==========================================================================
+   MINI WEBGL RENDERER
+   ========================================================================== */
+const canvas=$("gl");
+const gl=canvas.getContext("webgl",{antialias:true,alpha:false})||canvas.getContext("experimental-webgl");
+if(!gl){
+  document.querySelector(".stage").innerHTML="<div style='padding:30px;color:#e45b58;font:600 14px Segoe UI'>WebGL 不可用。请用 Chrome / Edge 打开。</div>";
+  throw new Error("WebGL unavailable");
+}
+
+function compile(type,src){
+  const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vs,fs){
+  const p=gl.createProgram();
+  gl.attachShader(p,compile(gl.VERTEX_SHADER,vs));
+  gl.attachShader(p,compile(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+const meshProg=program(`
+attribute vec3 aPos; attribute vec3 aNormal;
+uniform mat4 uVP; uniform mat4 uModel; uniform mat3 uNormal;
+varying vec3 vN;
+void main(){
+  vN=normalize(uNormal*aNormal);
+  gl_Position=uVP*uModel*vec4(aPos,1.0);
+}`,`
+precision mediump float;
+varying vec3 vN;
+uniform vec3 uColor;
+void main(){
+  vec3 n=normalize(vN);
+  vec3 L=normalize(vec3(0.45,0.85,-0.35));
+  float d=max(dot(n,L),0.0);
+  vec3 c=uColor*(0.34+0.66*d);
+  c+=vec3(0.08,0.12,0.14)*pow(1.0-abs(n.z),2.0);
+  gl_FragColor=vec4(c,1.0);
+}`);
+const lineProg=program(`
+attribute vec3 aPos; uniform mat4 uVP;
+void main(){ gl_Position=uVP*vec4(aPos,1.0); }`,`
+precision mediump float; uniform vec3 uColor;
+void main(){ gl_FragColor=vec4(uColor,0.35); }`);
+
+const meshLoc={
+  aPos:gl.getAttribLocation(meshProg,"aPos"),
+  aNormal:gl.getAttribLocation(meshProg,"aNormal"),
+  uVP:gl.getUniformLocation(meshProg,"uVP"),
+  uModel:gl.getUniformLocation(meshProg,"uModel"),
+  uNormal:gl.getUniformLocation(meshProg,"uNormal"),
+  uColor:gl.getUniformLocation(meshProg,"uColor")
+};
+const lineLoc={aPos:gl.getAttribLocation(lineProg,"aPos"),uVP:gl.getUniformLocation(lineProg,"uVP"),uColor:gl.getUniformLocation(lineProg,"uColor")};
+
+function makeMesh(data){
+  const b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
+  return {buf:b,count:data.length/6};
+}
+function drawMesh(mesh,model,normal,color){
+  gl.bindBuffer(gl.ARRAY_BUFFER,mesh.buf);
+  gl.enableVertexAttribArray(meshLoc.aPos);
+  gl.vertexAttribPointer(meshLoc.aPos,3,gl.FLOAT,false,24,0);
+  gl.enableVertexAttribArray(meshLoc.aNormal);
+  gl.vertexAttribPointer(meshLoc.aNormal,3,gl.FLOAT,false,24,12);
+  gl.uniformMatrix4fv(meshLoc.uModel,false,model);
+  gl.uniformMatrix3fv(meshLoc.uNormal,false,normal);
+  gl.uniform3fv(meshLoc.uColor,color);
+  gl.drawArrays(gl.TRIANGLES,0,mesh.count);
+}
+const boxMesh=makeMesh(unitBox());
+const cylMesh=makeMesh(cylinderZ(0.066,0.14,18));
+const lineMesh=(()=>{const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);const d=new Float32Array(gridLines());gl.bufferData(gl.ARRAY_BUFFER,d,gl.STATIC_DRAW);return {buf:b,count:d.length/3};})();
+
+function drawLines(mesh,vp,color){
+  gl.useProgram(lineProg);
+  gl.uniformMatrix4fv(lineLoc.uVP,false,vp);
+  gl.uniform3fv(lineLoc.uColor,color);
+  gl.bindBuffer(gl.ARRAY_BUFFER,mesh.buf);
+  gl.enableVertexAttribArray(lineLoc.aPos);
+  gl.vertexAttribPointer(lineLoc.aPos,3,gl.FLOAT,false,12,0);
+  gl.drawArrays(gl.LINES,0,mesh.count);
+}
+
+/* ==========================================================================
+   SCENE / CAMERA
+   ========================================================================== */
+function resize(){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=canvas.clientWidth||1, h=canvas.clientHeight||1;
+  if(canvas.width!==Math.floor(w*dpr)||canvas.height!==Math.floor(h*dpr)){
+    canvas.width=Math.floor(w*dpr); canvas.height=Math.floor(h*dpr);
+    gl.viewport(0,0,canvas.width,canvas.height);
+  }
+}
+function cameraEye(){
+  const cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch);
+  return [cam.target[0]+cam.dist*cp*Math.sin(cam.yaw), cam.target[1]+cam.dist*sp, cam.target[2]+cam.dist*cp*Math.cos(cam.yaw)];
+}
+function scene(){
+  const joints=[]; const links=[]; let m=trans(0,doc.base.h,0);
+  for(const seg of doc.segments){
+    joints.push({id:seg.id,pos:translation(m)});
+    const rot=mul(m,rz(seg.q));
+    links.push({seg,model:mul(mul(rot,trans(seg.length/2,0,0)),scale(seg.length,seg.width,seg.depth)),normal:mat3(rot)});
+    m=mul(rot,trans(seg.length,0,0));
+  }
+  return {joints,links,end:translation(m),endMat:m};
+}
+
+/* ==========================================================================
+   LABELS / PICKING
+   ========================================================================== */
+const labelsEl=$("labels");
+const labelEls={};
+function ensureLabels(){
+  labelsEl.innerHTML="";
+  for(let i=0;i<doc.segments.length;i++){
+    const d=document.createElement("div");
+    d.className="joint-label";
+    d.textContent=doc.segments[i].id;
+    labelsEl.appendChild(d); labelEls[doc.segments[i].id]=d;
+  }
+}
+function project(vp,p){
+  const c=[vp[0]*p[0]+vp[4]*p[1]+vp[8]*p[2]+vp[12],
+           vp[1]*p[0]+vp[5]*p[1]+vp[9]*p[2]+vp[13],
+           vp[2]*p[0]+vp[6]*p[1]+vp[10]*p[2]+vp[14],
+           vp[3]*p[0]+vp[7]*p[1]+vp[11]*p[2]+vp[15]];
+  if(c[3]<=0.001) return null;
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  return {x:(c[0]/c[3]*0.5+0.5)*w,y:(1-(c[1]/c[3]*0.5+0.5))*h};
+}
+let screenJoints=[];
+function updateLabels(s,vp){
+  screenJoints=[];
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  for(let i=0;i<s.joints.length;i++){
+    const j=s.joints[i]; const p=project(vp,j.pos); const el=labelEls[j.id];
+    if(!p||p.x<-80||p.x>w+80||p.y<-50||p.y>h+50){ if(el) el.style.display="none"; continue; }
+    if(el){ el.style.display="block"; el.style.left=p.x+"px"; el.style.top=p.y+"px"; el.classList.toggle("sel",selected.kind==="joint"&&selected.index===i); }
+    screenJoints.push({index:i,x:p.x,y:p.y});
+  }
+}
+
+/* ==========================================================================
+   RENDER LOOP
+   ========================================================================== */
+function render(now){
+  resize();
+  const s=scene();
+  const eye=cameraEye();
+  const vp=mul(perspective(42*D2R,canvas.width/2/canvas.height,0.08,60),lookAt(eye,cam.target,[0,1,0]));
+  gl.clearColor(0.035,0.047,0.058,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.disable(gl.CULL_FACE);
+
+  gl.useProgram(meshProg);
+  gl.uniformMatrix4fv(meshLoc.uVP,false,vp);
+
+  // ground
+  drawMesh(boxMesh,mul(trans(0,-0.03,0),scale(5.5,0.04,5.5)),mat3(mat4()),[0.075,0.09,0.10]);
+  // base
+  drawMesh(boxMesh,mul(trans(0,doc.base.h/2,0),scale(doc.base.w,doc.base.h,doc.base.d)),mat3(mat4()),doc.base.color);
+  // small feet
+  for(const x of [-0.18,0.18]) for(const z of [-0.13,0.13]){
+    drawMesh(boxMesh,mul(trans(x,0.025,z),scale(0.09,0.05,0.09)),mat3(mat4()),[0.10,0.12,0.13]);
+  }
+  // links
+  for(let i=0;i<s.links.length;i++){
+    const l=s.links[i];
+    const col=(selected.kind==="joint"&&selected.index===i)?[0.55,0.95,0.98]:l.seg.color;
+    drawMesh(boxMesh,l.model,l.normal,col);
+  }
+  // joint handles
+  for(let i=0;i<s.joints.length;i++){
+    const col=(selected.kind==="joint"&&selected.index===i)?[1.0,0.68,0.22]:[0.35,0.42,0.45];
+    drawMesh(cylMesh,trans(...s.joints[i].pos),mat3(mat4()),col);
+  }
+  // wrist tool / gripper
+  const tool=s.endMat;
+  drawMesh(boxMesh,mul(mul(tool,trans(doc.tool.length/2,0,0)),scale(doc.tool.length,doc.tool.width,doc.tool.depth)),mat3(tool),[0.55,0.33,0.12]);
+  drawMesh(boxMesh,mul(mul(tool,trans(doc.tool.length+0.08,0.045,0)),scale(0.14,0.035,0.04)),mat3(tool),[0.92,0.58,0.20]);
+  drawMesh(boxMesh,mul(mul(tool,trans(doc.tool.length+0.08,-0.045,0)),scale(0.14,0.035,0.04)),mat3(tool),[0.92,0.58,0.20]);
+
+  // grid overlay
+  drawLines(lineMesh,vp,[0.18,0.38,0.42]);
+
+  updateLabels(s,vp);
+  if(sim.running) tickSim(now);
+  updateTelemetry(now);
+  requestAnimationFrame(render);
+}
+
+/* ==========================================================================
+   SIM / CONTROL
+   ========================================================================== */
+function resetSim(){
+  doc.segments.forEach((s,i)=>{ s.q=s.target; sim.q[i]=s.q; sim.qd[i]=0; });
+  sim.time=0; sim.acc=0; sim.errHist=[]; sim.last=performance.now();
+}
+function tickSim(now){
+  const dt=1/doc.control.loop_hz;
+  if(!sim.last) sim.last=now;
+  let elapsed=(now-sim.last)/1000; sim.last=now;
+  elapsed=Math.min(elapsed,0.05); sim.acc+=elapsed;
+  let n=0;
+  while(sim.acc>=dt && n<4){
+    const t=sim.time;
+    for(let i=0;i<doc.segments.length;i++){
+      const s=doc.segments[i];
+      let target=s.target;
+      if(sim.sine && i===1) target=0.6*Math.sin(t*Math.PI*2*0.55);
+      if(sim.sine && i===2) target=-0.35+0.35*Math.sin(t*Math.PI*2*0.55+0.8);
+      const err=target-sim.q[i];
+      let tau=s.kp*err-s.kd*sim.qd[i];
+      tau=clamp(tau,-s.torque,s.torque);
+      const qdd=(tau-s.damping*sim.qd[i])/s.inertia;
+      sim.qd[i]+=qdd*dt;
+      sim.q[i]+=sim.qd[i]*dt;
+      const lo=s.min*D2R, hi=s.max*D2R;
+      if(sim.q[i]<lo){ sim.q[i]=lo; sim.qd[i]=0; }
+      if(sim.q[i]>hi){ sim.q[i]=hi; sim.qd[i]=0; }
+      s.q=sim.q[i];
+      sim.errHist.push(absDeg(err));
+      if(sim.errHist.length>360) sim.errHist.shift();
+    }
+    sim.time+=dt; sim.acc-=dt; n++;
+  }
+  if(bridge.online && bridge.ws && bridge.ws.readyState===1 && now-bridge.lastSend>100){
+    bridge.lastSend=now;
+    bridge.ws.send(JSON.stringify({type:"command",seq:++sim.seq,target:doc.segments.map(s=>+s.target.toFixed(5)),q:doc.segments.map(s=>+s.q.toFixed(5))}));
+  }
+}
+function absDeg(v){ return Math.abs(v*R2D); }
+
+/* ==========================================================================
+   TELEMETRY
+   ========================================================================== */
+const chart=$("chart"), chartCtx=chart.getContext("2d");
+function resizeChart(){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=chart.clientWidth||1,h=chart.clientHeight||1;
+  if(chart.width!==Math.floor(w*dpr)||chart.height!==Math.floor(h*dpr)){
+    chart.width=Math.floor(w*dpr); chart.height=Math.floor(h*dpr);
+  }
+}
+function drawChart(){
+  resizeChart();
+  const w=chart.width,h=chart.height; chartCtx.clearRect(0,0,w,h);
+  chartCtx.fillStyle="#0b1014"; chartCtx.fillRect(0,0,w,h);
+  chartCtx.strokeStyle="#1d2a31"; chartCtx.lineWidth=1;
+  for(let i=1;i<4;i++){ const y=h*i/4; chartCtx.beginPath(); chartCtx.moveTo(0,y); chartCtx.lineTo(w,y); chartCtx.stroke(); }
+  const data=sim.errHist;
+  if(data.length>1){
+    chartCtx.strokeStyle="#37c7d4"; chartCtx.lineWidth=1.5; chartCtx.beginPath();
+    data.forEach((v,i)=>{ const x=i/(data.length-1)*w; const y=h-clamp(v,0,40)/40*h; i?chartCtx.lineTo(x,y):chartCtx.moveTo(x,y); });
+    chartCtx.stroke();
+  }
+  chartCtx.fillStyle="#6d838c"; chartCtx.font="10px Segoe UI"; chartCtx.fillText("JOINT ERROR / 40° FULL SCALE",8,14);
+}
+function updateTelemetry(now){
+  if(now-sim.lastUi<80) return; sim.lastUi=now;
+  const errs=doc.segments.map(s=>Math.abs((s.target-s.q)*R2D));
+  const rms=Math.sqrt(errs.reduce((a,b)=>a+b*b,0)/errs.length);
+  const peak=Math.max(...errs);
+  const tq=doc.segments.reduce((a,s)=>a+Math.abs(s.kp*(s.target-s.q)-s.kd*sim.qd[doc.segments.indexOf(s)]),0);
+  $("mLoop").textContent=sim.running?"100 Hz":"PAUSED";
+  $("mMode").textContent=bridge.online?"bridge live":(sim.sine?"sine injection":"local PD");
+  $("mRms").textContent=fmt(rms,1)+"°";
+  $("mPeak").textContent=fmt(peak,1)+"°";
+  $("mTorque").textContent=fmt(tq,1);
+  $("mLoss").textContent=bridge.online?"0":"0";
+  $("mTime").textContent=fmt(sim.time,2);
+  drawChart();
+}
+
+/* ==========================================================================
+   DOCUMENT UI
+   ========================================================================== */
+const treeEl=$("tree"), purposeEl=$("purpose"), inspectorEl=$("inspector"), selIdEl=$("selId");
+function segById(id){ return doc.segments.find(s=>s.id===id); }
+function select(kind,index){
+  selected={kind,index}; renderTree(); renderInspector(); updatePurpose();
+}
+function renderTree(){
+  let html=`<div class="tree-item ${selected.kind==="base"?"active":""}" data-kind="base" data-index="-1">
+    <span class="tag">FIXED</span><div class="k">BASE</div><div class="v">ground frame · ${fmt(doc.base.w,2)} × ${fmt(doc.base.d,2)} m</div></div>`;
+  doc.segments.forEach((s,i)=>{
+    const active=selected.kind==="joint"&&selected.index===i;
+    html+=`<div class="tree-item ${active?"active":""}" data-kind="joint" data-index="${i}">
+      <span class="tag">${s.id}</span><div class="k">${s.name}</div><div class="v">L ${fmt(s.length,2)} m · q ${fmt(s.q*R2D,0)}° · ${fmt(s.torque,0)} N·m</div></div>`;
+  });
+  treeEl.innerHTML=html;
+  treeEl.querySelectorAll(".tree-item").forEach(el=>el.onclick=()=>{
+    const kind=el.dataset.kind, index=Number(el.dataset.index);
+    select(kind,index);
+  });
+}
+function updatePurpose(){
+  if(selected.kind==="base"){
+    purposeEl.innerHTML="<b>BASE / WHY IT EXISTS</b>唯一固定基准。它只提供世界坐标和承重，不参与驱动，不承担控制策略。";
+    selIdEl.textContent="BASE";
+    return;
+  }
+  const s=doc.segments[selected.index];
+  purposeEl.innerHTML=`<b>${s.id} / WHY IT EXISTS</b>${s.name} 关节 + 连杆段。负责这一节的姿态与力矩传递；不负责整机路径规划，也不认识 MuJoCo。`;
+  selIdEl.textContent=s.id;
+}
+function renderInspector(){
+  if(selected.kind==="base"){
+    inspectorEl.innerHTML=`<div class="group"><div class="gtitle">BASE GEOMETRY</div>
+      <div class="split">
+        <div class="field"><label>WIDTH / m</label><input id="bw" type="number" step="0.01" value="${fmt(doc.base.w,2)}"></div>
+        <div class="field"><label>HEIGHT / m</label><input id="bh" type="number" step="0.01" value="${fmt(doc.base.h,2)}"></div>
+      </div>
+      <div class="field" style="margin-top:9px"><label>DEPTH / m</label><input id="bd" type="number" step="0.01" value="${fmt(doc.base.d,2)}"></div>
+      <div class="note">Base 只负责固定基准。改尺寸会影响肩关节高度，但不会改控制逻辑。</div>
+      </div>
+      <div class="group"><div class="gtitle">DOCUMENT</div><div class="actions">
+        <button id="btnSave">SAVE JSON</button><button id="btnLoad">LOAD JSON</button>
+      </div></div>`;
+    $("bw").oninput=e=>{doc.base.w=+e.target.value||0.1;};
+    $("bh").oninput=e=>{doc.base.h=+e.target.value||0.1;};
+    $("bd").oninput=e=>{doc.base.d=+e.target.value||0.1;};
+    $("btnSave").onclick=saveDoc; $("btnLoad").onclick=()=>$("fileDoc").click();
+    return;
+  }
+  const i=selected.index, s=doc.segments[i];
+  inspectorEl.innerHTML=`<div class="group"><div class="gtitle">JOINT ${s.id} / ${s.name}</div>
+    <div class="row"><span>TARGET ANGLE</span><output id="vTarget">${fmt(s.target*R2D,1)}°</output></div>
+    <input id="inTarget" type="range" min="${s.min}" max="${s.max}" step="0.1" value="${fmt(s.target*R2D,1)}">
+    <div class="row"><span>ACTUAL ANGLE</span><output id="vActual">${fmt(s.q*R2D,1)}°</output></div>
+    <div class="split" style="margin-top:10px">
+      <div class="field"><label>MIN / deg</label><input id="inMin" type="number" step="1" value="${fmt(s.min,0)}"></div>
+      <div class="field"><label>MAX / deg</label><input id="inMax" type="number" step="1" value="${fmt(s.max,0)}"></div>
+    </div>
+    <div class="split" style="margin-top:9px">
+      <div class="field"><label>TORQUE / N·m</label><input id="inTq" type="number" step="0.5" value="${fmt(s.torque,1)}"></div>
+      <div class="field"><label>INERTIA</label><input id="inIn" type="number" step="0.001" value="${fmt(s.inertia,3)}"></div>
+    </div>
+    <div class="split" style="margin-top:9px">
+      <div class="field"><label>KP</label><input id="inKp" type="number" step="1" value="${fmt(s.kp,0)}"></div>
+      <div class="field"><label>KD</label><input id="inKd" type="number" step="1" value="${fmt(s.kd,0)}"></div>
+    </div>
+    <div class="note">拖动 TARGET 看 PD 跟踪。q 是相对父关节的角度；实际值来自本地仿真。</div>
+  </div>
+  <div class="group"><div class="gtitle">LINK GEOMETRY</div>
+    <div class="split">
+      <div class="field"><label>LENGTH / m</label><input id="inLen" type="number" step="0.01" value="${fmt(s.length,2)}"></div>
+      <div class="field"><label>WIDTH / m</label><input id="inWid" type="number" step="0.01" value="${fmt(s.width,2)}"></div>
+    </div>
+    <div class="field" style="margin-top:9px"><label>DEPTH / m</label><input id="inDep" type="number" step="0.01" value="${fmt(s.depth,2)}"></div>
+    <div class="note">这是机器人专用建模：只改 link 尺寸和 joint 参数，不做网格雕刻、不碰材质系统。</div>
+  </div>
+  <div class="group"><div class="gtitle">DOCUMENT OUTPUT</div>
+    <div class="actions">
+      <button id="btnSave">SAVE JSON</button><button id="btnLoad">LOAD JSON</button>
+    </div>
+    <div class="actions" style="margin-top:7px">
+      <button class="amber" id="btnXml">MUJOCO XML</button><button id="btnManifest">BUS MANIFEST</button>
+    </div>
+  </div>
+  <div class="group"><div class="gtitle">KERNEL BRIDGE / EXPERIMENTAL SEAM</div>
+    <div class="bridge"><div class="status ${bridge.online?"on":""}" id="bridgeStatus">${bridge.online?"CONNECTED":"DISCONNECTED"}</div>
+      <input id="bridgeUrl" type="text" value="${bridge.url}">
+      <button style="width:100%" id="btnBridge">${bridge.online?"DISCONNECT":"CONNECT"}</button>
+      <div class="note">内核不在这里被 import。它跑在 QEMU/板子里；这里只接临时 WebSocket 桥，报文格式见 BUS MANIFEST。</div>
+    </div>
+  </div>`;
+
+  $("inTarget").oninput=e=>{ s.target=+e.target.value*D2R; $("vTarget").textContent=fmt(+e.target.value,1)+"°"; };
+  $("inMin").oninput=e=>{ s.min=+e.target.value; s.q=clamp(s.q,s.min*D2R,s.max*D2R); };
+  $("inMax").oninput=e=>{ s.max=+e.target.value; s.q=clamp(s.q,s.min*D2R,s.max*D2R); };
+  $("inTq").oninput=e=>s.torque=Math.max(0,+e.target.value);
+  $("inIn").oninput=e=>s.inertia=Math.max(0.001,+e.target.value);
+  $("inKp").oninput=e=>s.kp=Math.max(0,+e.target.value);
+  $("inKd").oninput=e=>s.kd=Math.max(0,+e.target.value);
+  $("inLen").oninput=e=>{ s.length=Math.max(0.05,+e.target.value); renderTree(); };
+  $("inWid").oninput=e=>{ s.width=Math.max(0.01,+e.target.value); };
+  $("inDep").oninput=e=>{ s.depth=Math.max(0.01,+e.target.value); };
+  $("btnSave").onclick=saveDoc; $("btnLoad").onclick=()=>$("fileDoc").click();
+  $("btnXml").onclick=exportXml; $("btnManifest").onclick=exportManifest;
+  $("btnBridge").onclick=toggleBridge;
+}
+
+/* ==========================================================================
+   SAVE / LOAD / EXPORT
+   ========================================================================== */
+function download(name,content,type){
+  const blob=new Blob([content],{type});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast("已导出 "+name);
+}
+function saveDoc(){ download(doc.name.replace(/\s+/g,"_").toLowerCase()+".json",JSON.stringify(doc,null,2),"application/json"); }
+function loadDoc(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      if(!d.segments||!d.segments.length) throw new Error("missing segments");
+      doc=d; sim.q=doc.segments.map(s=>s.q); sim.qd=doc.segments.map(()=>0); sim.errHist=[];
+      selected={kind:"joint",index:0}; ensureLabels(); renderTree(); renderInspector(); updatePurpose(); toast("BodyDocument 已加载");
+    }catch(e){ toast("加载失败: "+e.message); }
+  };
+  r.readAsText(file);
+}
+$("fileDoc").onchange=e=>{ if(e.target.files[0]) loadDoc(e.target.files[0]); };
+
+function n(v){ return (Math.round(v*10000)/10000).toString(); }
+function rgba(c){ return c.map(x=>n(x)).join(" ")+" 1"; }
+function buildXml(){
+  const b=doc.base;
+  let x=`<mujoco model="aevum_arm3">\n  <compiler angle="degree"/>\n  <option timestep="${n(doc.control.dt)}"/>\n  <worldbody>\n`;
+  x+=`    <body name="base" pos="0 0 0">\n`;
+  x+=`      <geom name="base_geom" type="box" size="${n(b.w/2)} ${n(b.h/2)} ${n(b.d/2)}" pos="0 ${n(b.h/2)} 0" rgba="${rgba(b.color)}"/>\n`;
+  let parentIndent="      ";
+  for(let i=0;i<doc.segments.length;i++){
+    const s=doc.segments[i];
+    const pos=i===0?`0 ${n(b.h)} 0`:`${n(doc.segments[i-1].length)} 0 0`;
+    x+=`${parentIndent}<body name="${s.id.toLowerCase()}" pos="${pos}">\n`;
+    const j=parentIndent+"  ";
+    x+=`${j}<joint name="${s.id.toLowerCase()}_joint" type="hinge" axis="0 0 1" range="${n(s.min)} ${n(s.max)}" armature="${n(s.inertia)}" damping="${n(s.damping)}"/>\n`;
+    x+=`${j}<geom name="${s.id.toLowerCase()}_geom" type="box" size="${n(s.length/2)} ${n(s.width/2)} ${n(s.depth/2)}" pos="${n(s.length/2)} 0 0" rgba="${rgba(s.color)}"/>\n`;
+    parentIndent=j;
+  }
+  // close nested bodies
+  for(let i=doc.segments.length-1;i>=0;i--){ x+=`${"      ".repeat(i+1)}</body>\n`; }
+  x+=`    </body>\n  </worldbody>\n`;
+  x+=`  <actuator>\n`;
+  doc.segments.forEach(s=>{ x+=`    <motor name="m_${s.id.toLowerCase()}" joint="${s.id.toLowerCase()}_joint" ctrlrange="-1 1" gear="${n(s.torque)}"/>\n`; });
+  x+=`  </actuator>\n</mujoco>\n`;
+  return x;
+}
+function exportXml(){ download("aevum_arm3.xml",buildXml(),"application/xml"); }
+function exportManifest(){
+  const m={
+    format:"aevum.virtual_bus/0",
+    body:doc,
+    transport:{kind:"websocket",url:bridge.url,loop_hz:doc.control.loop_hz},
+    packet:{command:"seq,target[3],q[3]",state:"seq,q[3],target[3],error[3]"},
+    note:"Temporary experimental seam. The kernel runs outside this page; this manifest is not a formal robot API."
+  };
+  download("aevum_arm3_bus.json",JSON.stringify(m,null,2),"application/json");
+}
+
+/* ==========================================================================
+   BRIDGE
+   ========================================================================== */
+function toggleBridge(){
+  if(bridge.online){
+    try{bridge.ws.close();}catch(e){}
+    return;
+  }
+  const url=$("bridgeUrl").value.trim(); bridge.url=url;
+  try{
+    const ws=new WebSocket(url); bridge.ws=ws;
+    ws.onopen=()=>{ bridge.online=true; $("kernelPill").textContent="KERNEL LINK"; $("kernelPill").className="pill on"; renderInspector(); toast("Bridge connected"); };
+    ws.onclose=()=>{ bridge.online=false; $("kernelPill").textContent="KERNEL OFFLINE"; $("kernelPill").className="pill warn"; renderInspector(); };
+    ws.onerror=()=>{ toast("Bridge 不可达；本地仿真继续"); };
+    ws.onmessage=e=>{
+      try{
+        const m=JSON.parse(e.data);
+        if(Array.isArray(m.q)) m.q.forEach((v,i)=>{ if(doc.segments[i]){ doc.segments[i].q=v; sim.q[i]=v; }});
+        if(Array.isArray(m.target)) m.target.forEach((v,i)=>{ if(doc.segments[i]) doc.segments[i].target=v; });
+      }catch(err){}
+    };
+  }catch(e){ toast("Bridge 连接失败: "+e.message); }
+}
+
+/* ==========================================================================
+   UI / BUTTONS
+   ========================================================================== */
+function toast(msg){
+  const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toast.t);
+  toast.t=setTimeout(()=>t.classList.remove("show"),2400);
+}
+$("btnRun").onclick=()=>{
+  sim.running=!sim.running; sim.last=performance.now(); sim.acc=0;
+  $("btnRun").textContent=sim.running?"PAUSE":"RUN";
+  $("modePill").textContent=sim.running?"LOCAL SIM / RUN":"LOCAL SIM";
+  $("modePill").className=sim.running?"pill on":"pill";
+};
+$("btnSine").onclick=()=>{ sim.sine=!sim.sine; sim.running=true; sim.last=performance.now(); $("btnSine").textContent=sim.sine?"SINE ON":"SINE TEST"; toast(sim.sine?"正弦激励已开启":"已回到目标角"); };
+$("btnReset").onclick=()=>{ resetSim(); toast("已复位到目标姿态"); };
+window.addEventListener("resize",()=>{ resizeChart(); });
+
+/* ==========================================================================
+   BOOT
+   ========================================================================== */
+ensureLabels(); renderTree(); renderInspector(); updatePurpose(); resizeChart();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

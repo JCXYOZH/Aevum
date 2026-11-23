@@ -2,6 +2,12 @@
 
 一个纵向滚动的页面，四块内容：首屏（灵体 + 项目一句话）、内核实况（QEMU 串口送出的 VGA 文本帧）、开源进度（仓库数字 + ROADMAP 阶段）、中继交流区（房间在线/浏览、帖子流、发言）。浏览器直接打开 `index.html` 就能看；中继不在线时交流区显示未连接，页面其余部分照常。
 
+## Forge 机械臂建模台
+
+`forge/` 是独立的机器人专用 3D 建模与控制台入口，第一台身体是 3R 平面机械臂。页面是单文件 `forge/index.html`，不依赖 React、Three.js 或构建工具；3D 视口、矩阵、相机、关节标签和拾取都使用页面自己的 WebGL 代码。它做 BodyDocument 参数编辑、100 Hz PD 控制、正弦测试、误差曲线，以及 JSON / MuJoCo XML / `aevum.virtual_bus/0` manifest 导出。
+
+Forge 只做呈现和本地控制可视化，不 `import` 内核；内核仍由 QEMU / Renode / 真实板加载。右上角 `KERNEL OFFLINE` 是真实状态，WebSocket 接缝默认是 `ws://127.0.0.1:8765`。详细边界见 [forge/README.md](forge/README.md)。
+
 ## 3D 场景层
 
 `desktop.html` 和 `index.html` 共用一层 WebGL 地面网格：3D 只负责空间、相机、节点选择与角色位，原有窗口、输入、滚动、iframe 和拖拽仍然由 DOM 负责。根地址 `/` 显示 `index.html` 展示页，`desktop.html` 是单独的桌面入口。桌面页当前暴露 `MrHua`、`订阅`、`内核实况`、`展示页` 和 `拍照` 五个常驻启动项：`MrHua` 在 3D 桌面的程序窗口里打开完整 `/mrhua/` 工作台；`订阅` 是桌面里的原生窗口，直接复用 `mrhua/partials/windows/workspace/subscribe.html` 与 `loop-subscribe.js`，没有嵌入页、双层壳或身份认证门；`内核实况` 通过 `serial_bridge.py` 接收 QEMU 里真实内核的 80×25 VGA 差量帧，`展示页` 在窗口里打开原 `index.html`；`拍照` 会把地面网格和角色一起拍成图片，也接受本地图片，图片只保存在当前页面的内存里，刷新即清空，不上传、不写 localStorage；载入或拍下后会自动放进 3D 空间作为背景板，清空时一并移出。拍照窗口同时出现在左侧启动项和启动台里。其它应用窗口代码仍保留在注册表和 panels 里，通过 `MD.visibleApps` 控制是否显示；地面只保留角色位圆环，不渲染节点小标签，避免视觉噪声。展示页用 `#world` 做同一个长页的 3D 索引，5 个入口标签仍负责滚动和跳转。桌面页角色位 01 已接入真实 VRM，角色位 02 默认接入 PMX，也可以用 `?guide=live2d` 换成 Live2D。VRM 已有方向主光、环境补光、高光和 fresnel 轮廓光；角色画布默认显示在窗口后面，不会盖住窗口内容，场景工具栏里的“隐藏角色”可以整层收起角色。点击空白地面，离点击点最近的角色会走向该位置；近距离是 `walk`，远距离或按住 Shift 是 `run`，VRM 的步态来自 `engine/assets/all_animations.glb` 经 `AnimationRetarget` 重定向，PMX 用程序化 `walk` / `run`，待机头部朝向来自指针视线控制器。桌面页的 3D 空间不接节点点击，点地面不会误打开窗口。

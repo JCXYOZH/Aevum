@@ -23,7 +23,7 @@ Aevum/
 │  ├─ supervisor.py            # 多进程启动、停止、状态轮询
 │  └─ relay/                   # 纯内存中继，原 apps/relay
 ├─ interface/                  # 呈现层，只显示，不承载业务
-│  ├─ web/                     # 展示页、3D 桌面、MrHua
+│  ├─ web/                     # 展示页、3D 桌面、Forge 机械臂建模台、MrHua
 │  ├─ desktop/                 # Electron 壳
 │  └─ console/                 # 旧 QML / Web UI
 ├─ archive/
