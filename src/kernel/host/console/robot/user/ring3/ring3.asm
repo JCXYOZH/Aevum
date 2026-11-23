@@ -26,8 +26,14 @@
 ; 0x40116C thread join 返回值，0x401170 "THRD" 验收字；
 ; 0x401174 detached worker TID，0x401178 detached 共享计数器，
 ; 0x40117C detached worker 的 thread_detach 返回值，0x401180 detached 完成标记，
-; 0x401184 detached worker TID 副本，0x401188 detached join 返回值，
+; 0x401184 detached worker gettid，0x401188 detached join 返回值，
 ; 0x40118C "DETD" 验收字；
+; 0x4011BC "EDGE" 非法参数验收字；
+; 0x4011C0 P7.3 fork 只执行一次，0x4011C4 "MTHR" 主线程先退验收字；
+; 子进程内部：0x401190 主 TID、0x401194 worker TID、0x401198 共享计数、
+; 0x40119C 主线程已置退出标记、0x4011A0 worker join 主线程的 status、
+; 0x4011A4 join 返回值、0x4011A8 worker gettid、0x4011AC worker 验收字；
+; 父进程：0x4011B0 子 PID、0x4011B4 wait status、0x4011B8 wait 返回值；
 ; 0x401100..0x40111F pool 8 个子进程 pid；
 ; stress 复用 0x4010C0 round、0x4010C4 "POOL" 完成魔数、0x4010C8 只执行一次，
 ; 0x401100 first PID、0x401104 last PID、0x401108 wait status；
@@ -384,10 +390,96 @@ user_program_start:
     cmp dword [0x401184], 0
     je .thread_det_bad
     mov dword [0x40118C], 0x44544544 ; "DETD"
-    jmp .yield
+    jmp .thread_edge_round
 
 .thread_det_bad:
     mov dword [0x40118C], 0x424144 ; "BAD"
+    jmp .thread_edge_round
+
+; P7.3：非法参数矩阵。join 0/-1/self/不存在 TID、detach 0/-1/不存在 TID
+; 都必须返回 -1，不能把当前线程或线程组弄成异常状态。
+.thread_edge_round:
+    mov eax, 22             ; thread_join(0, 0)
+    xor ebx, ebx
+    xor ecx, ecx
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    jne .thread_edge_bad
+
+    mov eax, 22             ; thread_join(-1, 0)
+    mov ebx, 0xFFFFFFFF
+    xor ecx, ecx
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    jne .thread_edge_bad
+
+    mov eax, 21             ; gettid
+    int 0x80
+    mov ebx, eax
+    mov eax, 22             ; thread_join(self, 0)
+    xor ecx, ecx
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    jne .thread_edge_bad
+
+    mov eax, 22             ; thread_join(99, 0)
+    mov ebx, 99
+    xor ecx, ecx
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    jne .thread_edge_bad
+
+    mov eax, 23             ; thread_detach(0)
+    xor ebx, ebx
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    jne .thread_edge_bad
+
+    mov eax, 23             ; thread_detach(-1)
+    mov ebx, 0xFFFFFFFF
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    jne .thread_edge_bad
+
+    mov eax, 23             ; thread_detach(99)
+    mov ebx, 99
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    jne .thread_edge_bad
+
+    mov dword [0x4011BC], 0x45444745 ; "EDGE"
+    jmp .main_exit_round
+
+.thread_edge_bad:
+    mov dword [0x4011BC], 0x424144 ; "BAD"
+
+; P7.3：fork 一个子进程，在子进程里先让主线程退出，worker 继续运行并
+; join 主线程；worker 作为最后活线程 exit(7)，父进程 wait 必须得到 7。
+.main_exit_round:
+    cmp dword [0x4011C0], 0
+    jne .yield
+    mov dword [0x4011C0], 1
+
+    mov eax, 6              ; syscall: fork
+    int 0x80
+    test eax, eax
+    jz .child_main_exit
+
+    mov [0x4011B0], eax             ; child pid
+    mov ebx, eax
+    mov ecx, 0x4011B4
+    mov eax, 4              ; syscall: wait
+    int 0x80
+    mov [0x4011B8], eax
+    cmp dword [0x4011B4], 7
+    jne .main_exit_bad
+    cmp eax, [0x4011B0]
+    jne .main_exit_bad
+    mov dword [0x4011C4], 0x4D544852 ; "MTHR"
+    jmp .yield
+
+.main_exit_bad:
+    mov dword [0x4011C4], 0x424144 ; "BAD"
     jmp .yield
 
 .thread_bad:
@@ -430,6 +522,52 @@ user_program_start:
     mov eax, 3              ; syscall: exit(11)
     mov ebx, 11
     int 0x80
+
+; P7.3 子进程：主线程 clone worker 后先 thread_exit，worker 继续执行。
+.child_main_exit:
+    mov dword [0x401190], 0
+    mov dword [0x401194], 0
+    mov dword [0x401198], 0
+    mov dword [0x40119C], 0
+    mov dword [0x4011A0], 0
+    mov dword [0x4011A4], 0
+    mov dword [0x4011A8], 0
+    mov dword [0x4011AC], 0
+
+    mov eax, 8              ; syscall: brk(0x406000)，worker 复用 heap 第一页
+    mov ebx, 0x406000
+    int 0x80
+    cmp eax, 0x406000
+    jne .child_main_exit_bad
+
+    mov eax, 21             ; syscall: gettid
+    int 0x80
+    mov [0x401190], eax
+
+    mov eax, 19             ; syscall: clone(worker, stack, flags, main_tid)
+    mov ebx, user_main_first_worker - user_program_start + 0x400000
+    mov ecx, 0x406000
+    mov edx, 0x00010D00     ; VM|FILES|SIGHAND|THREAD
+    mov esi, [0x401190]
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    je .child_main_exit_bad
+    mov [0x401194], eax
+
+    mov dword [0x40119C], 1 ; 最后一道共享写：通知 worker 主线程即将退出
+    mov eax, 20             ; syscall: thread_exit(0)
+    xor ebx, ebx
+    int 0x80
+    jmp .hang_main_first
+
+.child_main_exit_bad:
+    mov dword [0x4011AC], 0x424144 ; "BAD"
+    mov eax, 20             ; 唯一线程直接退出 8，父进程 wait 可判定失败
+    mov ebx, 8
+    int 0x80
+
+.hang_main_first:
+    jmp .hang_main_first
 
 .cow_bad:
     mov dword [0x401040], 0x424144   ; "BAD"
@@ -775,6 +913,49 @@ user_detached_entry:
     int 0x80
 .hang_detached:
     jmp .hang_detached
+
+; P7.3 worker：主线程已经 thread_exit，worker 仍被调度；它 join 主 TID，
+; 校验主线程退出码 0 后作为最后活线程 thread_exit(7)。
+user_main_first_worker:
+    mov [0x401190], eax     ; clone arg = 主线程 TID
+    mov eax, 21              ; syscall: gettid
+    int 0x80
+    mov [0x4011A8], eax
+    cmp eax, [0x401190]
+    je .main_first_fail
+
+.main_first_wait:
+    cmp dword [0x40119C], 1
+    je .main_first_join
+    mov eax, 2              ; 主线程尚未执行最后的 thread_exit
+    int 0x80
+    jmp .main_first_wait
+
+.main_first_join:
+    mov ebx, [0x401190]     ; 主线程 TID
+    mov ecx, 0x4011A0
+    mov eax, 22              ; syscall: thread_join(main_tid, &status)
+    int 0x80
+    mov [0x4011A4], eax
+    test eax, eax
+    jnz .main_first_fail
+    cmp dword [0x4011A0], 0 ; 主线程 thread_exit(0)
+    jne .main_first_fail
+    mov dword [0x4011AC], 0x4D41494E ; "MAIN"
+    mov eax, 20              ; syscall: 最后线程 thread_exit(7)
+    mov ebx, 7
+    int 0x80
+    jmp .hang_main_worker
+
+.main_first_fail:
+    mov dword [0x4011AC], 0x424144 ; "BAD"
+    mov eax, 20
+    mov ebx, 8
+    int 0x80
+    jmp .hang_main_worker
+
+.hang_main_worker:
+    jmp .hang_main_worker
 
 user_program_end:
 

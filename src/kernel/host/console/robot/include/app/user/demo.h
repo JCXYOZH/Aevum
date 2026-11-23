@@ -76,6 +76,10 @@ u32 user_demo_thread_det_ret(int lane);
 u32 user_demo_thread_det_join_ret(int lane);
 u32 user_demo_thread_det_ok(int lane);
 
+/* P7.3：非法参数矩阵，以及主线程先退、worker 继续并 join 主线程。 */
+u32 user_demo_thread_edge_ok(int lane);
+u32 user_demo_main_first_ok(int lane);
+
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);
 u32 user_demo_heap_peek(int lane);

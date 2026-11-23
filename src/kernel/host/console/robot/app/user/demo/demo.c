@@ -301,6 +301,18 @@ u32 user_demo_thread_det_ok(int lane)
     return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x18Cu);
 }
 
+u32 user_demo_thread_edge_ok(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x1BCu);
+}
+
+u32 user_demo_main_first_ok(int lane)
+{
+    if (lane != USER_DEMO_FORK_LANE || !spaces[lane]) return 0;
+    return address_space_user_read32(spaces[lane], AEVUM_USER_DATA_VA + 0x1C4u);
+}
+
 u32 user_demo_brk(int lane)
 {
     if (lane < 0 || lane >= USER_DEMO_LANES || !spaces[lane]) return 0;

@@ -219,6 +219,14 @@ void ur_render_address(void)
     vga_text(54, 20,
              user_demo_thread_det_ok(USER_DEMO_FORK_LANE) == 0x44544544u ? "OK" : "..",
              user_demo_thread_det_ok(USER_DEMO_FORK_LANE) == 0x44544544u ? C_GREEN : C_YELLOW);
+    vga_text(58, 20, "main", C_GRAY);
+    vga_text(63, 20,
+             user_demo_main_first_ok(USER_DEMO_FORK_LANE) == 0x4D544852u ? "OK" : "..",
+             user_demo_main_first_ok(USER_DEMO_FORK_LANE) == 0x4D544852u ? C_GREEN : C_YELLOW);
+    vga_text(67, 20, "arg", C_GRAY);
+    vga_text(71, 20,
+             user_demo_thread_edge_ok(USER_DEMO_FORK_LANE) == 0x45444745u ? "OK" : "..",
+             user_demo_thread_edge_ok(USER_DEMO_FORK_LANE) == 0x45444745u ? C_GREEN : C_YELLOW);
 
     wait_magic = user_demo_wait_magic(USER_DEMO_FORK_LANE);
     cow_ok = user_demo_cow_ok(USER_DEMO_FORK_LANE);

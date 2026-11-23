@@ -58,7 +58,6 @@ struct process {
     char comm[PROC_NAME_MAX + 1];
     u32 stack_top;
     struct address_space *space;
-    struct task_struct *task;
     u32 pending;
     u32 last_sig;
     u32 term_sig;
@@ -109,7 +108,6 @@ static void proc_zero(struct process *p)
     for (i = 0; i <= PROC_NAME_MAX; i++) p->comm[i] = 0;
     p->stack_top = 0;
     p->space = 0;
-    p->task = 0;
     p->image_id = 0;
     p->exec_argc = 0;
     p->exec_envc = 0;
@@ -453,7 +451,6 @@ static void process_reap(struct process *p)
     (void)task_release_process_threads(p);
     if (p->space) address_space_release(p->space);
     task_pid_release(p->pid);
-    p->task = 0;
     p->space = 0;
     p->stack_top = 0;
     p->state = PROC_DEAD;
@@ -508,7 +505,6 @@ struct process *process_create_user(int priority, const char *name,
                   : 0;
     p->stack_top = stack_top;
     p->space = space;
-    p->task = 0;
     p->exit_code = 0;
     proc_copy_name(p, name);
     proc_fd_console_open(&p->fds);
@@ -523,7 +519,6 @@ struct process *process_create_user(int priority, const char *name,
         task_pid_release(pid);
         return 0;
     }
-    p->task = task;
     return p;
 }
 
@@ -572,7 +567,6 @@ struct process *process_fork(struct irq_frame *frame)
     p->ppid = parent->pid;
     p->stack_top = stack_top;
     p->space = space;
-    p->task = 0;
     p->exit_code = 0;
     proc_copy_name(p, "userE");
     /* 信号动作与 mask 随 fork 继承；pending 不继承。 */
@@ -597,7 +591,6 @@ struct process *process_fork(struct irq_frame *frame)
         task_pid_release(pid);
         return 0;
     }
-    p->task = task;
     return p;
 }
 
@@ -793,7 +786,6 @@ struct process *process_spawn_current(int priority, const char *name,
     p->ppid = parent->pid;
     p->stack_top = stack_top;
     p->space = space;
-    p->task = 0;
     p->exit_code = 0;
     p->image_id = (u32)image_id;
     p->exec_argc = args.argc;
@@ -819,7 +811,6 @@ struct process *process_spawn_current(int priority, const char *name,
         task_pid_release(pid);
         return 0;
     }
-    p->task = task;
     return p;
 }
 

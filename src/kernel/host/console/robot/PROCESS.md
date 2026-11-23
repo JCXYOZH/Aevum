@@ -2,9 +2,9 @@
 
 本文只讨论 ring3 用户进程，不把 `control/render/idle` 这三个内核任务当成完整进程。
 
-P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题；P4.1 加入内嵌 flat 镜像 `exec`，保留 PID/任务槽，替换用户 AS、入口、栈和信号状态；P4.2 给 `exec` 增加 `argv/envp` 解析、字符串迁移和 SysV 初始栈；P4.3 增加每进程 fd 表、匿名 pipe、`pipe/read/write/close`，并证明 exec 后 fd 表继续有效；P4.4 把 fd 0/1 接到 console 字符设备，验证键盘输入、VGA/COM1 输出、fork 继承和 close 边界。P7.0 增加 `spawn(image_id,argv,envp)`：不经过 fork，直接为当前进程创建独立 AS/PCB/内核栈/用户栈的子进程，D lane 用 image 1 子进程和 wait(10) 做闭环。P7.1 增加最小线程组：`clone` 只共享 VM/FILES/SIGHAND/THREAD，`task` 拥有独立 TID/内核栈/用户栈/FPU，`thread_exit` 只结束当前任务，`thread_join` 回收同组任务，最后一个活线程退出才让进程进入 ZOMBIE。P7.2 增加 `thread_detach`：detached 线程退出后由调度器延后回收任务槽/内核栈，之后 `thread_join` 返回 -1。
+P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/reap` 闭环。P2.1 把地址空间推进到“255 页物理池 + 6 个 VMA + brk + guard + copyin/copyout”。P2.2 完成 COW fork 与物理页引用计数。P3.1 完成用户同步异常的默认终止、信号 pending/SIGCHLD、wait status 编码和 V 页信号视图；P3.2 在默认终止之上加入每进程 handler 表、用户栈 signal frame、`sigreturn`，并修复第二次 fork 时已有 COW 页丢失 COW 位的问题；P4.1 加入内嵌 flat 镜像 `exec`，保留 PID/任务槽，替换用户 AS、入口、栈和信号状态；P4.2 给 `exec` 增加 `argv/envp` 解析、字符串迁移和 SysV 初始栈；P4.3 增加每进程 fd 表、匿名 pipe、`pipe/read/write/close`，并证明 exec 后 fd 表继续有效；P4.4 把 fd 0/1 接到 console 字符设备，验证键盘输入、VGA/COM1 输出、fork 继承和 close 边界。P7.0 增加 `spawn(image_id,argv,envp)`：不经过 fork，直接为当前进程创建独立 AS/PCB/内核栈/用户栈的子进程，D lane 用 image 1 子进程和 wait(10) 做闭环。P7.1 增加最小线程组：`clone` 只共享 VM/FILES/SIGHAND/THREAD，`task` 拥有独立 TID/内核栈/用户栈/FPU，`thread_exit` 只结束当前任务，`thread_join` 回收同组任务，最后一个活线程退出才让进程进入 ZOMBIE。P7.2 增加 `thread_detach`：detached 线程退出后由调度器延后回收任务槽/内核栈，之后 `thread_join` 返回 -1。P7.3 验证主线程先退、worker 继续并 join 主线程，同时把所有非法 join/detach 参数压回 -1。
 
-## 一、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3/P6.0/P7.0/P7.1/P7.2 现在的实现
+## 一、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3/P6.0/P7.0/P7.1/P7.2/P7.3 现在的实现
 
 | 能力 | 当前实现 | 位置 |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ P1 建立用户进程 PCB、PID、父子关系、退出码和 `fork/exit/wait/re
 | P7.1 thread exit/join | `eax=20 thread_exit(code)` 只把当前任务置 ZOMBIE；最后一个活线程退出才 `process_exit_current()`。`eax=21 gettid()` 返回当前 TID。`eax=22 thread_join(tid,status)` 只接受同组、非当前、已 ZOMBIE 的线程，复制退出码后 `task_reap_thread()` 回收任务槽和内核栈 | `kernel/proc/process.c`、`kernel/task/task.c`、`syscall.c` |
 | P7.1 线程组边界 | `process_exit_current/terminate_current` 先 `task_terminate_threads()` 再关闭 fd；`process_reap()` 用 `task_release_process_threads()` 释放整组任务槽；`process_alive()` 按活线程数；`process_exec_current()` 拒绝多线程 exec；`process_snapshot()` 优先返回非 ZOMBIE 线程并暴露 `tid/thread_count` | `kernel/proc/process.c`、`kernel/task/task.c` |
 | P7.2 thread_detach | `eax=23 thread_detach(ebx=tid)` 只接受同组 TID；`task.detached=1` 后 `thread_join` 返回 -1；线程退出为 ZOMBIE 时，`task_reap_detached()` 在调度器下一次切换中回收非 current 的 detached 任务槽与内核栈；当前退出线程的栈等下一次切换再回收 | `kernel/task/task.c`、`kernel/proc/process.c`、`syscall.c` |
+| P7.3 leader-first exit | 主线程 `thread_exit(code)` 时若 `task_process_live_threads(self)>1`，只把当前任务置 ZOMBIE，进程保持 LIVE；worker 继续被调度，可 `thread_join` 已退出的主 TID，复制 status 后回收其任务槽/内核栈；最后活线程退出时才走 `process_exit_current()`。非法参数矩阵 `join(0/-1/self/99)` 与 `detach(0/-1/99)` 全部返回 -1 | `kernel/proc/process.c`、`kernel/task/task.c`、`syscall.c` |
 | wait status | 正常退出保留原退出码（`exit(7) -> 7`）；信号终止为 `0x80000000` 按位或 `sig`（`#DE -> 0x80000008`） | `PROC_WAIT_STATUS()` |
 | PCB 信号字段 | `pending/last_sig/term_sig/sig_count/sigchld_count`；`process_info` 同步暴露 | `kernel/proc/process.c` |
 | pending 位图 | `pending |= 1u << (sig - 1)`；只记录 1..31 号信号，不在这里改进程状态 | `proc_signal_pending()` |
@@ -302,6 +303,7 @@ P5.3 不新增页面：`S`（`0x1F`）复用 P5.1 的池页外壳，`pool_demo_s
 - P6.0 已完成细节收口：`process_wait()` 对 `pid>0` 先校验直接子进程，非子进程或不存在立即返回 -1；`pid<=0` 等任意直接子进程。`proc_orphan_children()` 同时处理 LIVE 和 ZOMBIE 直接子进程，并记录最近一次 `from/to/children[]` 事件；V 页 TREE 增加 `ORPHAN` 两行，G 页 reparent 面板允许显示 4 个子进程并在超过 4 个时显示 `+N more`。clean `kernel.bin=64,488`，余量 1,048B。当前速度基线见 `PERFORMANCE.md`。
 - P7.1 已完成最小线程组：D lane 的 worker TID 6 与进程 PID/主线程 TID 7 同组，共享计数器为 1，join 返回 0、status 0；V 页显示 `THREAD tid 6 join 0 shared 1 THRD` 和 `thr OK`。clean `kernel.bin=70,568`，上限 98,304B。
 - P7.2 已完成线程 detach：第二个 worker 自 `thread_detach` 后退出，主线程 join 返回 -1；调度器延后回收 detached 任务槽/内核栈，页面显示 `det OK`。clean `kernel.bin=71,272`，`__bss_end=0x955BC`。
+- P7.3 已完成主线程先退与参数矩阵：子进程主线程先 `thread_exit(0)`，worker 继续运行并 join 主 TID，确认 status 0 后作为最后线程 `exit(7)`；父进程 wait 得到 7。join/detach 的 0、-1、self、不存在 TID 全部返回 -1，页面显示 `main OK arg OK`。clean `kernel.bin=72,040`，`__bss_end=0x9587C`。
 
 ### P7.1 最小线程组（Linux 风格资源共享）
 
@@ -342,20 +344,36 @@ QEMU 实测（P7.2 clean 构建 `kernel.bin=71,272`，`__bss_end=0x955BC`，`AEV
 - V 页 `THREAD tid 6 join 0 shared 1 THRD det OK`；`TEST ... thr OK det OK`；`TASK READY` 行 `THR 1 TID 7`。
 - joined worker TID 6 已由 join 回收；detached worker 自 detach 后 join 返回 -1，任务槽和内核栈由调度器延后回收；页面仍为 `THR 1`，没有留下 detached 僵尸槽。
 
-## 十二、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3/P6.0/P7.0/P7.1/P7.2 边界与已知取舍
+### P7.3 主线程先退与非法参数矩阵
+
+P7.3 不改线程创建语义，只验证并压实已有生命周期边界：
+
+- D lane 在 detach worker 之后 fork 一个子进程。子进程主线程先 `gettid`，再 `clone` worker，写 `0x40119C=1` 后直接 `thread_exit(0)`；此时活线程数为 2，`process_thread_exit_current()` 只把主任务置 ZOMBIE，进程保持 LIVE。
+- worker 从 clone 的 `eax` 收到主 TID，先校验自己的 `gettid` 不等于主 TID；看到退出标记后调用 `thread_join(main_tid, &status)`。主线程已经 ZOMBIE，join 复制 status 0，并 `task_reap_thread()` 回收主任务槽与内核栈；worker 继续在共享 AS 上运行，写 `MAIN`。
+- worker 作为最后活线程调用 `thread_exit(7)`，`task_process_live_threads(self)<=1` 才进入 `process_exit_current()`，进程转 ZOMBIE；父进程 `wait` 得到 7，写 `MTHR`。如果主线程退出时误结束整组，worker 不会运行，wait 只能得到 0。
+- D 主线程在 fork 前校验 `thread_join(0/-1/self/99)` 与 `thread_detach(0/-1/99)` 全部返回 -1，写 `EDGE`；这些调用分别覆盖 `tid<=0`、`tid==current`、找不到同组任务三类拒绝路径。
+
+QEMU 实测（P7.3 clean 构建 `kernel.bin=72,040`，`__bss_start=0x91980`、`__bss_end=0x9587C`，`AEVUM_KERNEL_END=0x96000`）：
+
+- V 页 `THREAD tid 6 join 0 shared 1 ok THRD det OK main OK arg OK`；`TEST ... thr OK det OK`；`TASK READY` 行 `THR 1 TID 7`。
+- P7.3 子进程父 wait 返回子 PID、status 7，说明主线程先退后 worker 确实继续执行并 join 了主线程；`EDGE` 与 `MTHR` 同时为 OK。
+
+## 十二、P3.1/P3.2/P4.1/P4.2/P4.3/P4.4/P5.1/P5.2/P5.3/P6.0/P7.0/P7.1/P7.2/P7.3 边界与已知取舍
 
 - `wait` 仍是 `task_yield()` 轮询，不是阻塞睡眠；P6.0 只修了参数语义：`pid>0` 必须先是当前进程的直接子进程，否则立即返回 -1；`pid<=0` 等任意直接子进程。P4.4 X 页为了保持交互帧率，父进程关闭 0/1 后不进入 `wait`，子进程完成后由页面 `out 14` / `EXIT 14` 判定。
 - `proc_orphan_children()` 现在把 LIVE 和 ZOMBIE 的直接子进程都改成 `ppid=0`，并写一份全局最近事件；ZOMBIE 子进程仍由 `process_reap_orphans()` 回收。事件只是 V 页只读快照，不改变调度或回收顺序。
 - G 页 reparent 面板从“最多 3 个子进程”改为 4 个；`child_count > 4` 时在第 13 行显示 `+N more`，`children` 计数仍显示总数，列表只放前 4 个。
 - V 页 TREE 的 `ORPHAN` 行占第 20/21 行，树节点上限从第 21 行收到第 19 行；第 22 行仍是 TREE 统计，第 23/24 行仍是公共底栏。当前用户 demo 没有“父进程先退出、子进程继续存活”的 lane，所以 TREE 页默认显示 `ORPHAN none yet`；事件路径已由 `process_terminate_current()` / `process_exit_current()` 的真实退出路径调用，不是渲染层伪造。
 - 当前速度基线（QEMU TCG，非实时）：100 Hz PIT 是硬控制节拍上限；CPU 页 4.14 秒窗口内 `SWITCHES +129,890`（约 31.4k/s）、`PREEMPTIONS +384`（约 92.8/s），control/render/idle 仍是 50/38/12；监视器建立后 69 ms 的首帧采样已有完整机械臂画面。详见 `PERFORMANCE.md`。
-- P5.2 的 `V` 页固定 4 页，原第 5 页 `DEMO` 因 `kernel.bin` 超过当时 65,536B 上限被删除，旧证据压缩进 `ADDRESS` 页。P7.2 clean 构建为 71,272B、上限 98,304B、余量 27,032B；`--gc-sections` 已回收不可达代码，但新增页面或长文案前仍必须先算体积。
+- P5.2 的 `V` 页固定 4 页，原第 5 页 `DEMO` 因 `kernel.bin` 超过当时 65,536B 上限被删除，旧证据压缩进 `ADDRESS` 页。P7.3 clean 构建为 72,040B、上限 98,304B、余量 26,264B；`--gc-sections` 已回收不可达代码，但新增页面或长文案前仍必须先算体积。
 - `V` 页的页面状态是单个静态实例（`page_mode/page_slot/page_first`），四页共享同一个选中槽；`process_slot_space()` / `process_slot_fd_info()` 是只读快照，没有 seqlock，单核下仍可能在 PIT 切换窗口看到半更新字段，已知取舍是“可观察面优先、不做事务化快照”。
 - `PgDn` 把选中槽带到槽 10/11 后，空槽详情只显示 `EMPTY` 和池统计；要回到有内容槽需 `Up` 或 `Home`，这是当前交互语义，不是滚动丢失。
 - P5.3 没有新增持久对象、页面或第二套计数；只复用 P5.1 池页与用户数据槽，压测状态由 ring3 写、页面只读。`S` 与 `Y` 共用同一池页外壳，二者互斥，不能同时运行。
 
 - P7.1 线程组只做最小闭环：`clone` 只支持 `VM/FILES/SIGHAND/THREAD`，不支持 `CLONE_FS`、TLS、futex、per-thread signal pending 或优先级继承；`thread_join` 是 `task_yield()` 轮询，不是阻塞睡眠。线程故障默认会通过 `process_terminate_current()` 终止整个线程组，目前只按代码路径设计，尚未做 worker 触发 `#PF/#DE` 的边界测试。
-- P7.2 的 `thread_detach` 只是生命周期控制：没有 detach 时仍必须 join；detached 线程的退出码不可再读取；`task_reap_detached()` 依赖下一次调度事件，不会在 `thread_exit` 返回前释放当前栈。重复 join、join 自己、跨组 join 仍只按代码返回 -1，尚未加入完整边界矩阵。
+- P7.2 的 `thread_detach` 只是生命周期控制：没有 detach 时仍必须 join；detached 线程的退出码不可再读取；`task_reap_detached()` 依赖下一次调度事件，不会在 `thread_exit` 返回前释放当前栈。
+- P7.3 已覆盖 join/detach 的 0、-1、self、不存在 TID，但未覆盖“跨线程组 join 一个真实存在的 TID”、detach 一个已 ZOMBIE 的线程、以及主线程 detach 自己后退出；这些仍由同组 `proc` 校验和 detached 延后回收兜底，尚未做成独立断言。
+- P7.3 的 last-thread 路径是 worker 先 join 主线程再退出；主线程 ZOMBIE 留在组内、由最后线程退出触发 `process_reap()` 整组释放的变体尚未单独压测。
 - P7.1 的多线程 `exec` 采取拒绝策略，不杀其他线程；长期是“拒绝”还是“exec 杀死同组其他线程”尚未定。线程 TID 与进程 TGID 共用 `PID_MAX=31`，且各占一个任务槽和 4KB 内核栈，`PROC_MAX=12/TASK_MAX=16/KSTACK=12` 下多线程会快速消耗容量。
 
 - P3.2 已有用户 handler、signal frame 和 `sigreturn`；P4.1 已有内嵌 flat 镜像 `exec`、PID/任务槽保留、AS 替换和信号重置；P4.2 已有 `argv/envp` 解析、字符串迁移、SysV 初始栈和 `exec_argc/exec_envc` 元数据；P4.3 已有每进程 fd 表、匿名 pipe、`pipe/read/write/close` 和 exec 后 fd 保留；P4.4 已有全局 console fd 0/1、fork 继承、close 边界和 VGA/COM1 双写。仍没有 ELF loader、文件系统/路径 `open`、console 会话/前台焦点、`kill()`、信号排队、真正阻塞的 mask、`SA_SIGINFO`/`SA_RESTART` 等 POSIX 语义。
