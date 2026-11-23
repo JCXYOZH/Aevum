@@ -32,10 +32,18 @@
   let controls = null;
   let telemetry = null;
 
-  function setKernelPill(online) {
+  function setKernelPill(mode) {
     const pill = $("kernelPill");
-    pill.textContent = online ? "KERNEL LINK" : "KERNEL OFFLINE";
-    pill.className = online ? "pill on" : "pill warn";
+    if (mode === "kernel") {
+      pill.textContent = "KERNEL LINK";
+      pill.className = "pill on";
+    } else if (mode === "bridge") {
+      pill.textContent = "BRIDGE / WAIT q";
+      pill.className = "pill warn";
+    } else {
+      pill.textContent = "KERNEL OFFLINE";
+      pill.className = "pill warn";
+    }
   }
 
   function replaceDocument(doc, notify) {
@@ -72,6 +80,8 @@
     state: state,
     setKernelPill: setKernelPill,
     rerenderInspector: function () { if (inspector) inspector.render(); },
+    syncControls: function () { if (controls) controls.sync(); },
+    onKernelState: function () { if (tree) tree.render(); },
     toast: F.ui.toast.show
   });
 

@@ -6,7 +6,9 @@
 #define FRAME_SYNC0      0xA5
 #define FRAME_SYNC1      0x5A
 #define FRAME_TYPE_DELTA 0x01
+#define FRAME_TYPE_STATE 0x02
 #define FRAME_HDR        4
+#define FRAME_STATE_VALS 3
 #define FRAME_BUF        (FRAME_HDR + UART_FRAME_MAX_CELLS * 4 + 1)
 
 static u16 *const serial_snapshot = (u16 *)AEVUM_FRAME_SNAP;
@@ -100,4 +102,31 @@ void uart_scan(void)
     }
     uart_send_frame(count);
     serial_scan_count++;
+}
+
+/*
+ * 只读状态帧：A5 5A 02 03 + q0..q2 (i32 LE, Q16.16 rad) + XOR CRC。
+ * 与 VGA 差量帧共用 COM1，但类型字节不同；宿主桥只读，不写回内核。
+ */
+void uart_state_frame(const i32 q[3])
+{
+    u32 i;
+    u32 total = FRAME_HDR + FRAME_STATE_VALS * 4;
+    u8 crc = 0;
+
+    serial_frame[0] = FRAME_SYNC0;
+    serial_frame[1] = FRAME_SYNC1;
+    serial_frame[2] = FRAME_TYPE_STATE;
+    serial_frame[3] = FRAME_STATE_VALS;
+    for (i = 0; i < FRAME_STATE_VALS; i++) {
+        u32 v = (u32)q[i];
+        u32 p = FRAME_HDR + i * 4;
+        serial_frame[p + 0] = (u8)(v & 0xFF);
+        serial_frame[p + 1] = (u8)((v >> 8) & 0xFF);
+        serial_frame[p + 2] = (u8)((v >> 16) & 0xFF);
+        serial_frame[p + 3] = (u8)((v >> 24) & 0xFF);
+    }
+    for (i = 0; i < total; i++) crc ^= serial_frame[i];
+    serial_frame[total] = crc;
+    uart_write(serial_frame, total + 1);
 }

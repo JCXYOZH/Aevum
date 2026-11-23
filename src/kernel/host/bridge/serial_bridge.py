@@ -2,6 +2,7 @@
 """
 AEVUM serial bridge: reads TCP-framed serial from QEMU, forwards to WebSocket.
 Frame format: A5 5A 01 COUNT [row col ch attr] * COUNT CRC
+State frame:  A5 5A 02 03 q0 q1 q2 (i32 LE, Q16.16 rad) CRC
 """
 import asyncio
 import json
@@ -19,8 +20,11 @@ WS_PORT = int(os.environ.get("BRIDGE_WS_PORT", "8765"))
 SYNC0 = 0xA5
 SYNC1 = 0x5A
 FRAME_TYPE_DELTA = 0x01
+FRAME_TYPE_STATE = 0x02
 FRAME_HDR = 4
 MAX_CELLS = 32
+STATE_VALS = 3
+Q16_ONE = 65536.0
 
 
 class FrameParser:
@@ -58,6 +62,19 @@ class FrameParser:
             if crc != self.buf[total - 1]:
                 del self.buf[:1]
                 self.frames_bad += 1
+                continue
+            if ftype == FRAME_TYPE_STATE:
+                if count != STATE_VALS:
+                    del self.buf[:1]
+                    self.frames_bad += 1
+                    continue
+                q = struct.unpack_from("<iii", self.buf, FRAME_HDR)
+                out.append({
+                    "type": "state",
+                    "q": [round(v / Q16_ONE, 6) for v in q],
+                })
+                del self.buf[:total]
+                self.frames_ok += 1
                 continue
             cells = []
             p = FRAME_HDR
@@ -97,6 +114,7 @@ async def main():
     parser = FrameParser()
     clients = set()
     state = {}
+    last_q = {"q": None}
     link = {"writer": None}
 
     async def handler(ws):
@@ -105,6 +123,9 @@ async def main():
             # 新窗口后连接时补一帧当前画面，否则只收到打开之后的差量。
             if state:
                 await ws.send(json.dumps({"type": "frame", "cells": list(state.values())}))
+            # 新的只读订阅者也补一次最近关节角，避免等下一次 8 帧扫描。
+            if last_q["q"] is not None:
+                await ws.send(json.dumps({"type": "state", "q": last_q["q"]}))
             # 让内核下一次扫描发送完整 VGA，补齐窗口连接前就已经存在的静态单元。
             if link["writer"]:
                 try:
@@ -118,6 +139,19 @@ async def main():
             clients.discard(ws)
 
     async def broadcast(frame):
+        if frame["type"] == "state":
+            last_q["q"] = frame["q"]
+            msg = {"type": "state", "q": frame["q"]}
+            dead = []
+            for ws in list(clients):
+                try:
+                    await ws.send(json.dumps(msg))
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                clients.discard(ws)
+            return
+
         for cell in frame["cells"]:
             state[(cell[0], cell[1])] = cell
         if not clients:

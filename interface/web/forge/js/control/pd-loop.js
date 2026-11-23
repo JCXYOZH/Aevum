@@ -10,12 +10,14 @@
     return {
       running: false,
       sine: false,
+      kernel: false,
       time: 0,
       last: performance.now(),
       acc: 0,
       q: doc.segments.map(function (s) { return s.q; }),
       qd: doc.segments.map(function () { return 0; }),
       errHist: [],
+      qHist: [],
       lastUi: 0,
       lastSend: 0,
       seq: 0

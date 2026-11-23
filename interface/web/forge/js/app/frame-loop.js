@@ -14,7 +14,7 @@
       const vp = F.render.viewProjection(state.cam, renderer.canvas);
       renderer.draw(state.doc, scene, vp, state.selected);
 
-      if (state.sim.running) {
+      if (state.sim.running && !state.sim.kernel) {
         F.control.tick(state.doc, state.sim, now, function (packet) {
           F.bridge.send(bridge, packet);
         });

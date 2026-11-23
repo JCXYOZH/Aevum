@@ -19,6 +19,58 @@ python -m http.server 8080
 
 页面不依赖 React、Three.js、构建工具或外部素材。3D 视口、矩阵、相机、网格、关节标签和绘制顺序都在 `js/render/` 下，由页面自己的 WebGL 代码实现。
 
+## 接真实内核（只读 q）
+
+当前接的是 P6 内核的**只读关节状态**，不是双向控制。链路是：
+
+```text
+QEMU COM1 (TCP 5555)
+  └─ A5 5A 02 03 q0 q1 q2 CRC   # i32 LE, Q16.16 rad
+       └─ src/kernel/host/bridge/serial_bridge.py
+            └─ ws://127.0.0.1:8765  {type:"state", q:[...]}
+                 └─ Forge  KERNEL q / READ ONLY
+```
+
+启动顺序：
+
+1. 构建内核（WSL）：
+
+```bash
+wsl -d kali-linux -- bash -lc "cd /mnt/d/Aevum/src/kernel/host/console/robot && make clean && make all"
+```
+
+2. 启动 QEMU；`build/local-test/run-qemu.bat` 已把串口改成：
+
+```text
+-serial tcp:127.0.0.1:5555,server,nowait
+```
+
+3. 启动桥接：
+
+```powershell
+D:\venv\Scripts\python.exe D:\Aevum\src\kernel\host\bridge\serial_bridge.py
+```
+
+4. 打开 `interface/web/forge/index.html`，点 `CONNECT` 或调用：
+
+```js
+AEVUM_FORGE.connect();
+```
+
+进入只读模式的标志：
+
+- 顶部变成 `KERNEL LINK` + `KERNEL q / READ ONLY`；
+- `RUN / SINE TEST / RESET` 被禁用，本地 100 Hz PD 暂停；
+- 底部不再显示本地 RMS/PEAK/TORQUE 数值，改为 `N/A`，曲线切换成三条内核 q（角度）轨迹；
+- 页面只接收 q，不向内核发送目标；bridge 的 WebSocket 入站消息仍被丢弃，只在下发 `F` 时请求内核全量刷新 VGA。
+
+边界：
+
+- 内核臂几何是 `0.30 + 0.30 + 0.20 m`（约 0.80 m），Forge 页面臂约 1.38 m；q 可以共享，**末端笛卡尔目标不能直接共享**。
+- 当前没有 `J` 关节目标命令、没有内核手动模式、没有状态超时保护；这些属于下一阶段双向控制。
+- 只读 q 不改变内核控制律；内核仍按自己的正弦末端目标运行。
+
+
 ## 目录约定
 
 浅层只放入口和接口，深层放实现：
@@ -41,7 +93,7 @@ forge/
    │  ├─ math.js               # 矩阵 / 投影 / 角度 / 数值格式
    │  └─ dom.js                # DOM 查询 / 下载 / 文件读取
    ├─ app/
-   │  ├─ bridge-control.js     # WebSocket 生命周期 / 入站 q-target
+   │  ├─ bridge-control.js     # WebSocket 生命周期 / 入站 q（只读）
    │  ├─ api-handlers.js       # api.js 背后的命令实现
    │  └─ frame-loop.js         # 帧循环：绘制 → 控制 → 遥测
    ├─ model/
@@ -92,15 +144,15 @@ window.AEVUM_FORGE
 
 | 方法 | 作用 |
 | --- | --- |
-| `getState()` | 当前运行状态、q/target、选中项、bridge、BodyDocument 快照 |
+| `getState()` | 当前运行状态、q/target、选中项、bridge、`kernel` 只读标志、BodyDocument 快照 |
 | `getDocument()` | 复制当前 BodyDocument |
 | `setDocument(doc)` | 校验并替换 BodyDocument，重置仿真 |
-| `setTarget(index, degrees)` | 设置单个关节目标角 |
-| `setTargets(degrees[])` | 批量设置目标角 |
-| `run()` / `pause()` | 启动 / 暂停 100 Hz 本地 PD |
-| `reset()` | 回到目标姿态 |
-| `sine(on)` | 开 / 关正弦激励；开时自动启动 |
-| `getTelemetry()` | RMS、峰值、力矩、丢包 |
+| `setTarget(index, degrees)` | 设置单个关节目标角（仅本地；kernel 只读模式抛错） |
+| `setTargets(degrees[])` | 批量设置目标角（仅本地；kernel 只读模式抛错） |
+| `run()` / `pause()` | 启动 / 暂停 100 Hz 本地 PD；kernel 只读模式不能 `run()` |
+| `reset()` | 回到目标姿态（仅本地；kernel 只读模式抛错） |
+| `sine(on)` | 开 / 关正弦激励；开时自动启动；kernel 只读模式抛错 |
+| `getTelemetry()` | RMS、峰值、力矩、丢包；kernel 只读模式下 RMS/峰值/力矩为 `null` |
 | `exportJson()` / `exportXml()` / `exportManifest()` | 导出文档 / MuJoCo 模型 / 虚拟总线 manifest |
 | `connect(url)` / `disconnect()` | 连 / 断 WebSocket 接缝 |
 | `subscribe(fn)` | 订阅遥测事件，返回取消函数 |
@@ -120,13 +172,20 @@ const stop = AEVUM_FORGE.subscribe(function (msg) {
 
 内核不在这里被 `import`。它是独立二进制，由 QEMU / Renode / 真实板加载；页面只负责呈现和本地控制可视化。
 
-右上角 `KERNEL OFFLINE` 是真实状态，不是装饰。当前接缝：
+右上角 `KERNEL OFFLINE` 是真实状态，不是装饰。当前已接通的接缝：
 
 ```text
 kernel ↔ UART / virtual bus ↔ WebSocket bridge ↔ interface/web/forge
 ```
 
-页面默认连接 `ws://127.0.0.1:8765`。现有 P6 内核 UART 还只发 VGA 单元差分帧、输入只认 `F` 全量刷新，没有关节控制命令通道；下一阶段需要给内核补最小的 `J` 命令 / `S` 状态帧，再用 QEMU 串口接 TCP，由 bridge 转成 WebSocket。此时 `KERNEL LINK` 才是真的。
+P6 内核 UART 现在发两种帧：
+
+- `A5 5A 01 COUNT [row col ch attr] * COUNT CRC`：VGA 单元差分；
+- `A5 5A 02 03 q0 q1 q2 CRC`：3 个 Q16.16 弧度关节角，只读观测。
+
+桥接只把 `0x02` 转成 `{type:"state", q:[...]}` 并广播；页面收到 q 后进入只读跟随，不发送目标。内核输入目前仍只认 `F` 全量刷新，没有 `J` 关节控制命令通道，也没有状态超时/看门狗；因此 `KERNEL LINK` 表示“已收到真实内核 q”，不表示“页面能驱动内核”。
+
+页面默认连接 `ws://127.0.0.1:8765`。下一阶段才是双向控制：给内核补 `J` 命令、手动关节目标模式和超时回退，再决定几何映射；在这些完成前，保持只读。
 
 ## 目录边界
 

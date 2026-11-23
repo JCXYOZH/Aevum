@@ -27,6 +27,7 @@
 - `docs/memoria/`、`docs/architecture/memoria.md`、`docs/guides/development.md`：Memoria 与开发入口文档。
 - `src/kernel/host/console/robot/PERFORMANCE.md`：P6.0 QEMU 速度基线，记录 100 Hz PIT、约 31.4k 次/秒调度切换和 50/38/12 CPU 账；明确标注 TCG 非实时、不能外推硬件。
 - 内核用户进程 orphan/reparent 事件：`process_last_orphan()` 导出最近一次 `from/to/children[]` 快照，V 页 TREE 第 20/21 行显示。
+- 内核只读关节状态帧：COM1 在 VGA 差量帧之外增加 `A5 5A 02 03 q0 q1 q2 CRC`（i32 LE，Q16.16 rad），由 `serial_bridge.py` 转成 `{type:"state", q:[...]}`；Forge 收到 q 后进入 `KERNEL q / READ ONLY`，禁用本地 PD 并显示真实 q 曲线。
 
 ### Changed
 

@@ -15,7 +15,7 @@
 | 看板 | `interface/web/desktop.html` | 可打开 | 多窗口、启动台、展示页窗口保留 |
 | 纯内存中继 | `control/relay/` | 已实现 | 会话、上下文、分片、在线计数；无落盘 |
 | 监控服务 | `archive/backend-python/monitor/desktop_server.py` | 已实现 | 读检查点、训练指标、错误码；起模型子进程 |
-| 串口桥接 | `src/kernel/host/bridge/serial_bridge.py` | 已实现 | 串口帧转 WebSocket |
+| 串口桥接 | `src/kernel/host/bridge/serial_bridge.py` | 已实现 | VGA 差量帧 + 只读 q 状态帧转 WebSocket |
 | 内核 | `src/kernel/host/console/robot/` | 维护中 | 唯一引导扇区、任务/进程、结构化错误、80×25 单元格 |
 | Memoria C++ | `src/architecture/memoria/` + `src/architecture/memoria/include/` | 可编译 | 17 个 `.cpp`、17 个头文件；训练/生成/检查点 |
 | 桌面壳 | `interface/desktop/` | 可打包 | Electron 窗口、拉起监控；`dist:installer` 出 Inno Setup，`dist:dir` 出目录 |
@@ -53,6 +53,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - 看板与展示页共用 `styles/presence.css`，灵体在 rail 和 dock 各有位置。
 - 配色回到纸黄系（展示页与看板 token 已替换），保留深色终端块作为局部面板。
 - 中继、串口桥接、内核入口分别收在 `control/relay/`、`src/kernel/host/bridge/`、`src/kernel/host/console/robot/`。
+- 内核 COM1 增加只读 q 状态帧，QEMU 串口用 TCP 5555，Forge 在 `KERNEL q / READ ONLY` 下跟随真实关节角；未加入控制命令。
 - Memoria C++ 内核迁入 `src/architecture/memoria/`，公共头文件在 `src/architecture/memoria/include/`；统一入口为 `src/architecture/memoria/include/aevum_core.h`，源码用 `#include <include/aevum_core.h>`，构建提供 `-I src/architecture/memoria`。
 - Electron 桌面壳接入 `interface/desktop/`；`npm run dist:installer` 出 Inno Setup 安装包，`npm run dist:dir` 为免安装目录；安装包约 95 MB，产物不进 Git。
 - 3000 行公开语料入库；模型权重、构建产物、`node_modules` 明确忽略。

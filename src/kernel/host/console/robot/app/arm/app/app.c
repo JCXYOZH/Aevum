@@ -378,7 +378,10 @@ static void proc_render(void)
         if (idle_blocked)
             vga_text(2, 2, "BLOCKED: idle waiting task_wake()", 0x09);
         vga_flush();
-        if ((frames & 7) == 0) uart_scan();
+        if ((frames & 7) == 0) {
+            uart_scan();
+            uart_state_frame(status.q);
+        }
         vga_vsync();
         arm_render_trace_push(&status);
 

@@ -36,6 +36,11 @@
         ctx.stroke();
       }
 
+      if (state.sim.kernel) {
+        drawKernelChart(w, h);
+        return;
+      }
+
       const data = state.sim.errHist;
       if (data.length > 1) {
         ctx.strokeStyle = "#37c7d4";
@@ -55,9 +60,63 @@
       ctx.fillText("JOINT ERROR / 40° FULL SCALE", 8, 14);
     }
 
+    function drawKernelChart(w, h) {
+      const colors = ["#37c7d4", "#e0a34a", "#9a7ad6"];
+      const data = state.sim.qHist;
+      if (data.length > 1) {
+        for (let j = 0; j < 3; j++) {
+          ctx.strokeStyle = colors[j];
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          data.forEach(function (q, i) {
+            const deg = F.math.clamp(q[j] * F.math.R2D, -180, 180);
+            const x = i / (data.length - 1) * w;
+            const y = h - (deg + 180) / 360 * h;
+            if (i) ctx.lineTo(x, y);
+            else ctx.moveTo(x, y);
+          });
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = "#6d838c";
+      ctx.font = "10px Segoe UI";
+      ctx.fillText("KERNEL q / READ ONLY · DEG", 8, 14);
+      ctx.fillStyle = "#37c7d4";
+      ctx.fillText("J1", 170, 14);
+      ctx.fillStyle = "#e0a34a";
+      ctx.fillText("J2", 188, 14);
+      ctx.fillStyle = "#9a7ad6";
+      ctx.fillText("J3", 206, 14);
+    }
+
     function update(now) {
       if (now - state.sim.lastUi < 80) return;
       state.sim.lastUi = now;
+
+      const kernel = !!state.sim.kernel;
+      if (kernel) {
+        F.dom.$("mLoop").textContent = "KERNEL q";
+        F.dom.$("mMode").textContent = "read-only · local PD off";
+        F.dom.$("mRms").textContent = "N/A";
+        F.dom.$("mPeak").textContent = "N/A";
+        F.dom.$("mTorque").textContent = "N/A";
+        F.dom.$("mLoss").textContent = "0";
+        F.dom.$("mTime").textContent = "N/A";
+        F.dom.$("mRms").nextElementSibling.textContent = "kernel q / read only";
+        F.dom.$("mPeak").nextElementSibling.textContent = "not measured";
+        F.dom.$("mTorque").nextElementSibling.textContent = "local PD off";
+        F.dom.$("mTime").nextElementSibling.textContent = "local PD off";
+        drawChart();
+        onMetrics({
+          kernel: true,
+          q: state.sim.q.slice(),
+          rms: null,
+          peak: null,
+          torque: null,
+          loss: 0
+        });
+        return;
+      }
 
       const doc = state.doc;
       const metrics = F.control.metrics(doc, state.sim);
@@ -69,6 +128,10 @@
       F.dom.$("mTorque").textContent = F.math.fmt(metrics.torque, 1);
       F.dom.$("mLoss").textContent = "0";
       F.dom.$("mTime").textContent = F.math.fmt(state.sim.time, 2);
+      F.dom.$("mRms").nextElementSibling.textContent = "target vs actual";
+      F.dom.$("mPeak").nextElementSibling.textContent = "last 3 seconds";
+      F.dom.$("mTorque").nextElementSibling.textContent = "N·m / all joints";
+      F.dom.$("mTime").nextElementSibling.textContent = "seconds";
 
       drawChart();
       onMetrics(metrics);

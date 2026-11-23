@@ -7,6 +7,10 @@
 > `src/kernel/host/bridge/serial_bridge.py` 转成 WebSocket。没有这段串口旁路，
 > 内核只写 `0xB8000`，桥接收不到画面。
 >
+> 现在同一 COM1 还发只读关节状态帧
+> `A5 5A 02 03 q0 q1 q2 CRC`（i32 LE，Q16.16 弧度），供 Forge 显示真实 q；
+> 状态帧不接收控制命令，页面仍不能驱动内核。
+>
 > 构建（Windows 上可用 WSL2，或任意 Linux）：
 >
 > ```sh
@@ -14,8 +18,8 @@
 > ```
 >
 > `interface/desktop/main.js` 优先启动本目录的 `disk.img`；`kernel.bin` 上限
-> 65,536 字节（boot.asm 一次 LBA 读 128 个扇区到 0x80000）。当前 P6.0 clean 构建 64,488 字节，
-> 余量 1,048 字节；BSS 结束于 `0x9387C`，`AEVUM_KERNEL_END=0x94000`。串口快照放在 `0x30000`，
+> 65,536 字节（boot.asm 一次 LBA 读 128 个扇区到 0x80000）。当前 clean 构建 64,584 字节，
+> 余量 952 字节；BSS 结束于 `0x9387C`，`AEVUM_KERNEL_END=0x94000`。串口快照放在 `0x30000`，
 > 不占内核镜像窗口。模块归属、结构化错误和验收流程见 `CONSTRUCTION.md`，进程上下文完整化路线见 `PROCESS.md`。
 
 一个用 NASM + C 写的 32 位裸机内核：从软盘镜像启动，进入保护模式、建立自己的 GDT 和分页，
@@ -200,7 +204,7 @@ qemu-system-i386 -drive format=raw,file=os.img -display none
 | `kernel/proc/fd/fd.c` | 每进程 8 槽 fd 表的唯一 owner；P5.2 增加 `proc_fd_snapshot()`，逐 fd 返回 `used/kind`，不把 pipe 对象指针交给 UI。 |
 | `arch/x86/cpu/interrupt/interrupt.c` | IDT、8259A PIC 重映射、PIT 100Hz、EOI 的唯一写者。 |
 | `drivers/video/vga/text/vga.c` | VGA 影子显存与文本绘制。 |
-| `drivers/serial/uart/uart.c` | COM1 初始化、差量帧上报。 |
+| `drivers/serial/uart/uart.c` | COM1 初始化、VGA 差量帧、只读 q 状态帧。 |
 | `drivers/input/keyboard/keyboard.c` | PS/2 扫描码读取。 |
 | `lib/fixed/`、`lib/math/`、`lib/format/` | 定点、三角、格式化。 |
 | `app/arm/kinematics/`、`control/`、`render/`、`app/` | 机械臂纯运动学、控制状态、渲染、任务装配。 |
