@@ -80,6 +80,9 @@ u32 user_demo_thread_det_ok(int lane);
 u32 user_demo_thread_edge_ok(int lane);
 u32 user_demo_main_first_ok(int lane);
 
+/* P7.4：主线程不 join，两个 worker 继续运行；最后 worker 触发整组回收。 */
+u32 user_demo_thread_group_ok(int lane);
+
 /* userA 的数据页是 brk/heap/guard 的证据。 */
 u32 user_demo_brk(int lane);
 u32 user_demo_heap_peek(int lane);

@@ -970,7 +970,7 @@ int process_thread_join_current(int tid, u32 user_status)
         if (!task_thread_snapshot(self, tid, &info)) return -1;
         if (info.detached) return -1;
         if (info.state == TASK_ZOMBIE) break;
-        if (task_yield()) return -1;
+        if (task_yield_wait()) return -1;
     }
 
     if (user_status &&
@@ -1083,7 +1083,7 @@ int process_wait(int pid, u32 user_status)
 
         /* 指定 PID 已经不存在：不要永久等一个永远不会退出的子进程。 */
         if (pid > 0 && !proc_is_direct_child(self, pid)) return -1;
-        if (task_yield()) return -1;
+        if (task_yield_wait()) return -1;
     }
 }
 
@@ -1197,6 +1197,7 @@ int process_snapshot(int slot, struct process_info *out)
     if (has_task) {
         int i;
         out->tid = info.pid;
+        out->stack_top = info.stack_top;
         out->task_state = info.state;
         out->switches = info.switches;
         out->cpu_ticks = info.cpu_ticks;

@@ -476,11 +476,103 @@ user_program_start:
     cmp eax, [0x4011B0]
     jne .main_exit_bad
     mov dword [0x4011C4], 0x4D544852 ; "MTHR"
-    jmp .yield
+    jmp .thread_group_round
 
 .main_exit_bad:
     mov dword [0x4011C4], 0x424144 ; "BAD"
     jmp .yield
+
+; P7.4：主线程退出后不 join，两个 worker 继续使用共享 AS。worker A 先退出，
+; worker B join A 后作为最后活线程 exit(7)；主线程 ZOMBIE 一直留在组内，
+; 直到父进程 wait 触发整组回收。
+.thread_group_round:
+    cmp dword [0x4011F4], 0
+    jne .yield
+    mov dword [0x4011F4], 1
+
+    mov eax, 6              ; syscall: fork
+    int 0x80
+    test eax, eax
+    jz .child_group_exit
+    cmp eax, 0xFFFFFFFF
+    je .thread_group_bad
+
+    mov [0x4011E8], eax             ; child pid
+    mov ebx, eax
+    mov ecx, 0x4011EC
+    mov eax, 4              ; syscall: wait
+    int 0x80
+    mov [0x4011F0], eax
+    cmp dword [0x4011EC], 7
+    jne .thread_group_bad
+    cmp eax, [0x4011E8]
+    jne .thread_group_bad
+    mov dword [0x4011F8], 0x4D475250 ; "MGRP"
+    jmp .yield
+
+.thread_group_bad:
+    mov dword [0x4011F8], 0x424144 ; "BAD"
+    jmp .yield
+
+; P7.4 子进程：主线程 clone A/B 后立即 thread_exit(0)，不等待也不 join。
+.child_group_exit:
+    mov dword [0x4011C8], 0
+    mov dword [0x4011CC], 0
+    mov dword [0x4011D0], 0
+    mov dword [0x4011D4], 0
+    mov dword [0x4011D8], 0
+    mov dword [0x4011DC], 0
+    mov dword [0x4011E0], 0
+    mov dword [0x4011E4], 0
+
+    mov eax, 8              ; syscall: brk(0x407000)，两个 worker 各用一页栈
+    mov ebx, 0x407000
+    int 0x80
+    cmp eax, 0x407000
+    jne .child_group_bad
+
+    mov eax, 21             ; syscall: gettid
+    int 0x80
+    mov [0x4011C8], eax
+
+    mov eax, 19             ; clone(worker A, 0x406000)
+    mov ebx, user_group_first_worker - user_program_start + 0x400000
+    mov ecx, 0x406000
+    mov edx, 0x00010D00     ; VM|FILES|SIGHAND|THREAD
+    mov esi, [0x4011C8]
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    je .child_group_bad
+    mov [0x4011CC], eax
+
+    mov eax, 19             ; clone(worker B, 0x407000)
+    mov ebx, user_group_last_worker - user_program_start + 0x400000
+    mov ecx, 0x407000
+    mov edx, 0x00010D00     ; VM|FILES|SIGHAND|THREAD
+    mov esi, [0x4011C8]
+    int 0x80
+    cmp eax, 0xFFFFFFFF
+    je .child_group_bad
+    mov [0x4011D0], eax
+
+    mov dword [0x4011D4], 1 ; 三个任务共享同一 AS，最后一个共享写
+    mov eax, 20             ; syscall: thread_exit(0)，主线程不 join
+    xor ebx, ebx
+    int 0x80
+    jmp .hang_group_main
+
+.child_group_bad:
+    mov dword [0x4011E4], 0x424144 ; "BAD"
+    mov eax, 20             ; 单线程失败路径，父 wait 得到 8
+    mov ebx, 8
+    int 0x80
+    jmp .hang_group_child
+
+.hang_group_main:
+    jmp .hang_group_main
+
+.hang_group_child:
+    jmp .hang_group_child
 
 .thread_bad:
     mov dword [0x401170], 0x424144   ; "BAD"
@@ -956,6 +1048,80 @@ user_main_first_worker:
 
 .hang_main_worker:
     jmp .hang_main_worker
+
+; P7.4 worker A：等主线程退出标记后直接 thread_exit(5)。它不 join 主线程，
+; 退出后留在组内成为 ZOMBIE，等待 worker B 回收。
+user_group_first_worker:
+    mov eax, 21             ; syscall: gettid
+    int 0x80
+    cmp eax, [0x4011C8]
+    je .group_first_fail
+
+.group_first_wait:
+    cmp dword [0x4011D4], 1
+    je .group_first_exit
+    mov eax, 2              ; syscall: yield
+    int 0x80
+    jmp .group_first_wait
+
+.group_first_exit:
+    mov eax, 20             ; syscall: thread_exit(5)
+    mov ebx, 5
+    int 0x80
+    jmp .hang_group_first
+
+.group_first_fail:
+    mov eax, 20
+    mov ebx, 8
+    int 0x80
+    jmp .hang_group_first
+
+.hang_group_first:
+    jmp .hang_group_first
+
+; P7.4 worker B：等主线程退出后 join worker A，确认 status 5；随后作为最后
+; 活线程 thread_exit(7)，触发整组 process_exit/reap，包括未 join 的主线程。
+user_group_last_worker:
+    mov eax, 21             ; syscall: gettid
+    int 0x80
+    mov [0x4011E0], eax
+    cmp eax, [0x4011C8]
+    je .group_last_fail
+    cmp eax, [0x4011CC]
+    je .group_last_fail
+
+.group_last_wait:
+    cmp dword [0x4011D4], 1
+    je .group_last_join
+    mov eax, 2              ; syscall: yield
+    int 0x80
+    jmp .group_last_wait
+
+.group_last_join:
+    mov ebx, [0x4011CC]     ; worker A TID
+    mov ecx, 0x4011D8
+    mov eax, 22             ; syscall: thread_join(A, &status)
+    int 0x80
+    mov [0x4011DC], eax
+    test eax, eax
+    jnz .group_last_fail
+    cmp dword [0x4011D8], 5
+    jne .group_last_fail
+    mov dword [0x4011E4], 0x47525034 ; "GRP4"
+    mov eax, 20             ; syscall: 最后线程 thread_exit(7)
+    mov ebx, 7
+    int 0x80
+    jmp .hang_group_last
+
+.group_last_fail:
+    mov dword [0x4011E4], 0x424144 ; "BAD"
+    mov eax, 20
+    mov ebx, 8
+    int 0x80
+    jmp .hang_group_last
+
+.hang_group_last:
+    jmp .hang_group_last
 
 user_program_end:
 

@@ -111,6 +111,8 @@ void task_start(struct task_struct *first) __attribute__((noreturn));
 /* 主动让出：进入 int 0x40，与 PIT IRQ0 共用 task.c 的同一个调度入口。
  * 成功返回 0，失败返回失败字段名。 */
 const char *task_yield(void);
+/* 等待轮询专用：先记 vruntime 再切走，避免低 vruntime 饿死被等任务。 */
+const char *task_yield_wait(void);
 
 /* 阻塞/唤醒：阻塞时切走；另一个任务 task_wake(pid) 置 READY 后，本调用才返回。 */
 const char *task_block(void);

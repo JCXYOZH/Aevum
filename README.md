@@ -20,7 +20,7 @@ Aevum 是一个开源 3D 角色与世界运行时。当前仓库的重点是两�
 | 部分 | 路径 | 当前状态 |
 | --- | --- | --- |
 | 渲染引擎 | `engine/` | 可运行；`validate.html` 是主要验证入口 |
-| 32 位裸机内核 | `src/kernel/host/console/robot/` | 可在 QEMU 运行；已完成 ring3、独立 CR3、`int 0x80`、VMA/brk/guard/copyin-copyout、COW fork、同步异常默认信号、用户 handler/signal frame/`sigreturn`、SIGCHLD/wait status、exec/fd/pipe、12 槽内核栈池、P5.3 的 100 轮 fork/wait 压测、不经过 fork 的 `spawn`、`clone/thread_exit/gettid/thread_join` 最小线程组、用户态与内核态 `#PF` 故障边界，以及 `V` 页 4 页观测面（槽/树/地址/fd） |
+| 32 位裸机内核 | `src/kernel/host/console/robot/` | 可在 QEMU 运行；已完成 ring3、独立 CR3、`int 0x80`、VMA/brk/guard/copyin-copyout、COW fork、同步异常默认信号、用户 handler/signal frame/`sigreturn`、SIGCHLD/wait status、exec/fd/pipe、12 槽内核栈池、P5.3 的 100 轮 fork/wait 压测、不经过 fork 的 `spawn`、`clone/thread_exit/gettid/thread_join` 最小线程组、detach、主线程先退、主线程不 join 的整组回收、用户态与内核态 `#PF` 故障边界，以及 `V` 页 4 页观测面（槽/树/地址/fd） |
 | Fortuna 内核骨架 | `src/kernel/fortuna/` | 有 boot/mm/sched/fs/net/sandbox 等模块；设计验证阶段，没有稳定 CLI |
 | 串口桥 | `src/kernel/host/bridge/` | 把内核 COM1 差量帧转为 WebSocket |
 | Web / 桌面呈现层 | `interface/` | world、desktop、console；不属于引擎核心 |
@@ -124,11 +124,11 @@ http://127.0.0.1:8766/interface/web/world.html
 
 这个内核不依赖 libc，也不跑在桌面操作系统里。BIOS 引导扇区把 128 个扇区读到 `0x80000`，进入保护模式、建立 GDT、IDT、TSS 和 0–4 MB 恒等分页，然后运行内核任务。
 
-当前进度：`P7.3` 主线程先退与线程参数矩阵已接入；clean 构建 `kernel.bin=72,040B`，距 192 扇区上限 98,304B 余 26,264B。D lane 在 detach worker 之后 fork 一个子进程：子进程主线程 `clone` worker 后直接 `thread_exit(0)`，worker 继续运行并 `thread_join` 主 TID，确认 status 0 后作为最后线程 `exit(7)`，父进程 `wait` 得到 7；同时校验 join/detach 的 0、-1、self、不存在 TID 全部返回 -1。V 页显示 `THREAD ... det OK main OK arg OK` 与 `TEST ... det OK`。`S` 停止后再按 `Y` 的首次进入变慢，目前只作为观察项保留，暂不改代码。
+当前进度：`P7.4` 主线程不 join、由最后线程触发整组回收已接入；clean 构建 `kernel.bin=72,744B`，距 192 扇区上限 98,304B 余 25,560B。D lane 在 P7.3 之后 fork 一个子进程：子进程主线程 `clone` 两个 worker 后只写退出标记并 `thread_exit(0)`，自己不 join、以 ZOMBIE 留在组内；worker A 看到标记后 `thread_exit(5)`，worker B `thread_join(A)` 校验 status 5，再作为最后活线程 `thread_exit(7)`；父进程 `wait` 得到子 PID、status 7。这个路径由最后线程进入 `process_exit_current()`，再由父 `wait` 的 `process_reap()` 回收整组，包括未 join 的主 ZOMBIE。V 页显示 `THREAD ... main OK arg OK grp OK`、`TEST ... det OK` 与 `THR 1 TID 7`。`S` 停止后再按 `Y` 的首次进入变慢，目前只作为观察项保留，暂不改代码。
 
 > This kernel does not use libc and does not run on top of a desktop OS. The BIOS boot sector loads 128 sectors to `0x80000`, enters protected mode, builds GDT/IDT/TSS and identity-maps 0–4 MB, then starts kernel tasks.
 
-> Current status: P7.3 adds leader-first exit and argument validation. The clean build is 72,040 bytes, 26,264 bytes below the 98,304-byte (192-sector) limit. After the detached worker, the D lane forks a child whose main thread clones a worker and exits first; the worker joins the leader TID, verifies status 0, then exits 7 as the last live thread, and the parent's `wait` returns 7. Invalid join/detach arguments (0, -1, self, missing TID) must all return `-1`. The V page shows `THREAD ... det OK main OK arg OK` and `TEST ... det OK`. Re-entering `Y` after stopping `S` is slower on first entry and is kept as an observation item only.
+> Current status: P7.4 adds group reclamation when the leader never joins. The clean build is 72,744 bytes, 25,560 bytes below the 98,304-byte (192-sector) limit. After P7.3, the D lane forks another child: its main thread clones two workers, writes the exit flag, and calls `thread_exit(0)` without joining, staying in the group as a ZOMBIE. Worker A exits 5; worker B joins A, verifies status 5, then exits 7 as the last live thread, which triggers `process_exit_current()`. The parent's `wait` returns the child PID with status 7 and `process_reap()` releases the whole group, including the unjoined leader ZOMBIE. The V page shows `THREAD ... main OK arg OK grp OK`, `TEST ... det OK`, and `THR 1 TID 7`. Re-entering `Y` after stopping `S` is slower on first entry and is kept as an observation item only.
 
 #### 已实现
 
@@ -139,8 +139,8 @@ http://127.0.0.1:8766/interface/web/world.html
 | 任务 | 16 个固定任务槽（3 内核 + 最多 12 用户 + 1 余量）；12 个 4KB 用户内核栈槽由位图池动态分配/释放；统一中断帧；`task_yield/block/wake/exit`；优先级加权 `vruntime` 调度 |
 | 上下文 | 统一中断帧保存 GPR 与 `eip/cs/eflags/user_esp/ss`；`ctx.esp` 只保存帧指针；`fxsave/fxrstor` 保存 FPU/SSE，每个任务栈底预留 512 字节 FXSAVE 区；切换时更新 TSS `esp0` |
 | 内存 | 内核页目录/页表固定在 `0x10000/0x11000`；用户 PD/PT 与用户页从 `0x100000..0x1FEFFF` 的 255 页位图池分配；每页有引用计数 |
-| 进程模型 | `kernel/proc/process.c` 唯一维护 PCB、PID、父子关系、退出码、信号 pending/SIGCHLD、每进程 handler 表、`wait/reap`；P7.1 把 `process` 作为资源组（TGID），`task` 作为调度实体（TID），线程共享 AS/fd/信号表但各自持有内核栈、用户栈、FPU 现场；P7.2 的 detached 线程退出后由调度器延后回收，不再允许 join；P7.3 主线程先退只结束当前任务，worker 继续运行并可 join 主线程，最后由最后活线程结束整个进程；`task.c` 只管调度/内核栈/FPU/线程组任务槽，`address_space.c` 只管 PD/PT/VMA/物理池/brk/COW |
-| ring3 | 12 个用户地址空间槽；两个固定链接镜像（初始 ring3 / exec）复用同一 VA `0x400000`；V 页跑 A/B/C/D/F，X 页跑 mode 4 console，Y 页跑 mode 5 池压力（root + 8 LIVE 子进程），S 页复用同一池页外壳跑 mode 6 的 100 轮 fork/wait；D 做四轮 fork/wait：第二轮用 `SIGFPE` handler 捕获 `#DE`，第三轮 fork 子进程 `exec(1, argv, envp)`，第四轮父建 pipe、fork、子 exec 后继续持有写端并写 `PIPE`，父读回并 `wait`；X 页父进程关闭自身 0/1 后，子进程用继承端点读 fd0、写 fd1；P7.1 在 spawn 后增加线程轮次：`clone` 只接受 `VM|FILES|SIGHAND|THREAD`，worker 写共享计数器后 `thread_exit`，主线程 `thread_join` 回收；第二个 worker 自 `thread_detach`，主线程 join 返回 `-1`，退出任务由调度器自动回收；P7.3 再 fork 一个子进程，子进程主线程先 `thread_exit(0)`，worker join 主线程后作为最后线程 `exit(7)`，父进程 `wait` 校验 7 |
+| 进程模型 | `kernel/proc/process.c` 唯一维护 PCB、PID、父子关系、退出码、信号 pending/SIGCHLD、每进程 handler 表、`wait/reap`；P7.1 把 `process` 作为资源组（TGID），`task` 作为调度实体（TID），线程共享 AS/fd/信号表但各自持有内核栈、用户栈、FPU 现场；P7.2 的 detached 线程退出后由调度器延后回收，不再允许 join；P7.3 主线程先退只结束当前任务，worker 继续运行并可 join 主线程，最后由最后活线程结束整个进程；P7.4 验证主线程不 join、以 ZOMBIE 留在组内，最后线程退出时触发整组 `process_reap()`，未 join 的主线程槽也被一并释放；`task.c` 只管调度/内核栈/FPU/线程组任务槽，`address_space.c` 只管 PD/PT/VMA/物理池/brk/COW |
+| ring3 | 12 个用户地址空间槽；两个固定链接镜像（初始 ring3 / exec）复用同一 VA `0x400000`；V 页跑 A/B/C/D/F，X 页跑 mode 4 console，Y 页跑 mode 5 池压力（root + 8 LIVE 子进程），S 页复用同一池页外壳跑 mode 6 的 100 轮 fork/wait；D 做四轮 fork/wait：第二轮用 `SIGFPE` handler 捕获 `#DE`，第三轮 fork 子进程 `exec(1, argv, envp)`，第四轮父建 pipe、fork、子 exec 后继续持有写端并写 `PIPE`，父读回并 `wait`；X 页父进程关闭自身 0/1 后，子进程用继承端点读 fd0、写 fd1；P7.1 在 spawn 后增加线程轮次：`clone` 只接受 `VM|FILES|SIGHAND|THREAD`，worker 写共享计数器后 `thread_exit`，主线程 `thread_join` 回收；第二个 worker 自 `thread_detach`，主线程 join 返回 `-1`，退出任务由调度器自动回收；P7.3 再 fork 一个子进程，子进程主线程先 `thread_exit(0)`，worker join 主线程后作为最后线程 `exit(7)`，父进程 `wait` 校验 7；P7.4 再 fork 一个子进程，主线程创建两个 worker 后不 join 直接退出，worker A 退出 5，worker B join A 后作为最后线程退出 7，父 `wait` 校验整组回收 |
 | 用户 exec | `eax=13 exec(image_id, argv, envp)`：保留 PID/PPID/任务槽，新建并切换 AS，释放旧 AS；`argv/envp` 在旧 AS 仍有效时解析，最多 4 项、每串最多 31 字符，复制到新用户栈并写成 `argc, argv[], NULL, envp[], NULL, 字符串区`；新栈 `esp` 从 `0x403FC8` 起，`sigactions`/pending 清零；内嵌镜像 1 校验参数后写 `ARGV/ENVP` 并 `exit(10)`，失败码 20..25 |
 | fd 与 pipe | 每进程 8 槽 fd 表：fd 0 为 console 读、fd 1 为 console 写，pipe 从 2 起；kind 区分 `CONSOLE_READ/WRITE` 与 `PIPE_READ/WRITE`，close/link 只对 pipe 端点做引用计数；fork 复制 fd 表并 acquire pipe 端点、console 端点直接继承，exec 保留 fd 表，exit、信号终止和 reap 关闭全部 fd；console 输入 16 字节 ASCII 环形队列，输出 8 行×64 字符并镜像 COM1；匿名 pipe 固定 4 个对象、每对象 64 字节非阻塞环形缓冲；`eax=14 pipe`、`15 read`、`16 write`、`17 close` |
 | COW fork | 新 PD/PT，所有可写用户页（data/stack/heap，以及内核可写的 control 页）清 RW、置 PTE bit 9 共享；已是 COW 的页第二次 fork 时保留 COW 位；写 #PF 或 copyout 写时复制，引用计数归零才归还物理页 |
@@ -156,11 +156,11 @@ http://127.0.0.1:8766/interface/web/world.html
 
 | 项 | 当前值 |
 | --- | --- |
-| `kernel.bin` | 72,040 字节，小于 192 扇区上限 98,304 字节（余量 26,264） |
+| `kernel.bin` | 72,744 字节，小于 192 扇区上限 98,304 字节（余量 25,560） |
 | 加载基址 | `0x80000`；boot 读取窗口 `0x80000..0x98000` |
-| BSS | `0x91980..0x9587C`，由 loader 清零；`AEVUM_KERNEL_END=0x96000` |
+| BSS | `0x91C40..0x95B3C`，由 loader 清零；`AEVUM_KERNEL_END=0x96000` |
 | 常驻任务 | `control` / `render` / `idle` |
-| 用户任务 | `userA` / `userB` / `userC` / `userD` / `userF`，D 四轮 fork 的子进程都复用 PID 8；D 的 joined worker TID 6、主线程 TID 7；第二个 detached worker 自 detach 后退出，join 返回 `-1`，任务槽/内核栈由调度器回收；P7.3 再 fork 一个子进程，子进程主线程 clone worker 后先退出，worker join 主线程并可继续运行，最后以 `exit(7)` 结束，父进程 wait 得到 7；`Y` 页 root PID 4 + 8 个 LIVE 子进程 PID 5..12；`S` 页父 `stressA` PID 4，100 轮子进程均复用 PID 5 后回收；PD/PT 从 `0x100000` 起按池分配 |
+| 用户任务 | `userA` / `userB` / `userC` / `userD` / `userF`，D 四轮 fork 的子进程都复用 PID 8；D 的 joined worker TID 6、主线程 TID 7；第二个 detached worker 自 detach 后退出，join 返回 `-1`，任务槽/内核栈由调度器回收；P7.3 fork 的子进程主线程先退出、worker join 主线程后以 `exit(7)` 结束；P7.4 再 fork 一个子进程，主线程创建 A/B 两个 worker 后不 join 直接退出，A 退出 5，B join A 后作为最后线程 `exit(7)`，父 `wait` 得到 7，整组任务槽（含主 ZOMBIE）由 `process_reap()` 释放；`Y` 页 root PID 4 + 8 个 LIVE 子进程 PID 5..12；`S` 页父 `stressA` PID 4，100 轮子进程均复用 PID 5 后回收；PD/PT 从 `0x100000` 起按池分配 |
 | 用户虚拟地址 | code `0x400000`、data `0x401000`、guard `0x402000`、stack `0x403000`（栈顶 `0x404000`）、control `0x404000`、heap `0x405000..0x410000` |
 | 地址空间证据 | A/B `brk 0x406000`；heap `0x405800` poke/peek `0x48454C50`；越界 `brk(0x500000)` 返回 `0xFFFFFFFF`；guard poke 返回 0 |
 | COW 证据 | D `forks 4 shared 16 live 2 breaks 7`，`last AS4 old 0011C000 -> 0011B000`；子写 `CHLD`、父读回 `PAPA`，V 页显示 `COW OK`；第二次 fork 保留已有 COW 位，signal frame 写栈也触发一次拆分 |
@@ -170,7 +170,7 @@ http://127.0.0.1:8766/interface/web/world.html
 | exec 证据 | `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`；子进程 PID 8 不变、`image_id=1`；内核解析 `alpha/beta/MODE=p42/LEVEL=2`，新栈 `esp=0x403FC8`，镜像逐字节校验后写 `ARGV/ENVP` 并 `exit(10)`；旧 AS 已释放（wait 回收后 AS 0） |
 | pipe 证据 | `P4.3 pipe 8 wait 8 st 0000000C fd 2>3 r4 PIPE OK`；pipe 子在 exec 后仍持有继承的 fd 3 写端，写 `PIPE` 并 `exit(12)`；父从 fd 2 读回 4 字节并校验 `0x45505049`；读写端全关后 `pipe obj 0` |
 | console fd 证据 | X 页 `pid 4 child 5 out 14 child EXIT 14 CLOSE OK`；`scan 3 push 1 frames 2237`，`in 1 last a`，`out 14 uart 14`，输出行 `CON:a` / `FD01 OK`；父进程 `close0 0 close1 0 r0 -1 w1 -1`，子进程仍用继承的 fd 0/1；COM1 原始字节中同时出现 `CON:a\nFD01 OK\n` |
-| 线程组证据 | D 线程轮次 `THREAD tid 6 join 0 shared 1 ok THRD det OK main OK arg OK`；`TEST ... thr OK det OK`；线程组进程 PID 7、主线程 TID 7，joined worker TID 6；第一个 worker 对共享计数器加 1 后 `thread_exit(0)`，主线程 `thread_join(6, status)` 返回 0、status 0；第二个 worker 自 `thread_detach(gettid())`，join 返回 `-1`，detach 返回 0，退出任务槽/内核栈由调度器延后回收；P7.3 子进程主线程先 `thread_exit(0)`，worker 继续运行、join 主线程并确认 status 0，最后以 `exit(7)` 结束，父进程 wait 得到 7；join/detach 的 0、-1、self、不存在 TID 全部返回 `-1`，最终仍为 `THR 1` |
+| 线程组证据 | D 线程轮次 `THREAD tid 6 join 0 shared 1 ok THRD det OK main OK arg OK`；`TEST ... thr OK det OK`；线程组进程 PID 7、主线程 TID 7，joined worker TID 6；第一个 worker 对共享计数器加 1 后 `thread_exit(0)`，主线程 `thread_join(6, status)` 返回 0、status 0；第二个 worker 自 `thread_detach(gettid())`，join 返回 `-1`，detach 返回 0，退出任务槽/内核栈由调度器延后回收；P7.3 子进程主线程先 `thread_exit(0)`，worker 继续运行、join 主线程并确认 status 0，最后以 `exit(7)` 结束，父进程 wait 得到 7；join/detach 的 0、-1、self、不存在 TID 全部返回 `-1`；P7.4 子进程主线程创建 A/B 两个 worker 后不 join 直接退出，A 退出 5，B join A 得到 status 5 后作为最后线程 `exit(7)`，父 wait 得到 7，tasks 表只剩父 lane 的 PID 7，子进程整组 3 个任务槽全部回收，最终仍为 `THR 1` |
 | P5.3 压测证据 | 两轮独立 `S` 都是 `round 100/100 first 5 -> 5 live 1 state STRESS OK`；`PHYS 6/255`、`proc 1/12`、`AS 1/12`、`KSTK 1/12`；第一轮 ASID 1、第二轮 ASID 102，首末 PID 始终为 5 -> 5 |
 | 物理池 | `PHYS PAGES 20/255`；停止后无 ZOMBIE/PID/页/fd/pipe 泄漏；signal frame、handler、exec 与 pipe 没有额外泄漏 |
 | 槽池证据 | 第一轮 Y 页 `task 12/16 proc 9/12 AS 9/12 kstack 9/12 live 9 root 4 children 8/8 POOL OK frames 1826`；PID 4..12 全 LIVE，KSTACK TOP `0x201000..0x209000`；第二次进入时同批 PID/栈顶复用，ASID 10..18 只是地址空间代次，`AS 9/12` 未溢出 |
@@ -265,6 +265,12 @@ P7.3 主线程先退与参数矩阵：
 | --- | --- |
 | ![P7.3 主线程先退验收](docs/assets/readme/kernel/kernel-p73-thread.png) | 子进程主线程先 `thread_exit(0)`，worker join 主线程后继续运行并以 `exit(7)` 结束；父 `wait` 得到 7；非法 join/detach 参数全部返回 `-1` |
 
+P7.4 主线程不 join、最后线程触发整组回收：
+
+| V 页 ADDRESS：`THREAD ... main OK arg OK grp OK` | `TEST ... thr OK det OK`，`THR 1 TID 7` |
+| --- | --- |
+| ![P7.4 线程组回收验收](docs/assets/readme/kernel/kernel-p74-thread-group.png) | 子进程主线程创建 A/B 两个 worker 后不 join、以 ZOMBIE 留在组内；A 退出 5，B join A 后作为最后线程退出 7；父 `wait` 得到 7，`process_reap()` 释放整组 |
+
 #### 构建与运行
 
 需要 Linux 或 WSL2，以及 `nasm`、支持 `-m32` 的 `gcc`、`binutils`、`make`、`qemu-system-i386`：
@@ -304,7 +310,7 @@ make debug
 - 进程上下文按当前边界已经闭环：GPR/iret、FPU/SSE、CR3、内核栈、fork/exec/信号/回收都有实现；通用 x86 的 FS/GS/TLS、AVX/XSAVE 和信号中的 FPU 现场仍未覆盖。
 - `TASK_MAX=16`、`PROC_MAX=12`、`AEVUM_AS_MAX=12`、`AEVUM_KSTACK_COUNT=12`；`V` 跑 A/B/C/D/F 五个用户任务，D 做四轮 fork/wait，第三轮 fork 子进程 exec 并传 `argv/envp`，第四轮用 pipe 证明 exec 后 fd 表仍保留；`Y` 跑 root + 8 个 LIVE 子进程并验证两轮槽位/栈复用；`S` 复用同一池页跑 100 轮 fork/wait，两轮都回到 `proc/AS/KSTK 1/12`。
 - P5.1 的 12 个 4KB 内核栈槽是固定池，不可按需增长，也没有 guard 页；4KB 槽含底部 512B FXSAVE 区，实际可用 3.5KB。
-- P5.2 的 `V` 页固定 4 页；原第 5 页 `DEMO` 因 `kernel.bin` 超过当时 65,536B 上限被删除，旧证据压进 `ADDRESS` 页。P7.3 clean 构建为 72,040B，上限 98,304B，余量 26,264B；`--gc-sections` 已回收不可达代码，但新增页面或长文案前仍必须先算镜像体积。
+- P5.2 的 `V` 页固定 4 页；原第 5 页 `DEMO` 因 `kernel.bin` 超过当时 65,536B 上限被删除，旧证据压进 `ADDRESS` 页。P7.4 clean 构建为 72,744B，上限 98,304B，余量 25,560B；`--gc-sections` 已回收不可达代码，但新增页面或长文案前仍必须先算镜像体积。
 - P5.3 的 `S` 与 `Y` 共用同一池页外壳并互斥。`S` 停止后再按 `Y` 可以进入，但首次进入明显变慢；目前作为观察项保留，未改代码。
 - `V` 页的页面状态是单个静态实例，四页共享选中槽；`process_slot_space()` / `process_slot_fd_info()` 是只读快照，没有 seqlock，PIT 切换窗口可能看到半更新字段。ZOMBIE 观察依赖 D lane 在 wait 前 yield 262144 次，属于演示时序，不改变 wait 语义。
 - fd/pipe 都是非阻塞语义：空读且仍有写端返回 `-1`，写端全关返回 `0`，满写返回 `-1`；`fork` 复制 fd 表并逐端点 acquire，`exec` 保留，`exit`/信号终止/`reap` 关闭全部 fd。

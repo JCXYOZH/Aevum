@@ -678,11 +678,7 @@ u32 task_schedule_irq(struct irq_frame *frame)
             prev->cpu_ticks++;
             prev->vruntime += WEIGHT_QUANTUM / task_weight(prev);
         }
-    } else if (reason == SCHED_YIELD && prev->state == TASK_READY) {
-        /* 主动 yield 也必须记账；否则 wait 轮询会以低 vruntime 饿死其他任务。 */
-        prev->vruntime += WEIGHT_QUANTUM / task_weight(prev);
     }
-
     prev->ctx.esp = (u32)frame;
     sched_failed = 0;
 
@@ -819,6 +815,18 @@ const char *task_wake(int pid)
 const char *task_yield(void)
 {
     return task_set_current_state(TASK_READY);
+}
+
+/*
+ * 等待型 yield：wait/join 的轮询必须在切走前记一次 vruntime，否则父线程
+ * 会一直以最低 vruntime 被反复选中，把子任务饿死。普通 yield 不记账，
+ * 让演示里的长 yield 窗口仍能快速推进。
+ */
+const char *task_yield_wait(void)
+{
+    if (!current_task || current_task->state != TASK_RUNNING) return "state";
+    current_task->vruntime += WEIGHT_QUANTUM / task_weight(current_task);
+    return task_yield();
 }
 
 void task_start(struct task_struct *first)

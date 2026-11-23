@@ -66,7 +66,7 @@ B 行三任务 ticks 相加为 702，PIT TICKS 为 700；这是同一帧页面�
 
 ## 6. 对后续硬件内核的直接含义
 
-1. **先做阻塞 wait**：当前 `wait` 仍是 `task_yield()` 轮询；父进程等待子进程时会持续参与调度。P6.1 应把“扫描子进程 + 进入 BLOCKED”放在同一个不可被打断的临界区，避免 lost wake。
+1. **先做阻塞 wait**：当前 `wait` / `thread_join` 仍是 `task_yield_wait()` 轮询；轮询会记 vruntime，避免饿死被等任务，但父进程等待时仍持续参与调度。P6.1 应把“扫描子进程 + 进入 BLOCKED”放在同一个不可被打断的临界区，避免 lost wake。
 2. **idle 要能停机**：`idle` 占 12% 且频繁 yield；真实硬件上应改成 `hlt`/WFI 或事件驱动，不能让 idle 空转。
 3. **控制周期要独立于 100 Hz tick**：1 kHz 伺服需要 1 kHz tick、APIC/HPET one-shot 或独立 PWM/定时器；不能把 100 Hz 当控制周期。
 4. **把渲染移出控制路径**：`render` 占 38%，当前和 `control` 共享 PIT tick；硬件上应先保证 control 的截止时间，再让 render 降频或在空闲时间跑。
