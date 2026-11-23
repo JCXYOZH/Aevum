@@ -51,11 +51,30 @@
     state.selected = { kind: "joint", index: 0 };
     state.sim = F.control.createSim(state.doc);
     labels.ensure(state.doc);
+    if (F.model.isImported(state.doc)) F.render.fitCamera(state.doc, state.cam);
+    else Object.assign(state.cam, F.render.createCamera());
     tree.render();
     inspector.render();
     controls.sync();
     telemetry.resize();
+    if (F.model.isImported(state.doc) && !F.model.kernelCompatibility(state.doc).ok) {
+      const pill = $("kernelPill");
+      pill.textContent = "KERNEL LOCAL ONLY";
+      pill.className = "pill warn";
+    } else {
+      setKernelPill(state.bridge.online ? "bridge" : false);
+    }
     if (notify) F.ui.toast.show("BodyDocument 已加载");
+    const title = $("hudTitle");
+    const sub = document.querySelector(".hud .sub");
+    if (title) title.textContent = (F.model.isImported(state.doc) ? "IMPORTED / " : "ARM3 / ") + state.doc.name;
+    if (sub) sub.textContent = F.model.isImported(state.doc)
+      ? "glTF 2.0 · " + state.doc.segments.length + " links · " + ((state.doc.meta && state.doc.meta.triangleCount) || 0) + " tris · joint-space PD"
+      : "own renderer · jaw 3R · 100 Hz control seam";
+    const brandSub = document.querySelector(".brand small");
+    if (brandSub) brandSub.textContent = F.model.isImported(state.doc)
+      ? "GENERAL BODY / GLTF 2.0 / LOCAL PD"
+      : "BODY 0 / 3R ARM / MINI ENGINE";
   }
 
   function saveDoc() {
@@ -76,12 +95,45 @@
     });
   }
 
+  function loadModelFiles(fileList) {
+    const files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return;
+    const main = files.find(function (f) { return /\.(glb|gltf)$/i.test(f.name); });
+    if (!main) {
+      F.ui.toast.show("请选择 .glb 或 .gltf 文件");
+      return;
+    }
+    const loaded = [];
+    let pending = files.length;
+    files.forEach(function (file) {
+      F.dom.readFileBuffer(file, function (err, buffer) {
+        pending--;
+        if (err) {
+          F.ui.toast.show("读取失败: " + file.name + " / " + err.message);
+          return;
+        }
+        loaded.push({ name: file.name, data: buffer });
+        if (pending === 0) {
+          try {
+            const doc = F.model.importGltfFiles(loaded, main.name);
+            replaceDocument(doc, false);
+            F.ui.toast.show("已导入 " + doc.segments.length + " 个 link / " +
+              ((doc.meta && doc.meta.triangleCount) || 0) + " 个三角形");
+          } catch (e) {
+            F.ui.toast.show("glTF 导入失败: " + e.message);
+          }
+        }
+      });
+    });
+  }
+
   const bridgeControl = F.app.createBridgeControl({
     state: state,
     setKernelPill: setKernelPill,
     rerenderInspector: function () { if (inspector) inspector.render(); },
     syncControls: function () { if (controls) controls.sync(); },
     onKernelState: function () { if (tree) tree.render(); },
+    updateKernelStatus: function () { if (inspector) inspector.updateRuntime(); },
     toast: F.ui.toast.show
   });
 
@@ -99,14 +151,27 @@
     onTreeChange: function () { tree.render(); },
     onSave: saveDoc,
     onLoad: function () { $("fileDoc").click(); },
-    onExportXml: function () { F.model.exportXml(state.doc, F.ui.toast.show); },
+    onImport: function () { $("fileModel").click(); },
+    onExportXml: function () {
+      if (F.model.isImported(state.doc)) {
+        F.ui.toast.show("导入模型暂不导出 MuJoCo XML；请用 SAVE JSON 保存建模树");
+        return;
+      }
+      F.model.exportXml(state.doc, F.ui.toast.show);
+    },
     onExportManifest: function () { F.model.exportManifest(state.doc, state.bridge, F.ui.toast.show); },
-    onToggleBridge: bridgeControl.toggle
+    onToggleBridge: bridgeControl.toggle,
+    onKernelTarget: bridgeControl.pulseManual
   });
 
   controls = F.ui.createControls({
     state: state,
     onRun: function () {
+      if (state.sim.kernel) {
+        bridgeControl.setManual(!state.sim.manual);
+        controls.sync();
+        return;
+      }
       state.sim.running = !state.sim.running;
       state.sim.last = performance.now();
       state.sim.acc = 0;
@@ -162,12 +227,18 @@
     if (e.target.files[0]) loadDoc(e.target.files[0]);
     e.target.value = "";
   };
+  $("fileModel").onchange = function (e) {
+    loadModelFiles(e.target.files);
+    e.target.value = "";
+  };
   window.addEventListener("resize", function () { telemetry.resize(); });
 
   F.app.startFrameLoop({
     state: state,
     renderer: renderer,
     telemetry: telemetry,
-    bridge: state.bridge
+    bridge: state.bridge,
+    inspector: inspector,
+    tree: tree
   });
 })(window.AEVUM.FORGE);

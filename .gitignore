@@ -48,6 +48,8 @@ engine/tests/
 *.vrm
 *.pmx
 *.glb
+# 通用建模的 3R 示例是小型测试模型，允许入库
+!interface/web/forge/samples/arm3.glb
 engine/assets/
 # 外部参考实现与源码包只在本地
 labs/reference/

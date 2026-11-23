@@ -80,7 +80,7 @@
       }
       ctx.fillStyle = "#6d838c";
       ctx.font = "10px Segoe UI";
-      ctx.fillText("KERNEL q / READ ONLY · DEG", 8, 14);
+      ctx.fillText(state.sim.manual ? "KERNEL q / MANUAL HOLD · DEG" : "KERNEL q / AUTO · DEG", 8, 14);
       ctx.fillStyle = "#37c7d4";
       ctx.fillText("J1", 170, 14);
       ctx.fillStyle = "#e0a34a";
@@ -95,21 +95,34 @@
 
       const kernel = !!state.sim.kernel;
       if (kernel) {
-        F.dom.$("mLoop").textContent = "KERNEL q";
-        F.dom.$("mMode").textContent = "read-only · local PD off";
-        F.dom.$("mRms").textContent = "N/A";
-        F.dom.$("mPeak").textContent = "N/A";
-        F.dom.$("mTorque").textContent = "N/A";
-        F.dom.$("mLoss").textContent = "0";
-        F.dom.$("mTime").textContent = "N/A";
-        F.dom.$("mRms").nextElementSibling.textContent = "kernel q / read only";
-        F.dom.$("mPeak").nextElementSibling.textContent = "not measured";
-        F.dom.$("mTorque").nextElementSibling.textContent = "local PD off";
-        F.dom.$("mTime").nextElementSibling.textContent = "local PD off";
+        const st = state.sim.kernelStatus || {};
+        F.dom.$("mLoop").textContent = "KERNEL 0x03";
+        F.dom.$("mMode").textContent = st.mode === 1 ? "manual hold" : "auto fallback";
+        F.dom.$("mRms").textContent = st.errMm == null ? "N/A" : F.math.fmt(st.errMm, 2) + " mm";
+        F.dom.$("mPeak").textContent = st.wManip == null ? "N/A" : F.math.fmt(st.wManip, 4);
+        F.dom.$("mTorque").textContent = st.sigmaMin == null ? "N/A" : F.math.fmt(st.sigmaMin, 3) + " / " + F.math.fmt(st.sigmaMax, 3);
+        F.dom.$("mLoss").textContent = st.nullShare == null ? "N/A" : F.math.fmt(st.nullShare * 100, 1) + "%";
+        F.dom.$("mTime").textContent = st.limitMargin == null ? "N/A" : F.math.fmt(st.limitMargin, 1) + "°";
+        F.dom.$("mRms").nextElementSibling.textContent = "end effector";
+        F.dom.$("mPeak").nextElementSibling.textContent = "manipulability";
+        F.dom.$("mTorque").nextElementSibling.textContent = "sigma min / max";
+        F.dom.$("mLoss").nextElementSibling.textContent = "null-space share";
+        F.dom.$("mTime").nextElementSibling.textContent = "limit margin";
         drawChart();
         onMetrics({
           kernel: true,
+          manual: !!state.sim.manual,
           q: state.sim.q.slice(),
+          dq: (st.dq || [0, 0, 0]).slice(),
+          qTarget: (st.qTarget || [0, 0, 0]).slice(),
+          target: (st.target || [0, 0]).slice(),
+          errMm: st.errMm,
+          wManip: st.wManip,
+          sigmaMin: st.sigmaMin,
+          sigmaMax: st.sigmaMax,
+          nullShare: st.nullShare,
+          limitMargin: st.limitMargin,
+          mode: st.mode,
           rms: null,
           peak: null,
           torque: null,

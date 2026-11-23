@@ -20,6 +20,23 @@
       }
     }
 
+    function drawBodyScene(doc, scene, selected) {
+      for (let i = 0; i < scene.links.length; i++) {
+        const l = scene.links[i];
+        if (!l.mesh) continue;
+        const col = (selected.kind === "joint" && selected.index === i)
+          ? [0.55, 0.95, 0.98]
+          : (l.seg.color || [0.35, 0.62, 0.72]);
+        buffers.drawMeshData(l.mesh, l.model, l.normal, col);
+      }
+      for (let i = 0; i < scene.joints.length; i++) {
+        const col = (selected.kind === "joint" && selected.index === i)
+          ? [1.0, 0.68, 0.22]
+          : [0.35, 0.42, 0.45];
+        buffers.drawMesh(buffers.jointMesh, M.trans.apply(null, scene.joints[i].pos), M.mat3(M.mat4()), col);
+      }
+    }
+
     function draw(doc, scene, vp, selected) {
       resize();
 
@@ -38,6 +55,13 @@
         M.mat3(M.mat4()),
         [0.075, 0.09, 0.10]
       );
+
+      if (scene.mode === "body") {
+        drawBodyScene(doc, scene, selected);
+        buffers.drawLines(buffers.lineMesh, vp, [0.18, 0.38, 0.42]);
+        labels.update(scene, vp, selected);
+        return;
+      }
 
       /* base */
       buffers.drawMesh(

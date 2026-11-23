@@ -104,5 +104,7 @@ u32 task_trace_pid(int index);
 u32 task_switch_total(void);
 u32 task_preempt_total(void);
 u32 task_cpu_total(void);
+/* 单调 PIT tick 计数（100 Hz），只统计 IRQ0，不把 int 0x40 yield 算进去。 */
+u32 task_tick_total(void);
 
 #endif

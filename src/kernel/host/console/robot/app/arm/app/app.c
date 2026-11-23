@@ -61,9 +61,36 @@ static const struct aevum_error app_state_template = {
     "arm_app", "task_yield", "state", "arm app task switch failed", 0
 };
 
+static void send_arm_status(const struct arm_status *st)
+{
+    i32 v[19];
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        v[i] = st->q[i];
+        v[3 + i] = st->dq[i];
+        v[6 + i] = st->q_target[i];
+    }
+    v[9] = st->target.x;
+    v[10] = st->target.y;
+    v[11] = st->err_mm;
+    v[12] = st->w_manip;
+    v[13] = st->sigma_min;
+    v[14] = st->sigma_max;
+    v[15] = st->null_share;
+    v[16] = st->limit_margin;
+    v[17] = st->mode;
+    v[18] = st->null_on;
+    uart_status_frame(v, 19);
+}
+
 static void proc_control(void)
 {
+    i32 qcmd[3];
+
     for (;;) {
+        if (uart_poll_joint_command(qcmd))
+            arm_control_set_joint_targets(qcmd);
         arm_control_step();
         if (task_yield()) {
             struct aevum_error e = app_state_template;
@@ -380,7 +407,7 @@ static void proc_render(void)
         vga_flush();
         if ((frames & 7) == 0) {
             uart_scan();
-            uart_state_frame(status.q);
+            send_arm_status(&status);
         }
         vga_vsync();
         arm_render_trace_push(&status);

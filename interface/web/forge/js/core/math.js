@@ -59,6 +59,53 @@
     return m;
   }
 
+  function axisAngle(axis, angle) {
+    let x = axis[0], y = axis[1], z = axis[2];
+    const l = Math.hypot(x, y, z) || 1;
+    x /= l; y /= l; z /= l;
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const t = 1 - c;
+    const m = mat4();
+    m[0] = t * x * x + c;
+    m[1] = t * x * y + s * z;
+    m[2] = t * x * z - s * y;
+    m[4] = t * x * y - s * z;
+    m[5] = t * y * y + c;
+    m[6] = t * y * z + s * x;
+    m[8] = t * x * z + s * y;
+    m[9] = t * y * z - s * x;
+    m[10] = t * z * z + c;
+    return m;
+  }
+
+  function quatToMat(q) {
+    const x = q[0], y = q[1], z = q[2], w = q[3];
+    const n = Math.hypot(x, y, z, w) || 1;
+    const qx = x / n, qy = y / n, qz = z / n, qw = w / n;
+    const xx = qx * qx, yy = qy * qy, zz = qz * qz;
+    const xy = qx * qy, xz = qx * qz, yz = qy * qz;
+    const wx = qw * qx, wy = qw * qy, wz = qw * qz;
+    const m = mat4();
+    m[0] = 1 - 2 * (yy + zz);
+    m[1] = 2 * (xy + wz);
+    m[2] = 2 * (xz - wy);
+    m[4] = 2 * (xy - wz);
+    m[5] = 1 - 2 * (xx + zz);
+    m[6] = 2 * (yz + wx);
+    m[8] = 2 * (xz + wy);
+    m[9] = 2 * (yz - wx);
+    m[10] = 1 - 2 * (xx + yy);
+    return m;
+  }
+
+  function trs(translation, rotation, scaleValues) {
+    const t = translation || [0, 0, 0];
+    const q = rotation || [0, 0, 0, 1];
+    const s = scaleValues || [1, 1, 1];
+    return mul(mul(trans(t[0], t[1], t[2]), quatToMat(q)), scale(s[0], s[1], s[2]));
+  }
+
   function perspective(fovy, aspect, near, far) {
     const f = 1 / Math.tan(fovy / 2);
     const m = new Float32Array(16);
@@ -124,6 +171,9 @@
     trans,
     scale,
     rz,
+    axisAngle,
+    quatToMat,
+    trs,
     perspective,
     lookAt,
     mat3,

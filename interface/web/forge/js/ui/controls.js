@@ -11,13 +11,16 @@
 
     function sync() {
       const kernel = !!state.sim.kernel;
-      btnRun.textContent = kernel ? "KERNEL MODE" : (state.sim.running ? "PAUSE" : "RUN");
+      btnRun.textContent = kernel
+        ? (state.sim.manual ? "MANUAL ON" : "MANUAL")
+        : (state.sim.running ? "PAUSE" : "RUN");
       btnSine.textContent = kernel ? "SINE OFF" : (state.sim.sine ? "SINE ON" : "SINE TEST");
-      btnRun.disabled = kernel;
+      btnRun.disabled = false;
       btnSine.disabled = kernel;
       btnReset.disabled = kernel;
       if (kernel) {
-        modePill.textContent = "KERNEL q / READ ONLY";
+        const actualManual = !!state.sim.kernelStatus && state.sim.kernelStatus.mode === 1;
+        modePill.textContent = actualManual ? "KERNEL / MANUAL HOLD" : "KERNEL / AUTO";
         modePill.className = "pill on";
       } else if (state.bridge.online) {
         modePill.textContent = "BRIDGE / WAIT q";

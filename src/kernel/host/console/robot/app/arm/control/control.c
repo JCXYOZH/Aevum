@@ -1,5 +1,6 @@
 #include "app/arm/control.h"
 #include "app/arm/kinematics.h"
+#include "kernel/task.h"
 #include "lib/fixed.h"
 #include "lib/trig.h"
 
@@ -10,11 +11,17 @@
 #define Q_LIMIT     193986
 #define STEPS_PER_SIN 200
 #define TGT_SPEED   18529
+#define KP_MANUAL   393216
+#define MANUAL_SPEED 131072
+/* 5 秒保持窗口：PIT 100 Hz，500 tick。不能用 control step 计数，
+ * control 任务可以在一秒内跑数千步，会把窗口缩成 2 秒以内。 */
+#define MANUAL_TIMEOUT_TICKS 500u
 
 static const i32 q_pref[ARM_NLINK] = { 17157, 34315, 34315 };
 
 static i32 q[ARM_NLINK];
 static i32 dq[ARM_NLINK];
+static i32 q_target[ARM_NLINK];
 static struct arm_points points;
 static struct arm_vec2 target;
 static struct arm_vec2 target_velocity;
@@ -32,12 +39,18 @@ static i32 nodamp_speed;
 static i32 lap_nodamp_max;
 static int frame_no;
 static i32 phase;
+static int mode;
+static int manual_ticks;
+static u32 manual_deadline;
 
 u32 arm_control_init(void)
 {
     q[0] = 17157;
     q[1] = 34315;
     q[2] = 34315;
+    q_target[0] = q[0];
+    q_target[1] = q[1];
+    q_target[2] = q[2];
 
     target.x = 34734 + 17433;
     target.y = 9830;
@@ -49,6 +62,9 @@ u32 arm_control_init(void)
     phase = 0;
     null_on = 1;
     frame_no = 0;
+    mode = 0;
+    manual_ticks = 0;
+    manual_deadline = 0;
     w_manip = 0;
     sigma_min = 0;
     sigma_max = 0;
@@ -69,12 +85,32 @@ void arm_control_toggle_nullspace(void)
     null_on = !null_on;
 }
 
+/*
+ * 宿主手动命令：只改关节目标，不直接改 q。
+ * 命令每次刷新 manual_ticks；超过保持窗口没有新命令就回 auto，
+ * 避免桥接断开后内核一直停在最后一条目标。
+ */
+void arm_control_set_joint_targets(const i32 q_in[ARM_NLINK])
+{
+    int i;
+    for (i = 0; i < ARM_NLINK; i++) {
+        i32 v = q_in[i];
+        if (v > Q_LIMIT) v = Q_LIMIT;
+        if (v < -Q_LIMIT) v = -Q_LIMIT;
+        q_target[i] = v;
+    }
+    mode = 1;
+    manual_deadline = task_tick_total() + MANUAL_TIMEOUT_TICKS;
+    manual_ticks = (int)MANUAL_TIMEOUT_TICKS;
+}
+
 void arm_control_status(struct arm_status *out)
 {
     int i;
     for (i = 0; i < ARM_NLINK; i++) {
         out->q[i] = q[i];
         out->dq[i] = dq[i];
+        out->q_target[i] = q_target[i];
     }
     out->points = points;
     out->target = target;
@@ -89,6 +125,8 @@ void arm_control_status(struct arm_status *out)
     out->lap_nodamp_max = lap_nodamp_max;
     out->nodamp_speed = nodamp_speed;
     out->null_on = null_on;
+    out->mode = mode;
+    out->manual_ticks = manual_ticks;
     out->frame_no = frame_no;
 }
 
@@ -99,6 +137,74 @@ void arm_control_step(void)
     i32 dqn[ARM_NLINK], z[ARM_NLINK], JtAi[ARM_NLINK][2];
     i32 nrm = 0, nrm_null = 0;
     int i, j;
+
+    if (mode == 1 && (i32)(task_tick_total() - manual_deadline) >= 0) {
+        mode = 0;
+        manual_ticks = 0;
+        target_velocity.x = 0;
+        target_velocity.y = 0;
+    }
+
+    if (mode == 1) {
+        struct arm_points tgt;
+        i32 ex, ey, exum, eyum;
+        i64 sq;
+        i32 r_um;
+
+        arm_solve(q, &points, J);
+        arm_fk(q_target, &tgt);
+        target.x = tgt.end.x;
+        target.y = tgt.end.y;
+        target_velocity.x = 0;
+        target_velocity.y = 0;
+
+        ex = target.x - points.end.x;
+        ey = target.y - points.end.y;
+        exum = (i32)(((i64)ex * 1000000) >> FXBITS);
+        eyum = (i32)(((i64)ey * 1000000) >> FXBITS);
+        sq = (i64)exum * exum + (i64)eyum * eyum;
+        r_um = (i32)isqrt64((u64)sq);
+        err_mm = fx_div(r_um, 1000);
+
+        a0 = fx_mul(J[0][0], J[0][0]) + fx_mul(J[0][1], J[0][1]) + fx_mul(J[0][2], J[0][2]);
+        b0 = fx_mul(J[0][0], J[1][0]) + fx_mul(J[0][1], J[1][1]) + fx_mul(J[0][2], J[1][2]);
+        c0 = fx_mul(J[1][0], J[1][0]) + fx_mul(J[1][1], J[1][1]) + fx_mul(J[1][2], J[1][2]);
+
+        tr = a0 + c0;
+        disc = fx_mul(tr, tr) - 4 * (fx_mul(a0, c0) - fx_mul(b0, b0));
+        if (disc < 0) disc = 0;
+        t = fx_sqrt(disc);
+        lam_min = (tr - t) / 2;
+        sigma_min = fx_sqrt(lam_min);
+        sigma_max = fx_sqrt((tr + t) / 2);
+        {
+            i32 d2 = fx_mul(a0, c0) - fx_mul(b0, b0);
+            w_manip = (d2 > 0) ? fx_sqrt(d2) : 0;
+        }
+        null_share = 0;
+
+        for (i = 0; i < ARM_NLINK; i++) {
+            i32 v = fx_mul(KP_MANUAL, q_target[i] - q[i]);
+            if (v > MANUAL_SPEED) v = MANUAL_SPEED;
+            if (v < -MANUAL_SPEED) v = -MANUAL_SPEED;
+            dq[i] = v;
+            q[i] += fx_mul(v, DT);
+            if (q[i] > Q_LIMIT) { q[i] = Q_LIMIT; dq[i] = 0; }
+            if (q[i] < -Q_LIMIT) { q[i] = -Q_LIMIT; dq[i] = 0; }
+        }
+
+        limit_margin = 200 * FXONE;
+        for (i = 0; i < ARM_NLINK; i++) {
+            i32 lim = fx_deg(Q_LIMIT - (q[i] < 0 ? -q[i] : q[i]));
+            if (lim < limit_margin) limit_margin = lim;
+        }
+
+        target_prev.x = target.x;
+        target_prev.y = target.y;
+        manual_ticks = (int)(manual_deadline - task_tick_total());
+        if (manual_ticks < 0) manual_ticks = 0;
+        return;
+    }
 
     arm_solve(q, &points, J);
 

@@ -2,19 +2,25 @@
 #include "drivers/video/vga.h"
 #include "arch/x86/io.h"
 #include "config/memory.h"
+#include "lib/fixed.h"
 
 #define FRAME_SYNC0      0xA5
 #define FRAME_SYNC1      0x5A
 #define FRAME_TYPE_DELTA 0x01
 #define FRAME_TYPE_STATE 0x02
+#define FRAME_TYPE_STATUS 0x03
 #define FRAME_HDR        4
 #define FRAME_STATE_VALS 3
 #define FRAME_BUF        (FRAME_HDR + UART_FRAME_MAX_CELLS * 4 + 1)
+#define FRAME_STATUS_MAX 24
 
 static u16 *const serial_snapshot = (u16 *)AEVUM_FRAME_SNAP;
 static u8 serial_frame[FRAME_BUF];
 static u32 serial_scan_count = 0;
-static u32 serial_full_request = 0;
+static volatile u32 serial_full_request = 0;
+static u8 cmd_buf[6];
+static u32 cmd_len = 0;
+static int cmd_live = 0;
 
 void uart_init(void)
 {
@@ -50,6 +56,44 @@ int uart_poll_full_request(void)
         }
     }
     return requested;
+}
+
+/*
+ * 宿主命令：J + 3 个 int16 little-endian，单位 0.001 rad。
+ * 只在 control 任务里轮询；F 仍走同一入口，避免两个任务抢 COM1。
+ */
+int uart_poll_joint_command(i32 q[3])
+{
+    int got = 0;
+    while (port_inb(UART_COM1 + 5) & 1) {
+        u8 value = port_inb(UART_COM1);
+        if (value == 'F') {
+            serial_full_request = 1;
+            cmd_live = 0;
+            cmd_len = 0;
+            continue;
+        }
+        if (value == 'J') {
+            cmd_live = 1;
+            cmd_len = 0;
+            continue;
+        }
+        if (!cmd_live) continue;
+        cmd_buf[cmd_len++] = value;
+        if (cmd_len == 6) {
+            int i;
+            for (i = 0; i < 3; i++) {
+                i32 raw = (i32)cmd_buf[i * 2] | ((i32)cmd_buf[i * 2 + 1] << 8);
+                if (raw & 0x8000) raw -= 0x10000;
+                /* 0.001 rad -> Q16.16 rad；拆 65 + 536/1000 避免 64 位除法。 */
+                q[i] = raw * 65 + (raw * 536) / 1000;
+            }
+            cmd_live = 0;
+            cmd_len = 0;
+            got = 1;
+        }
+    }
+    return got;
 }
 
 static void uart_send_frame(u32 count)
@@ -120,6 +164,35 @@ void uart_state_frame(const i32 q[3])
     serial_frame[3] = FRAME_STATE_VALS;
     for (i = 0; i < FRAME_STATE_VALS; i++) {
         u32 v = (u32)q[i];
+        u32 p = FRAME_HDR + i * 4;
+        serial_frame[p + 0] = (u8)(v & 0xFF);
+        serial_frame[p + 1] = (u8)((v >> 8) & 0xFF);
+        serial_frame[p + 2] = (u8)((v >> 16) & 0xFF);
+        serial_frame[p + 3] = (u8)((v >> 24) & 0xFF);
+    }
+    for (i = 0; i < total; i++) crc ^= serial_frame[i];
+    serial_frame[total] = crc;
+    uart_write(serial_frame, total + 1);
+}
+
+/*
+ * 完整状态帧：A5 5A 03 COUNT + COUNT 个 i32 LE + XOR CRC。
+ * count 是 4 字节字段数，不是 VGA 单元数；app 层负责字段顺序。
+ */
+void uart_status_frame(const i32 *values, u32 count)
+{
+    u32 i;
+    u32 total;
+    u8 crc = 0;
+
+    if (count == 0 || count > FRAME_STATUS_MAX) return;
+    total = FRAME_HDR + count * 4;
+    serial_frame[0] = FRAME_SYNC0;
+    serial_frame[1] = FRAME_SYNC1;
+    serial_frame[2] = FRAME_TYPE_STATUS;
+    serial_frame[3] = (u8)count;
+    for (i = 0; i < count; i++) {
+        u32 v = (u32)values[i];
         u32 p = FRAME_HDR + i * 4;
         serial_frame[p + 0] = (u8)(v & 0xFF);
         serial_frame[p + 1] = (u8)((v >> 8) & 0xFF);

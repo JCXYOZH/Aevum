@@ -25,7 +25,26 @@
     );
   }
 
+  function fitCamera(doc, cam) {
+    const scene = F.render.buildScene(doc);
+    const mn = [Infinity, Infinity, Infinity];
+    const mx = [-Infinity, -Infinity, -Infinity];
+    scene.links.forEach(function (l) {
+      const p = F.math.translation(l.model);
+      const b = l.mesh && l.mesh.bounds && l.mesh.bounds.size ? l.mesh.bounds.size : [0.1, 0.1, 0.1];
+      for (let c = 0; c < 3; c++) {
+        mn[c] = Math.min(mn[c], p[c] - b[c] / 2);
+        mx[c] = Math.max(mx[c], p[c] + b[c] / 2);
+      }
+    });
+    if (!isFinite(mn[0])) return;
+    cam.target = [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2];
+    const span = Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2], 0.4);
+    cam.dist = Math.max(1.2, span * 2.0);
+  }
+
   F.render.createCamera = createCamera;
   F.render.cameraEye = cameraEye;
   F.render.viewProjection = viewProjection;
+  F.render.fitCamera = fitCamera;
 })(window.AEVUM.FORGE);

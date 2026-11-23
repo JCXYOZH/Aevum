@@ -18,6 +18,8 @@
         running: state.sim.running,
         sine: state.sim.sine,
         kernel: state.sim.kernel,
+        manual: state.sim.manual,
+        kernelStatus: state.sim.kernelStatus ? F.model.clone(state.sim.kernelStatus) : null,
         time: state.sim.time,
         q: state.sim.q.slice(),
         target: state.doc.segments.map(function (s) { return s.target; }),
@@ -37,29 +39,49 @@
       getState: getState,
       getDocument: function () { return F.model.clone(state.doc); },
       setDocument: function (doc) { replaceDocument(F.model.clone(doc), true); },
+      importModel: function (name, buffer) {
+        const doc = F.model.importGltfBuffer(buffer, name);
+        replaceDocument(doc, true);
+        return {
+          format: doc.format,
+          segments: doc.segments.length,
+          triangles: (doc.meta && doc.meta.triangleCount) || 0,
+          kernel: F.model.kernelCompatibility(doc)
+        };
+      },
       setTarget: function (index, degrees) {
-        requireLocal("setTarget");
         const s = state.doc.segments[index];
         if (!s) throw new Error("joint index out of range");
         s.target = degrees * M.D2R;
+        if (state.sim.kernel) bridgeControl.pulseManual();
         inspector.render();
       },
       setTargets: function (degrees) {
-        requireLocal("setTargets");
         degrees.forEach(function (v, i) {
           const s = state.doc.segments[i];
           if (s) s.target = v * M.D2R;
         });
+        if (state.sim.kernel) bridgeControl.pulseManual();
         inspector.render();
       },
+      setManual: function (on) {
+        bridgeControl.setManual(on);
+      },
       run: function () {
-        requireLocal("run");
+        if (state.sim.kernel) {
+          bridgeControl.setManual(true);
+          return;
+        }
         state.sim.running = true;
         state.sim.last = performance.now();
         state.sim.acc = 0;
         controls.sync();
       },
       pause: function () {
+        if (state.sim.kernel) {
+          bridgeControl.setManual(false);
+          return;
+        }
         state.sim.running = false;
         controls.sync();
       },
@@ -77,9 +99,21 @@
       },
       getTelemetry: function () {
         if (state.sim.kernel) {
+          const st = state.sim.kernelStatus || {};
           return {
             kernel: true,
+            manual: !!state.sim.manual,
             q: state.sim.q.slice(),
+            dq: (st.dq || [0, 0, 0]).slice(),
+            qTarget: (st.qTarget || [0, 0, 0]).slice(),
+            target: (st.target || [0, 0]).slice(),
+            errMm: st.errMm == null ? null : st.errMm,
+            wManip: st.wManip == null ? null : st.wManip,
+            sigmaMin: st.sigmaMin == null ? null : st.sigmaMin,
+            sigmaMax: st.sigmaMax == null ? null : st.sigmaMax,
+            nullShare: st.nullShare == null ? null : st.nullShare,
+            limitMargin: st.limitMargin == null ? null : st.limitMargin,
+            mode: st.mode == null ? null : st.mode,
             rms: null,
             peak: null,
             torque: null,

@@ -11,6 +11,7 @@
 struct arm_status {
     i32 q[ARM_NLINK];
     i32 dq[ARM_NLINK];
+    i32 q_target[ARM_NLINK];
     struct arm_points points;
     struct arm_vec2 target;
     i32 w_manip;
@@ -24,12 +25,16 @@ struct arm_status {
     i32 lap_nodamp_max;
     i32 nodamp_speed;
     int null_on;
+    int mode;          /* 0 = auto sine, 1 = manual joint target */
+    int manual_ticks;  /* remaining hold ticks; 0 releases to auto */
     int frame_no;
 };
 
 u32 arm_control_init(void);
 void arm_control_step(void);
 void arm_control_toggle_nullspace(void);
+/* Host command: joint targets in Q16.16 radians; enters manual mode. */
+void arm_control_set_joint_targets(const i32 q[ARM_NLINK]);
 void arm_control_status(struct arm_status *out);
 
 #endif

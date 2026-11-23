@@ -22,6 +22,8 @@
     setDocument: function (doc) { return requireHandlers().setDocument(doc); },
     setTarget: function (index, degrees) { return requireHandlers().setTarget(index, degrees); },
     setTargets: function (degrees) { return requireHandlers().setTargets(degrees); },
+    setManual: function (on) { return requireHandlers().setManual(on); },
+    importModel: function (name, buffer) { return requireHandlers().importModel(name, buffer); },
     run: function () { return requireHandlers().run(); },
     pause: function () { return requireHandlers().pause(); },
     reset: function () { return requireHandlers().reset(); },

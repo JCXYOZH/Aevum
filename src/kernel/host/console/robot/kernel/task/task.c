@@ -47,6 +47,7 @@ static struct task_struct tasks[TASK_MAX];
 static struct task_struct boot_task;
 static struct task_struct *current_task;
 static struct task_struct *start_target;
+static u32 tick_total;
 
 static volatile u32 sched_reason;
 static volatile int sched_failed;
@@ -491,6 +492,7 @@ u32 task_schedule_irq(struct irq_frame *frame)
     if (frame->vector == 0x20) {
         interrupt_eoi();
         reason = SCHED_TICK;
+        tick_total++;
         if (prev->state == TASK_RUNNING) {
             prev->cpu_ticks++;
             prev->vruntime += WEIGHT_QUANTUM / task_weight(prev);
@@ -733,4 +735,9 @@ u32 task_cpu_total(void)
     for (i = 0; i < TASK_MAX; i++)
         if (tasks[i].state != TASK_UNUSED) total += tasks[i].cpu_ticks;
     return total;
+}
+
+u32 task_tick_total(void)
+{
+    return tick_total;
 }

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 AEVUM serial bridge: reads TCP-framed serial from QEMU, forwards to WebSocket.
-Frame format: A5 5A 01 COUNT [row col ch attr] * COUNT CRC
-State frame:  A5 5A 02 03 q0 q1 q2 (i32 LE, Q16.16 rad) CRC
+Delta frame: A5 5A 01 COUNT [row col ch attr] * COUNT CRC
+Status frame: A5 5A 03 19 + 19 * i32 LE + CRC
+Joint command to kernel: b"J" + 3 * i16 LE (0.001 rad)
 """
 import asyncio
 import json
@@ -21,10 +22,40 @@ SYNC0 = 0xA5
 SYNC1 = 0x5A
 FRAME_TYPE_DELTA = 0x01
 FRAME_TYPE_STATE = 0x02
+FRAME_TYPE_STATUS = 0x03
 FRAME_HDR = 4
 MAX_CELLS = 32
 STATE_VALS = 3
+STATUS_FIELDS = (
+    "q0", "q1", "q2",
+    "dq0", "dq1", "dq2",
+    "qt0", "qt1", "qt2",
+    "tx", "ty",
+    "err_mm", "w_manip", "sigma_min", "sigma_max",
+    "null_share", "limit_margin", "mode", "null_on",
+)
 Q16_ONE = 65536.0
+Q_LIMIT = 193986
+Q_SANE_LIMIT = 210000
+
+
+def status_is_sane(status):
+    """Reject a CRC collision that starts inside a VGA delta payload."""
+    for key in ("q0", "q1", "q2", "qt0", "qt1", "qt2"):
+        if abs(status[key]) > Q_SANE_LIMIT:
+            return False
+    for key in ("dq0", "dq1", "dq2"):
+        if abs(status[key]) > Q_SANE_LIMIT:
+            return False
+    if status["mode"] not in (0, 1):
+        return False
+    if status["null_on"] not in (0, 1):
+        return False
+    if status["null_share"] < 0 or status["null_share"] > Q16_ONE:
+        return False
+    if status["limit_margin"] < 0 or status["limit_margin"] > 200 * Q16_ONE:
+        return False
+    return True
 
 
 class FrameParser:
@@ -76,6 +107,25 @@ class FrameParser:
                 del self.buf[:total]
                 self.frames_ok += 1
                 continue
+            if ftype == FRAME_TYPE_STATUS:
+                if count != len(STATUS_FIELDS):
+                    del self.buf[:1]
+                    self.frames_bad += 1
+                    continue
+                vals = struct.unpack_from("<%di" % count, self.buf, FRAME_HDR)
+                status = dict(zip(STATUS_FIELDS, vals))
+                if not status_is_sane(status):
+                    del self.buf[:1]
+                    self.frames_bad += 1
+                    continue
+                out.append({
+                    "type": "status",
+                    "q": [round(status["q%d" % i] / Q16_ONE, 6) for i in range(3)],
+                    "values": status,
+                })
+                del self.buf[:total]
+                self.frames_ok += 1
+                continue
             cells = []
             p = FRAME_HDR
             for _ in range(count):
@@ -114,8 +164,11 @@ async def main():
     parser = FrameParser()
     clients = set()
     state = {}
-    last_q = {"q": None}
+    last_status = {"frame": None}
     link = {"writer": None}
+
+    async def send_status(ws, frame):
+        await ws.send(json.dumps(frame))
 
     async def handler(ws):
         clients.add(ws)
@@ -123,9 +176,9 @@ async def main():
             # 新窗口后连接时补一帧当前画面，否则只收到打开之后的差量。
             if state:
                 await ws.send(json.dumps({"type": "frame", "cells": list(state.values())}))
-            # 新的只读订阅者也补一次最近关节角，避免等下一次 8 帧扫描。
-            if last_q["q"] is not None:
-                await ws.send(json.dumps({"type": "state", "q": last_q["q"]}))
+            # 新订阅者补最近一次完整状态，避免等下一次 8 帧扫描。
+            if last_status["frame"] is not None:
+                await send_status(ws, last_status["frame"])
             # 让内核下一次扫描发送完整 VGA，补齐窗口连接前就已经存在的静态单元。
             if link["writer"]:
                 try:
@@ -133,19 +186,55 @@ async def main():
                     await link["writer"].drain()
                 except Exception:
                     pass
-            async for _ in ws:
-                pass
+            async for raw in ws:
+                try:
+                    msg = json.loads(raw)
+                except (TypeError, ValueError):
+                    continue
+                if msg.get("type") in ("joint", "manual"):
+                    q = msg.get("q")
+                    if not isinstance(q, list) or len(q) != 3:
+                        continue
+                    try:
+                        raw_q = [int(round(float(v) * 1000.0)) for v in q]
+                    except (TypeError, ValueError):
+                        continue
+                    raw_q = [max(-32768, min(32767, v)) for v in raw_q]
+                    if link["writer"]:
+                        try:
+                            link["writer"].write(b"J" + struct.pack("<3h", *raw_q))
+                            await link["writer"].drain()
+                        except Exception:
+                            pass
+                elif msg.get("type") == "full_refresh":
+                    if link["writer"]:
+                        try:
+                            link["writer"].write(b"F")
+                            await link["writer"].drain()
+                        except Exception:
+                            pass
         finally:
             clients.discard(ws)
 
     async def broadcast(frame):
-        if frame["type"] == "state":
-            last_q["q"] = frame["q"]
-            msg = {"type": "state", "q": frame["q"]}
+        if frame["type"] == "status":
+            last_status["frame"] = frame
             dead = []
             for ws in list(clients):
                 try:
-                    await ws.send(json.dumps(msg))
+                    await send_status(ws, frame)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                clients.discard(ws)
+            return
+
+        if frame["type"] == "state":
+            # 兼容仍只认 q 的旧客户端；正式前端使用 status。
+            dead = []
+            for ws in list(clients):
+                try:
+                    await ws.send(json.dumps(frame))
                 except Exception:
                     dead.append(ws)
             for ws in dead:

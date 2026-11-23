@@ -8,9 +8,12 @@
     const renderer = opts.renderer;
     const telemetry = opts.telemetry;
     const bridge = opts.bridge;
+    const inspector = opts.inspector;
+    const tree = opts.tree;
+    let treeLast = 0;
 
     function frame(now) {
-      const scene = F.render.buildArmScene(state.doc);
+      const scene = F.render.buildScene(state.doc);
       const vp = F.render.viewProjection(state.cam, renderer.canvas);
       renderer.draw(state.doc, scene, vp, state.selected);
 
@@ -19,7 +22,18 @@
           F.bridge.send(bridge, packet);
         });
       }
+      if (state.sim.kernel && state.sim.manual) {
+        F.bridge.send(bridge, {
+          type: "joint",
+          q: state.doc.segments.map(function (s) { return +s.target.toFixed(5); })
+        });
+      }
       telemetry.update(now);
+      if (inspector) inspector.updateRuntime();
+      if (tree && now - treeLast > 200) {
+        treeLast = now;
+        tree.updateRuntime();
+      }
 
       requestAnimationFrame(frame);
     }

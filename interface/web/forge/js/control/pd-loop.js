@@ -11,6 +11,9 @@
       running: false,
       sine: false,
       kernel: false,
+      manual: false,
+      kernelStatus: null,
+      kernelRejected: false,
       time: 0,
       last: performance.now(),
       acc: 0,
@@ -35,6 +38,7 @@
     sim.errHist = [];
     sim.last = performance.now();
     sim.lastSend = 0;
+    sim.manual = false;
   }
 
   function tick(doc, sim, now, send) {

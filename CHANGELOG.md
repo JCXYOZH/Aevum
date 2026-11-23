@@ -28,6 +28,14 @@
 - `src/kernel/host/console/robot/PERFORMANCE.md`：P6.0 QEMU 速度基线，记录 100 Hz PIT、约 31.4k 次/秒调度切换和 50/38/12 CPU 账；明确标注 TCG 非实时、不能外推硬件。
 - 内核用户进程 orphan/reparent 事件：`process_last_orphan()` 导出最近一次 `from/to/children[]` 快照，V 页 TREE 第 20/21 行显示。
 - 内核只读关节状态帧：COM1 在 VGA 差量帧之外增加 `A5 5A 02 03 q0 q1 q2 CRC`（i32 LE，Q16.16 rad），由 `serial_bridge.py` 转成 `{type:"state", q:[...]}`；Forge 收到 q 后进入 `KERNEL q / READ ONLY`，禁用本地 PD 并显示真实 q 曲线。
+- 内核手动关节模式：新增 `arm_control_set_joint_targets()`、`q_target` / `mode` / `manual_ticks`，手动分支做关节空间 PD、限位钳位和完整运动学指标；`MANUAL_TIMEOUT_TICKS=500` 用 PIT 100 Hz tick 计时，5 秒无命令回 AUTO。
+- UART `J` 命令与 `0x03` 完整状态帧：`J` + 3×int16 LE（0.001 rad）下发关节目标；`A5 5A 03 13 + 19×i32 LE + CRC` 回传 q/dq/q_target/末端/误差/可操作度/sigma/null share/limit margin/mode/null_on。
+- `serial_bridge.py` 双向链路：解析 `0x03` 并广播 `{type:"status"}`，新客户端补发最近状态；处理页面 `{type:"joint"}` 写回 `J`，`full_refresh` 写回 `F`；用 `status_is_sane()` 过滤 VGA 差量中的 CRC 碰撞。
+- Forge 通用建模 v1：`aevum.body/1` 用 `segments` 表示任意 link/joint 树，新增 `parent`、`joint{origin,axis}`、`local{translation,rotation,scale}`、`mesh{positions,normals,color,triangles,bounds}`，并保留原 `aevum.body/0` 3R。
+- Forge glTF / GLB importer：`js/model/gltf-loader.js` 支持 GLB chunk、`.gltf` + data URI / 外部 `.bin`、accessor、node matrix/TRS、多 primitive 合并、缺省法线；导入后自动生成 link/joint 树，轴优先 `extras.jointAxis`，否则按平移主轴推断。
+- Forge 通用场景渲染：`js/render/scene/body-scene.js` 递归计算任意 link 世界矩阵；`buffers.js` 支持任意三角网格与关节球；`renderer.js` 增加 body 分支；`camera.js` 支持导入后自动取景。
+- Forge 手动控制与内核状态面板：`MANUAL` / `MANUAL ON`、`KERNEL STATUS / 0x03`、`sendManual()`、拖动 target 自动下发；Inspector 显示 MODE、末端误差、可操作度、sigma、null share、limit margin、max |dq|、target X/Y；导入关节可编辑轴/原点。
+- 示例 `interface/web/forge/samples/arm3.glb`：4,376 B 的 3R 链，3 links / 36 triangles，`kernelCompatibility()` 返回 ok。
 
 ### Changed
 
@@ -45,12 +53,17 @@
 - `apps/desktop/README.md` 改掉 portable-only 与“必须本机 Python”的旧说法。
 - 展示页与看板配色统一回纸黄系；看板保留深色终端块。
 - `scripts/build.ps1`、`scripts/build-linux.sh` 的源码路径改到 `src/memoria/`。
+- 内核镜像上限从 128 扇区 65,536 B 提到 130 扇区 66,560 B；`boot.asm` 改为两段 LBA 读（128 扇区到 `0x80000`，2 扇区到 `0x90000`），`Makefile` 同步上限和输出。
+- `interface/web/forge/README.md` 改成“手动关节 + 完整状态 + glTF 导入”的当前说明，公开 API 表同步 `importModel` / `setManual` / kernel telemetry。
 
 ### Fixed
 
 - `hello_torch.obj` 从仓库根目录移除。
 - `src/kernel/host/console/robot` 构建中间产物 `kernel.elf`、`os.img`、`build-baseline/` 加入 `.gitignore`，本地构建目录清理出仓库。
 - `.gitignore` 增加 `node_modules/`、`dist-app/`、`build/`、`*.exe`、权重与日志，避免构建产物进入开源仓库。
+- 手动超时初版按 control step 计数，实测 2 秒就回 AUTO；改为 PIT `task_tick_total()` 的 500 tick 后，5 秒窗口符合设计。
+- 桥接首个状态帧曾把 VGA 差量中的 `A5 5A 03 13` CRC 碰撞解析成 q2=5.9；新增 `status_is_sane()` 后丢弃非法帧。
+- 示例 GLB 初版生成脚本只取 interleaved 顶点的 x 分量，导入后 bounds 全是 0.3 立方体；改为逐顶点取 xyz/nxnynz 并重新生成。
 
 ### Notes
 

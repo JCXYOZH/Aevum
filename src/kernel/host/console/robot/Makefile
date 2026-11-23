@@ -98,8 +98,8 @@ kernel.elf: $(OBJS) $(BUILD)/loader.o $(LDSCRIPT)
 # 由同一个 ELF 产出 flat binary，保证 loader 与 C 看到的 __bss_start 完全一致。
 kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
-	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 65536 / 128 sectors)"; \
-	if [ $$size -gt 65536 ]; then echo "ERROR: kernel.bin $$size bytes > 65536"; exit 1; fi
+	@size=$$(wc -c < kernel.bin); echo "kernel.bin bytes: $$size (limit 66560 / 130 sectors)"; \
+	if [ $$size -gt 66560 ]; then echo "ERROR: kernel.bin $$size bytes > 66560"; exit 1; fi
 
 boot.bin: boot.asm boot_common.inc
 	$(AS) $(ASFLAGS_BIN) boot.asm -o boot.bin

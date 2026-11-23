@@ -10,10 +10,15 @@ start:
     xor ax, ax
     mov ds, ax
     mov es, ax
-    ; 128 个扇区一次 LBA 读到 0x80000。内核不再落在 BIOS 低内存暂存区，
-    ; 也不会覆盖正在执行的 boot 代码。
+    ; 130 个扇区分两次 LBA 读到 0x80000/0x90000：BIOS 单次读上限
+    ; 常见为 127/128，130 一次读会失败。上限 66,560 字节。
     mov ah, 0x42
     mov si, dap
+    mov dl, 0x80
+    int 0x13
+    jc disk_error
+    mov ah, 0x42
+    mov si, dap2
     mov dl, 0x80
     int 0x13
     jc disk_error
@@ -38,6 +43,13 @@ dap:
     dw 0x0000
     dw 0x8000
     dq 1
+
+dap2:
+    db 0x10, 0
+    dw 2
+    dw 0x0000
+    dw 0x9000
+    dq 129
 
 msg_disk_error: db "AEVUM robot boot: disk read failed", 0
 

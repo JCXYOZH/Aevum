@@ -15,8 +15,9 @@
 | 看板 | `interface/web/desktop.html` | 可打开 | 多窗口、启动台、展示页窗口保留 |
 | 纯内存中继 | `control/relay/` | 已实现 | 会话、上下文、分片、在线计数；无落盘 |
 | 监控服务 | `archive/backend-python/monitor/desktop_server.py` | 已实现 | 读检查点、训练指标、错误码；起模型子进程 |
-| 串口桥接 | `src/kernel/host/bridge/serial_bridge.py` | 已实现 | VGA 差量帧 + 只读 q 状态帧转 WebSocket |
-| 内核 | `src/kernel/host/console/robot/` | 维护中 | 唯一引导扇区、任务/进程、结构化错误、80×25 单元格 |
+| 串口桥接 | `src/kernel/host/bridge/serial_bridge.py` | 已实现 | VGA 差量帧 + `0x02` / `0x03` 状态帧转 WebSocket；页面 `joint` / `full_refresh` 写回内核 |
+| 内核 | `src/kernel/host/console/robot/` | 维护中 | 唯一引导扇区（130 扇区两段读）、任务/进程、结构化错误、80×25 单元格、手动关节模式 |
+| Forge | `interface/web/forge/` | 可打开 | 原生 3R 建模/控制；glTF/GLB 导入、任意 link/joint 树、手动关节 + `0x03` 状态 |
 | Memoria C++ | `src/architecture/memoria/` + `src/architecture/memoria/include/` | 可编译 | 17 个 `.cpp`、17 个头文件；训练/生成/检查点 |
 | 桌面壳 | `interface/desktop/` | 可打包 | Electron 窗口、拉起监控；`dist:installer` 出 Inno Setup，`dist:dir` 出目录 |
 | 训练语料 | `data/tinyshakespeare_3000.txt` | 已入库 | 3000 行公开文本，不包含权重 |
@@ -53,7 +54,8 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - 看板与展示页共用 `styles/presence.css`，灵体在 rail 和 dock 各有位置。
 - 配色回到纸黄系（展示页与看板 token 已替换），保留深色终端块作为局部面板。
 - 中继、串口桥接、内核入口分别收在 `control/relay/`、`src/kernel/host/bridge/`、`src/kernel/host/console/robot/`。
-- 内核 COM1 增加只读 q 状态帧，QEMU 串口用 TCP 5555，Forge 在 `KERNEL q / READ ONLY` 下跟随真实关节角；未加入控制命令。
+- 内核 COM1 先加只读 q 帧，再扩到手动关节模式与 `0x03` 完整状态帧；QEMU 串口用 TCP 5555，Forge 可下发 `J` 关节目标并显示误差/可操作度/sigma/null share/limit margin，5 秒无命令回 AUTO。
+- Forge 从固定 3R 观测页扩成通用建模台：`aevum.body/1`、glTF/GLB importer、任意三角网格渲染、自动 link/joint 树、Inspector 关节轴/原点编辑、导入自动取景；只有 3R 兼容链接内核。
 - Memoria C++ 内核迁入 `src/architecture/memoria/`，公共头文件在 `src/architecture/memoria/include/`；统一入口为 `src/architecture/memoria/include/aevum_core.h`，源码用 `#include <include/aevum_core.h>`，构建提供 `-I src/architecture/memoria`。
 - Electron 桌面壳接入 `interface/desktop/`；`npm run dist:installer` 出 Inno Setup 安装包，`npm run dist:dir` 为免安装目录；安装包约 95 MB，产物不进 Git。
 - 3000 行公开语料入库；模型权重、构建产物、`node_modules` 明确忽略。
@@ -61,7 +63,7 @@ $all = Get-ChildItem -Recurse -File -Force | Where-Object {
 - FastAPI + Uvicorn 身份接口、主账号 / 子用户隔离、本机验证码登录接入；历史内容目录尚未按用户彻底分区。
 - 访客入口接入：服务端签发 `mrhua_visitor` Cookie，访客可用 AI 对话（每日 30 条），聊天历史按 `data_scope` 落到独立目录；WAN presence 只传播不透明作用域，不传播服务器路径。
 - `/api/model` 对非本机请求只返回模型元信息；`/api/model/generate` 只在本机开放，避免公网拿到路径和模型入口。
-- 内核 P6.0 完成细节收口：`process_wait()` 的 `pid>0` 先校验直接子进程，非子进程/不存在立即 -1；`pid<=0` 等任意直接子进程。父进程退出时记录最近一次 orphan/reparent 事件，V 页 TREE 第 20/21 行显示，G 页 reparent 面板支持 4 个子进程和 `+N more`。clean `kernel.bin=64,488` 字节，余量 1,048 字节；速度基线见 `src/kernel/host/console/robot/PERFORMANCE.md`。
+- 内核 P6.0 完成细节收口：`process_wait()` 的 `pid>0` 先校验直接子进程，非子进程/不存在立即 -1；`pid<=0` 等任意直接子进程。父进程退出时记录最近一次 orphan/reparent 事件，V 页 TREE 第 20/21 行显示，G 页 reparent 面板支持 4 个子进程和 `+N more`。clean `kernel.bin=66,248` 字节，上限 66,560，余量 312 字节；速度基线见 `src/kernel/host/console/robot/PERFORMANCE.md`。
 
 ## 缺口（按优先级）
 

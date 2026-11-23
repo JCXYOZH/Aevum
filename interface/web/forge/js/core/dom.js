@@ -30,5 +30,16 @@
     reader.readAsText(file);
   }
 
-  F.dom = { $: $, download: download, readFile: readFile };
+  function readFileBuffer(file, callback) {
+    const reader = new FileReader();
+    reader.onload = function () {
+      callback(null, reader.result);
+    };
+    reader.onerror = function () {
+      callback(reader.error || new Error("FileReader failed"));
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  F.dom = { $: $, download: download, readFile: readFile, readFileBuffer: readFileBuffer };
 })(window.AEVUM.FORGE);

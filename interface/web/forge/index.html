@@ -64,11 +64,13 @@
 
 <div id="toast"></div>
 <input type="file" id="fileDoc" accept=".json,application/json" hidden>
+<input type="file" id="fileModel" accept=".glb,.gltf,.bin,model/gltf-binary,model/gltf+json" multiple hidden>
 
 <script src="js/core/namespace.js"></script>
 <script src="js/core/math.js"></script>
 <script src="js/core/dom.js"></script>
 <script src="js/model/body-document.js"></script>
+<script src="js/model/gltf-loader.js"></script>
 <script src="js/model/exporters.js"></script>
 <script src="js/control/pd-loop.js"></script>
 <script src="js/control/telemetry.js"></script>
@@ -78,6 +80,7 @@
 <script src="js/render/gl/buffers.js"></script>
 <script src="js/render/scene/camera.js"></script>
 <script src="js/render/scene/arm-scene.js"></script>
+<script src="js/render/scene/body-scene.js"></script>
 <script src="js/render/scene/joint-labels.js"></script>
 <script src="js/render/viewport/renderer.js"></script>
 <script src="js/ui/toast.js"></script>
