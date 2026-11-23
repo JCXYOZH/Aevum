@@ -49,20 +49,21 @@
     }
 
     function documentActions(withImport) {
-      return '<div class="group"><div class="gtitle">DOCUMENT</div><div class="actions">'
-        + '<button id="btnSave">SAVE JSON</button><button id="btnLoad">LOAD JSON</button>'
-        + (withImport ? '<button class="amber" id="btnImport">IMPORT glTF / GLB</button>' : '')
-        + '</div></div>';
+      return '<details class="group fold"><summary><span class="chev">›</span>Document <span class="meta">json · glTF</span></summary>'
+        + '<div class="actions">'
+        + '<button id="btnSave">Save JSON</button><button id="btnLoad">Load JSON</button>'
+        + (withImport ? '<button class="amber" id="btnImport">Import glTF</button>' : '')
+        + '</div><div class="note">导入 glTF 后自动生成 link/joint 树；JSON 保存当前建模树和关节参数。</div></details>';
     }
 
     function bridgeGroup() {
-      return '<div class="group"><div class="gtitle">KERNEL BRIDGE / EXPERIMENTAL SEAM</div>'
+      return '<details class="group fold"><summary><span class="chev">›</span>Kernel bridge <span class="meta">websocket</span></summary>'
         + '<div class="bridge"><div class="status ' + (state.bridge.online ? "on" : "") + '" id="bridgeStatus">'
         + (state.bridge.online ? "CONNECTED" : "DISCONNECTED") + '</div>'
         + '<input id="bridgeUrl" type="text" value="' + state.bridge.url + '">'
-        + '<button style="width:100%" id="btnBridge">' + (state.bridge.online ? "DISCONNECT" : "CONNECT") + '</button>'
-        + '<div class="note">内核跑在 QEMU/板子里；只有与固定 3R 几何兼容的链会接管 q。</div>'
-        + '</div></div>';
+        + '<button style="width:100%" id="btnBridge">' + (state.bridge.online ? "Disconnect" : "Connect") + '</button>'
+        + '<div class="note">QEMU / 板子里的内核通过这个桥接接入。只有与固定 3R 几何兼容的链会被接管。</div>'
+        + '</div></details>';
     }
 
     function wireBridgeGroup() {
@@ -72,17 +73,19 @@
 
     function kernelStatusMarkup() {
       return state.sim.kernel ? (
-        '<div class="group" id="kernelStatusGroup"><div class="gtitle">KERNEL STATUS / 0x03</div>'
+        '<details class="group fold" id="kernelStatusGroup" open><summary><span class="chev">›</span>Kernel status <span class="meta">0x03</span></summary>'
         + '<div class="row"><span>MODE</span><output id="ksMode">AUTO</output></div>'
         + '<div class="row"><span>END ERROR</span><output id="ksErr">-- mm</output></div>'
+        + '<div class="row"><span>LIMIT MARGIN</span><output id="ksMargin">--</output></div>'
+        + '<details class="subfold"><summary>Advanced kinematics</summary>'
         + '<div class="row"><span>MANIPULABILITY</span><output id="ksW">--</output></div>'
         + '<div class="row"><span>SIGMA MIN / MAX</span><output id="ksSigma">--</output></div>'
         + '<div class="row"><span>NULL SHARE</span><output id="ksNull">--</output></div>'
-        + '<div class="row"><span>LIMIT MARGIN</span><output id="ksMargin">--</output></div>'
         + '<div class="row"><span>MAX |dq|</span><output id="ksDq">--</output></div>'
         + '<div class="row"><span>TARGET X / Y</span><output id="ksXY">--</output></div>'
-        + '<div class="note">这里是内核真实状态，不是本地仿真。MANUAL 下发 q_target；5 秒无新命令回到 AUTO。</div>'
-        + '</div>'
+        + '</details>'
+        + '<div class="note">这里是内核真实状态，不是本地仿真。手动保持 5 秒无新命令回到 AUTO。</div>'
+        + '</details>'
       ) : '';
     }
 
@@ -119,25 +122,16 @@
         + '</div>'
         + '</div>'
         + kernelStatusMarkup()
-        + '<div class="group"><div class="gtitle">LINK GEOMETRY</div>'
+        + '<details class="group fold"><summary><span class="chev">›</span>Link geometry <span class="meta">' + M.fmt(s.length, 2) + ' m</span></summary>'
         + '<div class="split">'
         + '<div class="field"><label>LENGTH / m</label><input id="inLen" type="number" step="0.01" value="' + M.fmt(s.length, 2) + '"></div>'
         + '<div class="field"><label>WIDTH / m</label><input id="inWid" type="number" step="0.01" value="' + M.fmt(s.width, 2) + '"></div>'
         + '</div>'
         + '<div class="field" style="margin-top:9px"><label>DEPTH / m</label><input id="inDep" type="number" step="0.01" value="' + M.fmt(s.depth, 2) + '"></div>'
-        + '<div class="note">这是机器人专用建模：只改 link 尺寸和 joint 参数，不做网格雕刻、不碰材质系统。</div>'
-        + '</div>'
-        + '<div class="group"><div class="gtitle">DOCUMENT OUTPUT</div>'
-        + '<div class="actions"><button id="btnSave">SAVE JSON</button><button id="btnLoad">LOAD JSON</button></div>'
-        + '<div class="actions" style="margin-top:7px"><button class="amber" id="btnImport">IMPORT glTF / GLB</button><button class="amber" id="btnXml">MUJOCO XML</button><button id="btnManifest">BUS MANIFEST</button></div>'
-        + '</div>'
-        + '<div class="group"><div class="gtitle">KERNEL BRIDGE / EXPERIMENTAL SEAM</div>'
-        + '<div class="bridge"><div class="status ' + (state.bridge.online ? "on" : "") + '" id="bridgeStatus">'
-        + (state.bridge.online ? "CONNECTED" : "DISCONNECTED") + '</div>'
-        + '<input id="bridgeUrl" type="text" value="' + state.bridge.url + '">'
-        + '<button style="width:100%" id="btnBridge">' + (state.bridge.online ? "DISCONNECT" : "CONNECT") + '</button>'
-        + '<div class="note">内核不在这里被 import。它跑在 QEMU/板子里；这里只接临时 WebSocket 桥，报文格式见 BUS MANIFEST。</div>'
-        + '</div></div>';
+        + '<div class="note">只改 link 尺寸和 joint 参数；不做网格雕刻，也不进入材质系统。</div>'
+        + '</details>'
+        + documentActions(true)
+        + bridgeGroup();
 
       bind("inTarget", function (v) {
         s.target = +v * M.D2R;
@@ -167,11 +161,7 @@
       bind("inDep", function (v) { s.depth = Math.max(0.01, +v); });
 
       wireDocumentButtons();
-      F.dom.$("btnXml").onclick = function () { opts.onExportXml(); };
-      F.dom.$("btnManifest").onclick = function () { opts.onExportManifest(); };
-      F.dom.$("btnBridge").onclick = function () {
-        opts.onToggleBridge(F.dom.$("bridgeUrl").value.trim());
-      };
+      wireBridgeGroup();
     }
 
     function bind(id, handler) {
@@ -217,7 +207,7 @@
         + '</div>'
         + '<div class="field" style="margin-top:9px"><label>ORIGIN Z</label><input id="inOz" type="number" step="0.01" value="' + M.fmt(s.joint.origin[2], 3) + '"></div>'
         + '</div>'
-        + '<div class="group"><div class="gtitle">LOCAL PD / MESH</div>'
+        + '<details class="group fold"><summary><span class="chev">›</span>Local PD / mesh <span class="meta">' + ((mesh.triangles) || 0) + ' tris</span></summary>'
         + '<div class="split">'
         + '<div class="field"><label>TORQUE / N·m</label><input id="inTq" type="number" step="0.5" value="' + M.fmt(s.torque, 1) + '"></div>'
         + '<div class="field"><label>INERTIA</label><input id="inIn" type="number" step="0.001" value="' + M.fmt(s.inertia, 3) + '"></div>'
@@ -229,7 +219,7 @@
         + '<div class="row" style="margin-top:9px"><span>MESH BOUNDS</span><output>' + M.fmt(bounds[0], 3) + " × " + M.fmt(bounds[1], 3) + " × " + M.fmt(bounds[2], 3) + ' m</output></div>'
         + '<div class="row"><span>TRIANGLES</span><output>' + ((mesh.triangles) || 0) + '</output></div>'
         + '<div class="note">KERNEL: ' + (compat.ok ? "COMPATIBLE / " + compat.reason : "LOCAL ONLY / " + compat.reason) + '</div>'
-        + '</div>'
+        + '</details>'
         + kernelStatusMarkup()
         + documentActions(true)
         + bridgeGroup();

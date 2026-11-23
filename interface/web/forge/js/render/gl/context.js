@@ -24,31 +24,56 @@
   }
 
   function createContext(canvas) {
-    const gl = canvas.getContext("webgl", { antialias: true, alpha: false })
+    const gl = canvas.getContext("webgl", { antialias: true, alpha: false, stencil: false })
       || canvas.getContext("experimental-webgl");
     if (!gl) throw new Error("WebGL unavailable");
 
     const shaders = F.render.shaders;
     const meshProg = program(gl, shaders.meshVertex, shaders.meshFragment);
     const lineProg = program(gl, shaders.lineVertex, shaders.lineFragment);
+    const bgProg = program(gl, shaders.bgVertex, shaders.bgFragment);
+    const gridProg = program(gl, shaders.gridVertex, shaders.gridFragment);
+    const shadowProg = program(gl, shaders.shadowVertex, shaders.shadowFragment);
 
     return {
       canvas: canvas,
       gl: gl,
       meshProg: meshProg,
       lineProg: lineProg,
+      bgProg: bgProg,
+      gridProg: gridProg,
+      shadowProg: shadowProg,
       meshLoc: {
         aPos: gl.getAttribLocation(meshProg, "aPos"),
         aNormal: gl.getAttribLocation(meshProg, "aNormal"),
         uVP: gl.getUniformLocation(meshProg, "uVP"),
         uModel: gl.getUniformLocation(meshProg, "uModel"),
         uNormal: gl.getUniformLocation(meshProg, "uNormal"),
-        uColor: gl.getUniformLocation(meshProg, "uColor")
+        uColor: gl.getUniformLocation(meshProg, "uColor"),
+        uEye: gl.getUniformLocation(meshProg, "uEye"),
+        uAlpha: gl.getUniformLocation(meshProg, "uAlpha"),
+        uFlat: gl.getUniformLocation(meshProg, "uFlat")
       },
       lineLoc: {
         aPos: gl.getAttribLocation(lineProg, "aPos"),
         uVP: gl.getUniformLocation(lineProg, "uVP"),
-        uColor: gl.getUniformLocation(lineProg, "uColor")
+        uColor: gl.getUniformLocation(lineProg, "uColor"),
+        uAlpha: gl.getUniformLocation(lineProg, "uAlpha")
+      },
+      bgLoc: {
+        aPos: gl.getAttribLocation(bgProg, "aPos"),
+        uAspect: gl.getUniformLocation(bgProg, "uAspect")
+      },
+      gridLoc: {
+        aPos: gl.getAttribLocation(gridProg, "aPos"),
+        uVP: gl.getUniformLocation(gridProg, "uVP"),
+        uEye: gl.getUniformLocation(gridProg, "uEye")
+      },
+      shadowLoc: {
+        aPos: gl.getAttribLocation(shadowProg, "aPos"),
+        uVP: gl.getUniformLocation(shadowProg, "uVP"),
+        uModel: gl.getUniformLocation(shadowProg, "uModel"),
+        uAlpha: gl.getUniformLocation(shadowProg, "uAlpha")
       }
     };
   }

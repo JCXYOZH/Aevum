@@ -31,6 +31,7 @@
   let inspector = null;
   let controls = null;
   let telemetry = null;
+  let workbench = null;
 
   function setKernelPill(mode) {
     const pill = $("kernelPill");
@@ -46,13 +47,40 @@
     }
   }
 
+  function syncDocHeader() {
+    const title = $("hudTitle");
+    const sub = document.querySelector(".hud .sub");
+    const docName = $("docName");
+    const docMeta = $("docMeta");
+    const imported = F.model.isImported(state.doc);
+    const segs = state.doc.segments || [];
+    const reach = segs.reduce(function (sum, seg) { return sum + (Number(seg.length) || 0); }, 0) +
+      (state.doc.tool ? Number(state.doc.tool.length) || 0 : 0);
+    const tris = (state.doc.meta && state.doc.meta.triangleCount) || 0;
+    if (docName) docName.textContent = imported ? state.doc.name : "ARM3 / NATIVE";
+    if (docMeta) {
+      docMeta.textContent = imported
+        ? segs.length + " links · " + tris + " tris · " + reach.toFixed(2) + " m"
+        : "3 joints · " + reach.toFixed(2) + " m reach · 100 Hz";
+    }
+    if (title) title.textContent = imported ? "IMPORTED / " + state.doc.name : "ARM3 / KINEMATIC BENCH";
+    if (sub) sub.textContent = imported
+      ? "glTF 2.0 · " + segs.length + " links · " + tris + " tris · joint-space PD"
+      : "own renderer · 3R chain · 100 Hz control seam";
+    const brandSub = document.querySelector(".brand small");
+    if (brandSub) brandSub.textContent = "ROBOTICS WORKBENCH";
+  }
+
   function replaceDocument(doc, notify) {
     state.doc = F.model.validate(doc);
     state.selected = { kind: "joint", index: 0 };
     state.sim = F.control.createSim(state.doc);
     labels.ensure(state.doc);
-    if (F.model.isImported(state.doc)) F.render.fitCamera(state.doc, state.cam);
-    else Object.assign(state.cam, F.render.createCamera());
+    if (F.model.isImported(state.doc)) F.render.fitCamera(state.doc, state.cam, true);
+    else {
+      Object.assign(state.cam, F.render.createCamera());
+      F.render.fitCamera(state.doc, state.cam, true);
+    }
     tree.render();
     inspector.render();
     controls.sync();
@@ -65,16 +93,7 @@
       setKernelPill(state.bridge.online ? "bridge" : false);
     }
     if (notify) F.ui.toast.show("BodyDocument 已加载");
-    const title = $("hudTitle");
-    const sub = document.querySelector(".hud .sub");
-    if (title) title.textContent = (F.model.isImported(state.doc) ? "IMPORTED / " : "ARM3 / ") + state.doc.name;
-    if (sub) sub.textContent = F.model.isImported(state.doc)
-      ? "glTF 2.0 · " + state.doc.segments.length + " links · " + ((state.doc.meta && state.doc.meta.triangleCount) || 0) + " tris · joint-space PD"
-      : "own renderer · jaw 3R · 100 Hz control seam";
-    const brandSub = document.querySelector(".brand small");
-    if (brandSub) brandSub.textContent = F.model.isImported(state.doc)
-      ? "GENERAL BODY / GLTF 2.0 / LOCAL PD"
-      : "BODY 0 / 3R ARM / MINI ENGINE";
+    syncDocHeader();
   }
 
   function saveDoc() {
@@ -142,7 +161,11 @@
     tree: $("tree"),
     purpose: $("purpose"),
     selId: $("selId"),
-    onSelect: function () { if (inspector) inspector.render(); }
+    search: $("treeSearch"),
+    onSelect: function () {
+      if (inspector) inspector.render();
+      if (workbench) workbench.sync();
+    }
   });
 
   inspector = F.ui.createInspector({
@@ -205,6 +228,16 @@
     }
   });
 
+  workbench = F.app.createWorkbench({
+    state: state,
+    canvas: canvas,
+    renderer: renderer,
+    labels: labels,
+    onSelect: function (kind, index) { tree.select(kind, index); },
+    onSave: saveDoc,
+    onImport: function () { $("fileModel").click(); }
+  });
+
   const handlers = F.app.createApiHandlers({
     state: state,
     controls: controls,
@@ -217,6 +250,8 @@
   const api = F.api.bind(handlers);
 
   labels.ensure(state.doc);
+  F.render.fitCamera(state.doc, state.cam, true);
+  syncDocHeader();
   tree.render();
   inspector.render();
   controls.sync();

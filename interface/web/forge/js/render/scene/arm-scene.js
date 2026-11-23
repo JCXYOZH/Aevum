@@ -11,7 +11,7 @@
 
     for (let i = 0; i < doc.segments.length; i++) {
       const seg = doc.segments[i];
-      joints.push({ id: seg.id, pos: M.translation(m) });
+      joints.push({ id: seg.id, pos: M.translation(m), axis: [0, 0, 1], q: seg.q });
       const rot = M.mul(m, M.rz(seg.q));
       links.push({
         seg: seg,

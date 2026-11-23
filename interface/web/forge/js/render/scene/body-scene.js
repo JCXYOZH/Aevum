@@ -45,7 +45,12 @@
         normal: M.mat3(m),
         mesh: seg.mesh || null
       };
-      joints[index] = { id: seg.id, pos: anchor(seg, parentWorld) };
+      joints[index] = {
+        id: seg.id,
+        pos: anchor(seg, parentWorld),
+        axis: seg.joint ? seg.joint.axis : [0, 0, 1],
+        q: seg.q || 0
+      };
       doc.segments.forEach(function (s, i) {
         if (s.parent === index) walk(i, m);
       });

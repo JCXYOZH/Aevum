@@ -1,12 +1,39 @@
 :root{
-  --bg:#0a0d10;
-  --panel:#10151a;
-  --panel2:#141b21;
-  --line:#25313a;
-  --text:#dce8ec;
-  --dim:#7f929b;
-  --cyan:#37c7d4;
-  --amber:#f0a43a;
-  --red:#e45b58;
-  --green:#7ed48b;
+  --bg:#0b0d0f;
+  --bg-deep:#07090b;
+  --panel:#111519;
+  --panel-2:#151a1f;
+  --panel-3:#1a2026;
+  --line:#252c33;
+  --line-strong:#323b44;
+  --text:#e7eaed;
+  --text-2:#aab3bd;
+  --dim:#7f8a95;
+  --faint:#5d6670;
+  --accent:#5b9dff;
+  --accent-soft:rgba(91,157,255,.13);
+  --select:#d79a52;
+  --select-soft:rgba(215,154,82,.13);
+  --live:#55c58a;
+  --live-soft:rgba(85,197,138,.12);
+  --fault:#e05d5d;
+  --warn:#e0b05a;
+  --axis-x:#e06c75;
+  --axis-y:#7bd88f;
+  --axis-z:#6ea8fe;
+  --r:4px;
+  --ctl-h:34px;
+  --shadow:0 18px 50px rgba(0,0,0,.42);
+  --left-w:340px;
+  --right-w:400px;
+  --dock-h:124px;
+  --status-h:30px;
+  --font-ui:"Segoe UI Variable","Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  --font-mono:"Cascadia Mono","Consolas","SFMono-Regular",monospace;
+}
+@media (min-width:2600px){
+  :root{--left-w:380px;--right-w:440px;--dock-h:136px;--status-h:32px}
+}
+@media (min-width:3200px){
+  :root{--left-w:420px;--right-w:480px;--dock-h:148px;--status-h:34px;--ctl-h:36px}
 }

@@ -11,7 +11,7 @@
       for (let i = 0; i < doc.segments.length; i++) {
         const d = document.createElement("div");
         d.className = "joint-label";
-        d.textContent = doc.segments[i].id;
+        d.innerHTML = '<span class="id">' + doc.segments[i].id + '</span><span class="val"></span>';
         container.appendChild(d);
         labelEls[doc.segments[i].id] = d;
       }
@@ -51,6 +51,8 @@
           el.style.left = p.x + "px";
           el.style.top = p.y + "px";
           el.classList.toggle("sel", selected.kind === "joint" && selected.index === i);
+          const val = el.querySelector(".val");
+          if (val) val.textContent = F.math.fmt((j.q || 0) * F.math.R2D, 0) + "°";
         }
         screenJoints.push({ index: i, x: p.x, y: p.y });
       }

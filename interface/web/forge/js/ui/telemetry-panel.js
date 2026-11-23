@@ -22,29 +22,38 @@
       resize();
       const w = chart.width;
       const h = chart.height;
+      const dpr = Math.max(1, w / Math.max(1, chart.clientWidth || 1));
+      const fs = Math.round(12 * dpr);
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = "#0b1014";
+      ctx.fillStyle = "#0d1115";
       ctx.fillRect(0, 0, w, h);
 
-      ctx.strokeStyle = "#1d2a31";
+      ctx.strokeStyle = "#1b242b";
       ctx.lineWidth = 1;
       for (let i = 1; i < 4; i++) {
         const y = h * i / 4;
+        const x = w * i / 4;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w, y);
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
         ctx.stroke();
       }
 
+      ctx.fillStyle = "#66737e";
+      ctx.font = fs + "px Cascadia Mono, Consolas";
+      ctx.textBaseline = "top";
+
       if (state.sim.kernel) {
-        drawKernelChart(w, h);
+        drawKernelChart(w, h, fs);
         return;
       }
 
       const data = state.sim.errHist;
       if (data.length > 1) {
-        ctx.strokeStyle = "#37c7d4";
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "#5b9dff";
+        ctx.lineWidth = Math.max(1.2, 1.4 * dpr);
         ctx.beginPath();
         data.forEach(function (v, i) {
           const x = i / (data.length - 1) * w;
@@ -53,20 +62,24 @@
           else ctx.moveTo(x, y);
         });
         ctx.stroke();
+      } else {
+        ctx.fillStyle = "#52606b";
+        ctx.textAlign = "center";
+        ctx.fillText("RUN to stream joint tracking error", w / 2, h / 2 - fs / 2);
+        ctx.textAlign = "left";
       }
 
-      ctx.fillStyle = "#6d838c";
-      ctx.font = "10px Segoe UI";
-      ctx.fillText("JOINT ERROR / 40° FULL SCALE", 8, 14);
+      ctx.fillStyle = "#66737e";
+      ctx.fillText("JOINT ERROR / 40° FULL SCALE", Math.round(10 * dpr), Math.round(8 * dpr));
     }
 
-    function drawKernelChart(w, h) {
-      const colors = ["#37c7d4", "#e0a34a", "#9a7ad6"];
+    function drawKernelChart(w, h, fs) {
+      const colors = ["#5b9dff", "#d79a52", "#9b8ad6"];
       const data = state.sim.qHist;
       if (data.length > 1) {
         for (let j = 0; j < 3; j++) {
           ctx.strokeStyle = colors[j];
-          ctx.lineWidth = 1.4;
+          ctx.lineWidth = Math.max(1.2, 1.4 * (fs / 12));
           ctx.beginPath();
           data.forEach(function (q, i) {
             const deg = F.math.clamp(q[j] * F.math.R2D, -180, 180);
@@ -78,15 +91,14 @@
           ctx.stroke();
         }
       }
-      ctx.fillStyle = "#6d838c";
-      ctx.font = "10px Segoe UI";
-      ctx.fillText(state.sim.manual ? "KERNEL q / MANUAL HOLD · DEG" : "KERNEL q / AUTO · DEG", 8, 14);
-      ctx.fillStyle = "#37c7d4";
-      ctx.fillText("J1", 170, 14);
-      ctx.fillStyle = "#e0a34a";
-      ctx.fillText("J2", 188, 14);
-      ctx.fillStyle = "#9a7ad6";
-      ctx.fillText("J3", 206, 14);
+      ctx.fillStyle = "#66737e";
+      ctx.fillText(state.sim.manual ? "KERNEL q / MANUAL HOLD · DEG" : "KERNEL q / AUTO · DEG", Math.round(10 * (fs / 12)), Math.round(8 * (fs / 12)));
+      ctx.fillStyle = "#5b9dff";
+      ctx.fillText("J1", Math.round(180 * (fs / 12)), Math.round(8 * (fs / 12)));
+      ctx.fillStyle = "#d79a52";
+      ctx.fillText("J2", Math.round(198 * (fs / 12)), Math.round(8 * (fs / 12)));
+      ctx.fillStyle = "#9b8ad6";
+      ctx.fillText("J3", Math.round(216 * (fs / 12)), Math.round(8 * (fs / 12)));
     }
 
     function update(now) {
@@ -94,6 +106,12 @@
       state.sim.lastUi = now;
 
       const kernel = !!state.sim.kernel;
+      const dockMeta = F.dom.$("dockMeta");
+      if (dockMeta) {
+        dockMeta.textContent = kernel
+          ? "KERNEL 0x03 · " + (state.sim.kernelStatus && state.sim.kernelStatus.mode === 1 ? "manual hold" : "auto")
+          : (state.sim.running ? "100 Hz · local PD" : "local PD · paused");
+      }
       if (kernel) {
         const st = state.sim.kernelStatus || {};
         F.dom.$("mLoop").textContent = "KERNEL 0x03";

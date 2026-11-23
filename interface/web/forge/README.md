@@ -19,12 +19,22 @@ python -m http.server 8080
 
 页面不依赖 React、Three.js、构建工具或外部素材。3D 视口、矩阵、相机、网格、关节标签和绘制顺序都在 `js/render/` 下，由页面自己的 WebGL 代码实现。
 
+## 工作台界面
+
+页面是单一工作台，不切开多个 workspace。常用操作直接长在视口里：左键 orbit、中键 pan、滚轮 zoom；`F` frame、`G` grid、`O` ortho、`1/3/7/0` front/right/top/home。视口右上 ViewCube 可切视图，左上 HUD 显示当前文档与关键指标；左右面板可用 `‹` / `›` 折叠，底部 Motion Telemetry 可 Expand / Collapse。
+
+- 左侧 `STRUCTURE / Outliner` 管 link/joint 树；搜索框过滤节点。
+- 右侧 `PROPERTIES / Inspector` 只显示当前选中对象的属性；`KERNEL STATUS` 只在接上内核后出现。
+- 顶部 `Import` / `Save` / `More` 是文档级动作；`Sine` 收在 More，避免常驻。
+- 导入模型若不是 3R 兼容链，显示 `KERNEL LOCAL ONLY`，仍可本地建模和 PD。
+- 4K 下根字号、面板宽度、视口控件按视口宽度提升；默认按 2560–3840 的展示密度排。
+
 ## 建模与导入
 
-- 左侧 `BODY DOCUMENT` 显示当前 link/joint 树。每个节点可选中，右侧 Inspector 编辑关节轴、原点、目标角、限位、力矩、惯量和 PD 参数。
-- 右侧 `IMPORT glTF / GLB` 接受 `.glb`，或同时选择 `.gltf` 与它引用的 `.bin`。导入后自动生成 `aevum.body/1`：每个 glTF node 变成一个 link，父子节点自动生成 joint；轴优先读 `node.extras.jointAxis`，否则按节点平移主轴启发式推断。仓库自带 `samples/arm3.glb`，3 links / 36 triangles，可直接导入验证。
+- 左侧 `STRUCTURE / Outliner` 显示当前 link/joint 树。每个节点可选中，右侧 Inspector 编辑关节轴、原点、目标角、限位、力矩、惯量和 PD 参数。
+- 顶部 `Import` 接受 `.glb`，或同时选择 `.gltf` 与它引用的 `.bin`。导入后自动生成 `aevum.body/1`：每个 glTF node 变成一个 link，父子节点自动生成 joint；轴优先读 `node.extras.jointAxis`，否则按节点平移主轴启发式推断。仓库自带 `samples/arm3.glb`，3 links / 36 triangles，可直接导入验证。
 - 导入模型只在本地建模 / 仿真；只有与内核几何一致的 3R 链（3 个 link、Z 轴、0.30/0.30/0.20 m、parent -1/0/1）才显示 `KERNEL COMPATIBLE` 并接收内核状态。其他模型显示 `KERNEL LOCAL ONLY`，不会被内核状态覆盖。
-- `SAVE JSON` / `LOAD JSON` 保存完整 `aevum.body/1`，包含三角网格；导入模型暂不导出 MuJoCo XML。
+- `Save` / API `exportJson()` 保存完整 `aevum.body/1`，包含三角网格；导入模型暂不导出 MuJoCo XML。
 
 ## 接真实内核（手动关节 + 完整状态）
 
@@ -46,7 +56,7 @@ QEMU COM1 (TCP 5555)
 wsl -d kali-linux -- bash -lc "cd /mnt/d/Aevum/src/kernel/host/console/robot && make clean && make all"
 ```
 
-2. 启动 QEMU；`build/local-test/run-qemu.bat` 已把串口改成：
+2. 启动 QEMU；本地启动脚本不入库（`build/` 是排除目录）。用你自己的 QEMU 启动方式，串口必须是 TCP：
 
 ```text
 -serial tcp:127.0.0.1:5555,server,nowait
@@ -58,7 +68,7 @@ wsl -d kali-linux -- bash -lc "cd /mnt/d/Aevum/src/kernel/host/console/robot && 
 D:\venv\Scripts\python.exe D:\Aevum\src\kernel\host\bridge\serial_bridge.py
 ```
 
-4. 打开 `interface/web/forge/index.html`，点 `CONNECT` 或调用：
+4. 打开 `interface/web/forge/index.html`，用公开 API 连接：
 
 ```js
 AEVUM_FORGE.connect();
@@ -67,14 +77,14 @@ AEVUM_FORGE.connect();
 进入内核模式的标志：
 
 - 顶部变成 `KERNEL LINK`，模式 pill 显示 `KERNEL / MANUAL HOLD` 或 `KERNEL / AUTO`；
-- `RUN` 按钮变成 `MANUAL` / `MANUAL ON`；`SINE TEST` 和 `RESET` 禁用，本地 100 Hz PD 暂停；
+- `RUN` 按钮变成 `MANUAL` / `MANUAL ON`；`Sine` 和 `Reset` 禁用，本地 100 Hz PD 暂停；
 - Inspector 的 `KERNEL STATUS / 0x03` 显示 MODE、末端误差、可操作度、sigma min/max、null-space share、limit margin、max |dq|、target X/Y；
 - 底部曲线切换成内核 q 轨迹；拖动 target 或调用 `setTargets()` 会下发 `J` 并进入手动保持；
 - 手动保持靠页面每帧重发 `joint`（桥接 100 ms 节流）；停止下发后内核 5 秒无命令自动回 AUTO。
 
 边界：
 
-- 内核臂几何是 `0.30 + 0.30 + 0.20 m`（约 0.80 m），Forge 原生页面臂约 1.38 m；q 可以共享，**末端笛卡尔目标不能直接共享**。
+- 内核臂几何是 `0.30 + 0.30 + 0.20 m`（约 0.80 m），Forge 原生 3R 默认文档约 1.58 m reach；q 可以共享，**末端笛卡尔目标不能直接共享**。
 - 只有 3R 兼容链接内核；导入的其他模型保持本地，状态帧被兼容性守卫丢弃。
 - 手动模式是关节空间 PD，不替代内核原有自动正弦/雅可比控制；超时回 AUTO 由内核 PIT tick 判定。
 
@@ -101,6 +111,7 @@ forge/
    │  ├─ math.js               # 矩阵 / 投影 / 角度 / 数值格式
    │  └─ dom.js                # DOM 查询 / 下载 / 文件读取
    ├─ app/
+   │  ├─ workbench.js          # 视口 orbit/pan/zoom、ViewCube、面板折叠、快捷键
    │  ├─ bridge-control.js     # WebSocket 生命周期 / 0x03 状态 / joint 命令
    │  ├─ api-handlers.js       # api.js 背后的命令实现
    │  └─ frame-loop.js         # 帧循环：绘制 → 控制 → 遥测
