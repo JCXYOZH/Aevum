@@ -45,7 +45,7 @@
 ; 模式 1：计数到 5000 后写内核显存 0xB8000，由 #PF 只杀死这个进程。
 ; 模式 2：fork 子进程1 写 CHLD 后 exit(7)，父 wait 并读回 PAPA；
 ;         再 fork 子进程2 安装 SIGFPE handler，div 0 后由 sigreturn 返回
-;         除零后的指令，写 HAND 并 exit(9)。
+;         除零后的指令，写 HAND 后 in al,0x60 触发 #GP->SIGSEGV。
 ; 模式 3：直接写 guard 0x402000，由 #PF 只杀死这个进程。
 ; 模式 4：父 fork 后先关闭自己的 fd0/fd1，子进程仍用继承端点读键盘并写 console；
 ;         父 wait 到 14 后写 "CON!" 并 exit(15)。

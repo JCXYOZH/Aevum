@@ -129,6 +129,8 @@ QEMU 实测（本构建 `kernel.bin` 42,792 字节，BSS 结束 `0x8C140`，96 �
 
 ## 四、P3.2 验收记录
 
+> 注：以下为 P3.2 历史构建记录（当时 sig 轮用 `exit(9)`）；当前 sig 轮已加入 EFLAGS 白名单验收，改为 `in al,0x60` -> `#GP -> SIGSEGV(11)`，父 wait 得到 `0x8000000B`。
+
 QEMU 实测（本构建 `kernel.bin` 44,392 字节，BSS 结束 `0x8D3C0`，96 扇区 / 49,152 字节窗口）：
 
 - `V` 页 PCB：`userD` PID 7 / AS 4 / READY；`userE` PID 8 / PPID 7 / EXIT 9 / `userE`；handler 子进程没有再变成 `SIG8` 墓碑。
@@ -174,7 +176,9 @@ D 第三轮由父进程 `fork` 出子进程；子进程准备静态数组 `exec_
 
 QEMU 实测（P4.2 clean 构建 `kernel.bin` 47,304 字节，BSS `0x8B8E0..0x8E0E0`，96 扇区 / 49,152 字节窗口）：
 
-- `D fork2 8 wait 8 st 00000009 HAND OK` 仍成立，说明 exec 没有破坏前两轮状态。
+> 注：本节为 P4.2 历史构建记录，sig 轮当时仍是 `exit(9)`。当前 sig 轮已改为 `in al,0x60` -> `#GP -> SIGSEGV(11)`，父 wait 得到 `0x8000000B`。
+
+- P4.2 历史构建中 `D fork2 8 wait 8 st 00000009 HAND OK` 仍成立，说明 exec 没有破坏前两轮状态。
 - `P4 exec 8 wait 8 st 0000000A img 1 EXEC OK arg 2 env 2`：子进程 PID 8 不变；exec 镜像 `image_id=1`；退出码 10 被父进程 `wait` 回收；`arg/env` 计数来自 `process_exec_counts(pid)`。
 - 内核调试构建的串口日志曾输出 `P42 argc=2 env=2 a0=alpha e0=MODE=p42` 与 `P42S p0=alpha p1=beta e0=MODE=p42`，证明解析结果和新栈指针指向的字符串一致；该临时输出已在最终构建前移除。
 - PCB `userE PID 8 PPID 7 EXIT 10`：wait 回收后 AS 已释放；`image_id=1` 保留在墓碑。
