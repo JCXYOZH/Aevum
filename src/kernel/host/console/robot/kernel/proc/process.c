@@ -12,6 +12,16 @@
 #define PROC_EXEC_STRING_MAX 32
 #define PROC_REAP_HISTORY 2
 
+/*
+ * sigreturn 只保留信号恢复需要的算术/方向标志：
+ * CF/PF/AF/ZF/SF/DF/OF 原样保留，bit1 恒为 1，IF 强制开启。
+ * TF/IOPL/VM/NT/AC 一律清零：signal frame 位于用户栈，handler 可以
+ * 任意篡改它；若原样恢复，伪造 IOPL=3 就能在 ring3 直接 in/out 端口
+ * （TSS 无 iomap，IOPL>=CPL 即放行），清 IF 则屏蔽 PIT 挂死全系统。
+ */
+#define PROC_EFLAGS_USER_MASK 0x00000CD5u
+#define PROC_EFLAGS_USER_FIXED 0x00000202u
+
 struct proc_exec_args {
     u32 argc;
     u32 envc;
@@ -360,7 +370,8 @@ int process_sigreturn_current(struct irq_frame *frame)
     frame->ebp = sf.ebp;
     frame->eip = sf.eip;
     frame->cs = sf.cs;
-    frame->eflags = sf.eflags;
+    /* signal frame 来自用户栈，EFLAGS 必须按白名单过滤后才能恢复。 */
+    frame->eflags = (sf.eflags & PROC_EFLAGS_USER_MASK) | PROC_EFLAGS_USER_FIXED;
     frame->user_esp = sf.user_esp;
     frame->ss = sf.ss;
     frame->vector = 0;
@@ -492,10 +503,15 @@ static struct process *proc_alloc_slot(int pid)
 /* 回收一个 ZOMBIE：线程任务槽、线程内核栈、地址空间、TGID 一次释放。 */
 static void process_reap(struct process *p)
 {
-    if (!p || (p->state != PROC_ZOMBIE && p->state != PROC_LIVE)) return;
+    if (!p || p->state != PROC_ZOMBIE) return;
     if (task_process_current() == p) return;
+    /*
+     * 线程组里仍有非 ZOMBIE 任务在跑时不能回收：此时释放地址空间
+     * 等于拆正在跑的台。留墓碑，等下一轮 reaper 再试。
+     */
+    if (task_process_live_threads(p) != 0) return;
+    if (task_release_process_threads(p) != 0) return;
     proc_fd_table_close_all(&p->fds);
-    (void)task_release_process_threads(p);
     if (p->space) address_space_release(p->space);
     task_pid_release(p->pid);
     p->space = 0;

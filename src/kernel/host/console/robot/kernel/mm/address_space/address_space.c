@@ -159,6 +159,17 @@ static struct address_space_vma *vma_find(struct address_space *space, u32 va)
     return 0;
 }
 
+static struct address_space_vma *vma_find_heap(struct address_space *space)
+{
+    int i;
+    if (!space) return 0;
+    for (i = 0; i < space->vma_count; i++) {
+        if (space->vmas[i].kind == ADDRESS_SPACE_VMA_HEAP)
+            return &space->vmas[i];
+    }
+    return 0;
+}
+
 static void vma_add(struct address_space *space, u32 start, u32 end,
                     u32 flags, u32 kind)
 {
@@ -368,6 +379,7 @@ struct address_space *address_space_clone(const struct address_space *src)
 {
     struct address_space *space = 0;
     struct address_space *parent = (struct address_space *)src;
+    struct address_space_vma *heap;
     u32 *pd;
     int i;
 
@@ -435,8 +447,10 @@ struct address_space *address_space_clone(const struct address_space *src)
     for (i = 0; i < src->vma_count && i < AEVUM_USER_VMA_MAX; i++)
         space->vmas[i] = src->vmas[i];
     space->vma_count = src->vma_count;
-    if (space->vma_count > 0)
-        space->vmas[space->vma_count - 1].end = space->brk;
+    /* 收尾按 kind 定位 HEAP VMA 并把 end 对齐到本进程 brk，
+     * 不依赖“HEAP 恰好排在 vmas[] 最后”这一追加式布局约定。 */
+    heap = vma_find_heap(space);
+    if (heap) heap->end = space->brk;
     cow_fork_total++;
     cow_shared_total += space->user_pages;
     return space;
@@ -449,6 +463,7 @@ u32 address_space_brk(const struct address_space *space)
 
 int address_space_set_brk(struct address_space *space, u32 new_brk)
 {
+    struct address_space_vma *heap;
     u32 old;
     u32 va;
 
@@ -487,9 +502,8 @@ int address_space_set_brk(struct address_space *space, u32 new_brk)
         }
     }
     space->brk = new_brk;
-    if (space->vma_count > 0 &&
-        space->vmas[space->vma_count - 1].kind == ADDRESS_SPACE_VMA_HEAP)
-        space->vmas[space->vma_count - 1].end = new_brk;
+    heap = vma_find_heap(space);
+    if (heap) heap->end = new_brk;
     return 0;
 }
 

@@ -7,6 +7,7 @@
 ; 0x401038 COW 魔数（父写 PAPA，子写 CHLD），0x40103C 父读回值，
 ; 0x401040 COW 验收字，0x401044 信号子进程 pid，0x401048 信号 wait status，
 ; 0x40104C SIG 验收字，0x401050 信号 wait 返回值，0x401054 handler 调用计数；
+; sig 轮同时是 sigreturn EFLAGS 白名单验收（期望 status 0x8000000B）；
 ; 0x401058 exec 子进程 pid，0x40105C exec wait status，0x401060 exec 验收字，
 ; 0x401064 exec wait 返回值，0x401068 exec 只执行一次标记；
 ; 0x40106C pipe 读 fd，0x401070 pipe 写 fd，0x401074 pipe 返回值，
@@ -187,8 +188,8 @@ user_program_start:
     mov [0x401050], eax
 
     mov eax, [0x401048]
-    cmp eax, 9              ; handler 捕获 #DE 后子进程正常 exit(9)
-    jne .sig_bad
+    cmp eax, 0x8000000B     ; sigreturn 白名单验收：篡改 IOPL=3|IF=0 后 in 0x60
+    jne .sig_bad            ; 必 #GP->SIGSEGV(11) 信号终止
     mov dword [0x40104C], 0x48414E44 ; "HAND"
     mov eax, [0x401038]
     cmp eax, 0x50415041
@@ -981,8 +982,15 @@ user_program_start:
     div ecx                 ; #DE -> 内核投递 signal frame
     cmp dword [0x401054], 1 ; handler 已执行一次
     jne .sig_handler_bad
-    mov eax, 3              ; syscall: exit(9)
-    mov ebx, 9
+    ; sigreturn 过滤后回到这里：EFLAGS 应被白名单还原为 IOPL=0、IF=1。
+    pushf
+    pop eax
+    and eax, 0x00003200     ; IOPL(bits12-13) | IF(bit9)
+    cmp eax, 0x00000200     ; 期望恰好 IOPL=0 且 IF=1
+    jne .sig_handler_bad    ; IOPL 残留或 IF 被清：白名单失效
+    in al, 0x60             ; IOPL=0 必 #GP->SIGSEGV；IOPL=3 放行则 exit(12)
+    mov eax, 3
+    mov ebx, 12
     int 0x80
 .sig_install_bad:
     mov eax, 3
@@ -1003,7 +1011,14 @@ user_program_start:
 ; signal frame 第一个槽是 trampoline 返回地址；handler 用 ret 进入这里。
 ; 此时用户 ESP 指向 frame 的保存 GPR 区，sigreturn 从这里恢复原 iret 帧。
 ; 放在所有 user_program_start 本地标签之后，避免改变 .done/.hang 的标签作用域。
+; handler 同时承担 sigreturn EFLAGS 白名单验收：进入时 [esp]=trampoline
+; 返回地址，sigframe 从 [esp+4] 起（7 GPR + eip + cs + eflags@36），故
+; eflags 在 [esp+40]，其 bits8-15 字节是 [esp+41]（bit9=IF，bits12-13=IOPL）。
+; 篡改为 0x30 即 IOPL=3、IF=0；修复后 sigreturn 白名单还原为 IOPL=0、IF=1，
+; child_de 随后的 in 0x60 必触发 #GP->SIGSEGV；未修复则 IOPL=3 放行 in，
+; 子进程 exit(12) 与信号死亡可区分。bit1 恒 1 位于 [esp+40]，不改动。
 user_fpe_handler:
+    mov byte [esp+41], 0x30 ; 伪造 IOPL=3|IF=0，投给 sigreturn 做白名单过滤
     inc dword [0x401054]
     ret
 
