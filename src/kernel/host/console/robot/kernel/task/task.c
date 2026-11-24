@@ -716,7 +716,6 @@ int task_reap_thread(struct process *proc, int tid)
 int task_release_process_threads(struct process *proc)
 {
     int i;
-    int n = 0;
 
     if (!proc) return -1;
     /*
@@ -735,9 +734,12 @@ int task_release_process_threads(struct process *proc)
         kernel_stack_free(tasks[i].stack_top);
         pid_free(tasks[i].pid);
         task_zero(&tasks[i]);
-        n++;
     }
-    return n ? 0 : -1;
+    /*
+     * 零槽也返回成功：调用方 process_reap() 已经确认线程组没有活任务。
+     * 没有槽可释放说明任务层已经清完，不能把它当失败卡住 PCB/AS 回收。
+     */
+    return 0;
 }
 
 void task_terminate_threads(struct process *proc, int except_tid)
